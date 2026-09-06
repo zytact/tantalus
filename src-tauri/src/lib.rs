@@ -152,7 +152,7 @@ pub fn run() {
             TrayIconBuilder::with_id("usage")
                 .icon(tray_icon())
                 .menu(&menu)
-                .tooltip("Codex usage")
+                .tooltip("Tantalus")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "refresh" => {
@@ -189,6 +189,6 @@ pub fn run() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while running Codex Usage")
+        .expect("error while running Tantalus")
         .run(|_, _| {});
 }

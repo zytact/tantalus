@@ -2,7 +2,7 @@
 
 ## Visual world
 
-Codex Usage is an Operate surface modeled after a compact instrument panel. It uses a warm paper base, graphite type, an electric blue for active controls, and a restrained amber/red status vocabulary. The window is a single continuous working surface, not a grid of generic cards.
+Tantalus is an Operate surface modeled after a compact instrument panel. It uses a warm paper base, graphite type, an electric blue for active controls, and a restrained amber/red status vocabulary. The window is a single continuous working surface, not a grid of generic cards.
 
 ## Layout
 

@@ -1,5 +1,5 @@
 [package]
-name = "codex-tray"
+name = "tantalus"
 version = "0.1.0"
 description = "Private Codex usage tray app"
 authors = ["Arnab"]

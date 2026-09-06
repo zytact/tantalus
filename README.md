@@ -1,6 +1,8 @@
-# Codex Usage Tray
+# Tantalus
 
 A Linux-first Tauri 2 desktop app that shows Codex 5-hour and 7-day usage from the system tray. Rust reads local credentials and calls the usage APIs. The React webview receives only a token-free usage snapshot.
+
+Named for Tantalus, who stood in water he could never drink under fruit he could never reach. The app shows you a limit you cannot exceed.
 
 ## Run
 

@@ -62,7 +62,7 @@ async fn fetch_json(
         request = request
             .header("OpenAI-Beta", "codex-1")
             .header("originator", "Codex Desktop")
-            .header("User-Agent", "codex-usage-tray/0.1");
+            .header("User-Agent", "tantalus/0.1");
     }
     let response = request.send().await.map_err(|error| {
         if error.is_timeout() {

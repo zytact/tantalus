@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Codex Usage",
+  "productName": "Tantalus",
   "version": "0.1.0",
-  "identifier": "dev.arnab.codex-usage",
+  "identifier": "dev.arnab.tantalus",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Codex usage", "width": 480, "height": 590, "minWidth": 360, "minHeight": 500, "resizable": true, "visible": false }],
+    "windows": [{ "label": "main", "title": "Tantalus", "width": 480, "height": 590, "minWidth": 360, "minHeight": 500, "resizable": true, "visible": false }],
     "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'" }
   },
   "bundle": { "active": true, "targets": "all" }

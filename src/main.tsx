@@ -63,7 +63,7 @@ function App() {
   }, []);
   const statusText = snapshot.status === "auth_missing" ? "Authentication needed" : snapshot.status === "error" ? "Could not refresh" : snapshot.status === "stale" ? "Showing cached data" : snapshot.allowed === false || snapshot.limit_reached ? "Allowance blocked" : "Allowance available";
   return <main>
-    <header><div><p className="app-name">Codex usage</p><h1>{statusText}</h1></div><button onClick={() => void refresh()} disabled={refreshing} aria-busy={refreshing}>{refreshing ? "Refreshing" : "Refresh"}</button></header>
+    <header><div><p className="app-name">Tantalus</p><h1>{statusText}</h1></div><button onClick={() => void refresh()} disabled={refreshing} aria-busy={refreshing}>{refreshing ? "Refreshing" : "Refresh"}</button></header>
     {(snapshot.status === "auth_missing" || snapshot.status === "error" || snapshot.status === "stale") && <p className="notice" role="status">{snapshot.error_message ?? "The last successful reading remains visible."}</p>}
     <div className="usage-list"><UsageRow title="5-hour window" titleId="five-hour-window-title" duration={18_000} window={snapshot.five_hour} /><UsageRow title="7-day window" titleId="seven-day-window-title" duration={604_800} window={snapshot.seven_day} /></div>
     <section className="credits" aria-labelledby="credits-title"><div><h2 id="credits-title">Reset credits</h2><strong>{snapshot.reset_credit_count === null ? "Unavailable" : `${snapshot.reset_credit_count} available`}</strong></div>
