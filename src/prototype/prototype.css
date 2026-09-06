@@ -1,0 +1,104 @@
+/* PROTOTYPE styles. Each variant is namespaced; nothing here is meant to ship. */
+
+.proto-switcher {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; z-index: 999;
+  padding: 4px; border-radius: 999px; background: #101418; color: #f4f6f8;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28); font-size: 0.74rem; font-weight: 600;
+}
+.proto-switcher span { padding: 0 10px; font-variant-numeric: tabular-nums; }
+.proto-switcher button {
+  min-height: 24px; width: 26px; padding: 0; border: 0; border-radius: 999px;
+  background: #2b3238; color: #f4f6f8; font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.proto-switcher button:hover { background: #3d464e; }
+
+/* ---------- Variant A: Dial ---------- */
+.va { min-height: 100vh; padding: 22px 24px 64px; background: #faf8f3; display: flex; flex-direction: column; }
+.va-top { display: flex; justify-content: space-between; align-items: center; }
+.va-chip { padding: 4px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; background: #dbeadd; color: #1d5a32; }
+.va-chip--bad, .va-chip--error, .va-chip--auth_missing { background: #f8dad4; color: #7d2415; }
+.va-chip--stale, .va-chip--loading { background: #f2e6c8; color: #6b4f10; }
+.va-refresh { min-height: 30px; padding: 0 12px; border: 1px solid #cfcdc4; border-radius: 999px; background: transparent; color: #333d40; font-size: 0.78rem; font-weight: 600; }
+.va-refresh:hover:not(:disabled) { background: #efece3; }
+.va-gauge { position: relative; margin: 18px auto 0; width: 100%; max-width: 300px; }
+.va-gauge svg { display: block; width: 100%; overflow: visible; }
+.va-track, .va-fill { fill: none; stroke-width: 16; stroke-linecap: round; }
+.va-track { stroke: #e3e0d5; }
+.va-fill { stroke: #16628f; transition: stroke-dashoffset 400ms ease-out; }
+.va-fill--hot { stroke: #c0442a; }
+.va-readout { position: absolute; inset: auto 0 4px; text-align: center; }
+.va-readout strong { display: block; font-size: 3.4rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+.va-readout span { font-size: 0.8rem; color: #5d6a6d; }
+.va-caption { margin: 20px 0 0; text-align: center; font-size: 0.9rem; color: #46545a; }
+.va-caption b { color: #17242a; }
+.va-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 32px; }
+.va-secondary > div { padding: 14px; border-radius: 12px; background: #f1eee4; }
+.va-key { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5d6a6d; }
+.va-val { display: block; margin: 6px 0 2px; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.va-sub { font-size: 0.72rem; color: #5d6a6d; }
+.va-error { margin: 14px 0 0; font-size: 0.8rem; color: #7d2415; }
+.va-foot { margin: auto 0 0; text-align: center; font-size: 0.72rem; color: #7b8588; }
+
+/* ---------- Variant B: Runway ---------- */
+.vb { min-height: 100vh; padding: 20px 20px 58px; background: #12161a; color: #eef1f4; }
+.vb-head { display: flex; justify-content: space-between; align-items: flex-start; }
+.vb-head p { margin: 0 0 4px; font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; color: #7e8a94; }
+.vb-head h1 { margin: 0; font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; }
+.vb-head button { min-height: 32px; padding: 0 14px; border: 1px solid #333d46; border-radius: 8px; background: #1d242a; color: #eef1f4; font-size: 0.8rem; font-weight: 600; }
+.vb-head button:hover:not(:disabled) { background: #29323a; }
+.vb-notice { margin: 16px 0 0; padding: 10px 12px; border-radius: 8px; background: #3a2418; color: #f6c9b0; font-size: 0.8rem; }
+.vb-card { margin-top: 14px; padding: 16px; border: 1px solid #232b32; border-radius: 14px; background: #171d22; }
+.vb-card-head { display: flex; justify-content: space-between; align-items: baseline; }
+.vb-card-head h2 { margin: 0; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #8d99a3; }
+.vb-remaining { font-size: 0.78rem; color: #8d99a3; font-variant-numeric: tabular-nums; }
+.vb-clock { margin: 8px 0 12px; }
+.vb-clock strong { display: block; font-size: 2.1rem; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.vb-clock span { font-size: 0.76rem; color: #77838d; }
+.vb-segments { display: flex; gap: 3px; }
+.vb-segments i { flex: 1; height: 20px; border-radius: 2px; background: #262f36; }
+.vb-card--warm .vb-segments i.on { background: #e8a33d; }
+.vb-card--cool .vb-segments i.on { background: #4f93e0; }
+.vb-credits { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 16px; border-radius: 14px; background: #171d22; border: 1px solid #232b32; }
+.vb-credit-dots { display: flex; gap: 5px; }
+.vb-credit-dots i { width: 11px; height: 11px; border-radius: 50%; background: #2c353d; }
+.vb-credit-dots i.on { background: #5fd39a; }
+.vb-credits strong { display: block; font-size: 0.9rem; font-weight: 600; }
+.vb-credits span { font-size: 0.74rem; color: #77838d; }
+.vb-foot { margin-top: 14px; font-size: 0.72rem; color: #66717a; }
+
+/* ---------- Variant C: Console ---------- */
+.vc { min-height: 100vh; display: flex; flex-direction: column; padding: 16px 18px 60px; background: #0c0f0d; color: #cfe3d3; font-family: ui-monospace, "JetBrains Mono", "SF Mono", monospace; font-size: 0.82rem; }
+.vc-topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px dashed #22302a; }
+.vc-brand { color: #6fe39a; letter-spacing: 0.1em; }
+.vc-status { font-size: 0.7rem; letter-spacing: 0.08em; }
+.vc-status--ok { color: #6fe39a; }
+.vc-status--bad { color: #ff7a66; }
+.vc-block { padding: 16px 0; border-bottom: 1px dashed #22302a; }
+.vc-line { display: flex; justify-content: space-between; align-items: baseline; }
+.vc-line--dim { margin-top: 4px; color: #5d766a; font-size: 0.74rem; }
+.vc-label { color: #8fb59d; }
+.vc-num { font-size: 1.5rem; letter-spacing: -0.02em; }
+.vc-num--hot { color: #ff7a66; }
+.vc-bar { margin: 8px 0 0; font-size: 0.78rem; line-height: 1; letter-spacing: -0.5px; color: #3fae72; white-space: nowrap; overflow: hidden; }
+.vc-bar--hot { color: #ff7a66; }
+.vc-err { margin: 12px 0 0; color: #ff7a66; font-size: 0.76rem; }
+.vc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 14px; color: #5d766a; font-size: 0.74rem; }
+.vc-footer button { min-height: 26px; padding: 0 10px; border: 1px solid #2a3d33; border-radius: 4px; background: transparent; color: #6fe39a; font-family: inherit; font-size: 0.74rem; font-weight: 400; }
+.vc-footer button:hover:not(:disabled) { background: #14201a; }
+
+/* ---------- Variant D: Tiles ---------- */
+.vd { min-height: 100vh; display: flex; flex-direction: column; background: #fffdf8; }
+.vd-tiles { flex: 1; display: grid; grid-template-rows: 1fr 1fr; }
+.vd-tile { position: relative; overflow: hidden; background: #f3efe4; border-bottom: 1px solid #1c1c1a; }
+.vd-flood { position: absolute; inset: auto 0 0 0; background: var(--accent); transition: height 400ms ease-out; }
+.vd-tile-body { position: relative; height: 100%; padding: 22px 24px; display: flex; flex-direction: column; justify-content: flex-end; color: #16160f; }
+.vd-tile-title { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.vd-tile-num { font-size: 4.2rem; font-weight: 800; letter-spacing: -0.05em; line-height: 0.95; font-variant-numeric: tabular-nums; }
+.vd-tile-sub { margin: 6px 0 0; font-size: 0.82rem; }
+.vd-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 24px 60px; background: #1c1c1a; color: #fffdf8; }
+.vd-bar-main strong { display: block; font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em; }
+.vd-bar-main span { display: block; font-size: 0.74rem; color: #a5a49c; }
+.vd-bar-main .vd-err { color: #ffb4a1; }
+.vd-bar button { min-height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: #fffdf8; color: #1c1c1a; font-size: 0.82rem; font-weight: 700; }
+.vd-bar button:hover:not(:disabled) { background: #e6e3da; }
