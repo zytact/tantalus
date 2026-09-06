@@ -143,19 +143,26 @@ fn exact_integer(value: &Value) -> Option<i64> {
         })
     })
 }
-/// Timestamps arrive either as epoch numbers, in seconds or milliseconds, or as an RFC 3339 string.
+/// Timestamps arrive as an RFC 3339 string, or as an epoch in seconds or milliseconds that is
+/// itself either a JSON number or a JSON string.
 fn epoch(value: Option<&Value>) -> Option<i64> {
     match value? {
-        Value::String(text) => OffsetDateTime::parse(text, &Rfc3339)
-            .ok()
-            .map(OffsetDateTime::unix_timestamp),
-        value => number(value).map(|seconds| {
-            if seconds > 100_000_000_000 {
-                seconds / 1000
-            } else {
-                seconds
-            }
-        }),
+        Value::String(text) => match text.parse::<i64>() {
+            Ok(epoch) => Some(to_seconds(epoch)),
+            Err(_) => OffsetDateTime::parse(text, &Rfc3339)
+                .ok()
+                .map(OffsetDateTime::unix_timestamp),
+        },
+        value => number(value).map(to_seconds),
+    }
+}
+/// Epochs above this threshold are milliseconds. It is the year 5138 in seconds, so no plausible
+/// second-resolution timestamp reaches it.
+fn to_seconds(epoch: i64) -> i64 {
+    if epoch > 100_000_000_000 {
+        epoch / 1000
+    } else {
+        epoch
     }
 }
 pub fn now_epoch() -> i64 {
@@ -217,6 +224,18 @@ mod tests {
             .map(|credit| credit.expires_at_epoch)
             .collect::<Vec<_>>();
         assert_eq!(parsed, [Some(1_791_076_477), Some(1_791_075_600)]);
+    }
+
+    #[test]
+    fn numeric_string_expiry_is_read_as_an_epoch() {
+        let (credits, _) = parse_credits(
+            &json!({"credits":[{"expires_at":"1791076477"},{"expires_at":"1791076477945"}]}),
+        );
+        let parsed = credits
+            .iter()
+            .map(|credit| credit.expires_at_epoch)
+            .collect::<Vec<_>>();
+        assert_eq!(parsed, [Some(1_791_076_477), Some(1_791_076_477)]);
     }
 
     #[test]
