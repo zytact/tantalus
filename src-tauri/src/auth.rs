@@ -12,8 +12,6 @@ pub struct Credentials {
 pub enum AuthError {
     #[error("Codex authentication file was not found")]
     MissingFile,
-    #[error("Codex authentication file could not be read")]
-    Read,
     #[error("Codex authentication file is not valid JSON")]
     Parse,
     #[error("Codex authentication is missing an access token")]

@@ -1,5 +1,5 @@
 use crate::auth::Credentials;
-use crate::usage::{now_epoch, parse_credits, parse_usage, ResetCredit, UsageSnapshot};
+use crate::usage::{now_epoch, parse_credits, parse_usage, UsageSnapshot};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use thiserror::Error;

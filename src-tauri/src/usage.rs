@@ -190,7 +190,7 @@ mod tests {
             json!({"data":[{"expiry":3}, {"expires":4}]}),
             json!({"items":[{"expiration":5}, {"expiration_at":6000}]}),
         ];
-        let expiries = [1, 2, 3, 4, 5, 6];
+        let expiries = [1, 2, 3, 4, 5, 6000];
 
         let parsed = responses
             .iter()

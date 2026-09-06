@@ -33,13 +33,16 @@ struct AppState {
 }
 
 #[tauri::command]
-async fn refresh_usage(state: State<'_, AppState>, app: AppHandle) -> UsageSnapshot {
-    refresh(&state, &app).await
+async fn refresh_usage(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<UsageSnapshot, String> {
+    Ok(refresh(&state, &app).await)
 }
 
 #[tauri::command]
-async fn cached_usage(state: State<'_, AppState>) -> UsageSnapshot {
-    state.snapshot.lock().await.clone()
+async fn cached_usage(state: State<'_, AppState>) -> Result<UsageSnapshot, String> {
+    Ok(state.snapshot.lock().await.clone())
 }
 
 async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
@@ -94,7 +97,8 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Ok(show) = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>) else {
         return;
     };
-    let Ok(refresh) = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>) else {
+    let Ok(refresh_item) = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)
+    else {
         return;
     };
     let Ok(quit) = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) else {
@@ -102,9 +106,9 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     };
     if let Ok(menu) = Menu::with_items(
         app,
-        &[&summary_item, &secondary_item, &show, &refresh, &quit],
+        &[&summary_item, &secondary_item, &show, &refresh_item, &quit],
     ) {
-        let _ = tray.set_menu(menu);
+        let _ = tray.set_menu(Some(menu));
     }
 }
 
@@ -141,9 +145,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![refresh_usage, cached_usage])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>)?;
-            let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
+            let refresh_item =
+                MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &refresh, &quit])?;
+            let menu = Menu::with_items(app, &[&show, &refresh_item, &quit])?;
             TrayIconBuilder::with_id("usage")
                 .icon(tray_icon())
                 .menu(&menu)
