@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WindowEvent,
+    AppHandle, Emitter, Manager, State,
 };
 use tokio::sync::Mutex;
 use usage::{SnapshotStatus, UsageSnapshot};
@@ -198,16 +198,10 @@ pub fn run() {
             });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
         .build(tauri::generate_context!())
         .expect("error while running Tantalus")
         .run(|_app, _event| {
-            // Clicking the dock icon on macOS reopens the window that closing only hid.
+            // Clicking the dock icon on macOS reopens the app window.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = _event {
                 show_window(_app);
