@@ -192,7 +192,7 @@ pub fn run() {
                 let state = handle.state::<AppState>();
                 refresh(&state, &handle).await;
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                     refresh(&state, &handle).await;
                 }
             });
