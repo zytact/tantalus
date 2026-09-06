@@ -26,8 +26,16 @@ export function absoluteTime(epoch: number | null): string {
     : new Date(epoch * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 }
 
+/** Credits expire weeks out, so a weekday alone would not say which week. */
 export function creditExpiry(epoch: number | null): string {
-  return epoch === null ? "No expiry reported" : `Expires ${absoluteTime(epoch)}`;
+  if (epoch === null) return "No expiry reported";
+  const date = new Date(epoch * 1000).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  return `Expires ${date}`;
 }
 
 export function lastUpdate(epoch: number | null): string {
