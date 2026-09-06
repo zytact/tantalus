@@ -129,10 +129,29 @@ fn parse_window(value: Option<&Value>, now: i64) -> WindowUsage {
         reset_at_epoch,
     }
 }
+/// `jq -r` prints a JSON string as its text, so the reference script treats "90" and 90 alike.
+/// Numeric fields accept either, truncating any fractional part.
 fn number(value: &Value) -> Option<i64> {
-    value.as_f64().map(|number| number as i64)
+    match value {
+        Value::String(text) => whole_digits(text),
+        value => value.as_f64().map(|number| number as i64),
+    }
 }
+/// Digits with an optional fractional part, truncated. Deliberately stricter than `f64::parse`,
+/// which would turn "NaN" and "inf" into an epoch of zero.
+fn whole_digits(text: &str) -> Option<i64> {
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
+    (!whole.is_empty() && digits(whole) && digits(fraction))
+        .then(|| whole.parse().ok())
+        .flatten()
+}
+/// Window durations match against 18,000 and 604,800 exactly, so unlike [`number`] this keeps a
+/// fractional value unavailable rather than truncating it into a window it does not belong to.
 fn exact_integer(value: &Value) -> Option<i64> {
+    if let Value::String(text) = value {
+        return (!text.contains('.')).then(|| whole_digits(text)).flatten();
+    }
     value.as_i64().or_else(|| {
         value.as_f64().and_then(|number| {
             (number.is_finite()
@@ -143,17 +162,14 @@ fn exact_integer(value: &Value) -> Option<i64> {
         })
     })
 }
-/// Timestamps arrive as an RFC 3339 string, or as an epoch in seconds or milliseconds that is
-/// itself either a JSON number or a JSON string.
+/// Timestamps arrive as an epoch in seconds or milliseconds, or as an RFC 3339 string.
 fn epoch(value: Option<&Value>) -> Option<i64> {
-    match value? {
-        Value::String(text) => match text.parse::<i64>() {
-            Ok(epoch) => Some(to_seconds(epoch)),
-            Err(_) => OffsetDateTime::parse(text, &Rfc3339)
-                .ok()
-                .map(OffsetDateTime::unix_timestamp),
-        },
-        value => number(value).map(to_seconds),
+    let value = value?;
+    match number(value) {
+        Some(epoch) => Some(to_seconds(epoch)),
+        None => OffsetDateTime::parse(value.as_str()?, &Rfc3339)
+            .ok()
+            .map(OffsetDateTime::unix_timestamp),
     }
 }
 /// Epochs above this threshold are milliseconds. It is the year 5138 in seconds, so no plausible
@@ -228,20 +244,43 @@ mod tests {
 
     #[test]
     fn numeric_string_expiry_is_read_as_an_epoch() {
-        let (credits, _) = parse_credits(
-            &json!({"credits":[{"expires_at":"1791076477"},{"expires_at":"1791076477945"}]}),
-        );
+        let (credits, _) = parse_credits(&json!({"credits":[
+            {"expires_at":"1791076477"},
+            {"expires_at":"1791076477945"},
+            {"expires_at":"1791076477.945219"}
+        ]}));
         let parsed = credits
             .iter()
             .map(|credit| credit.expires_at_epoch)
             .collect::<Vec<_>>();
-        assert_eq!(parsed, [Some(1_791_076_477), Some(1_791_076_477)]);
+        assert_eq!(parsed, [Some(1_791_076_477); 3]);
     }
 
     #[test]
     fn unparseable_expiry_string_stays_unavailable() {
-        let (credits, _) = parse_credits(&json!({"credits":[{"expires_at":"whenever"}]}));
-        assert_eq!(credits[0].expires_at_epoch, None);
+        for text in ["whenever", "NaN", "inf", "-1e9", ""] {
+            let (credits, _) = parse_credits(&json!({"credits":[{"expires_at":text}]}));
+            assert_eq!(credits[0].expires_at_epoch, None, "{text} should not parse");
+        }
+    }
+
+    #[test]
+    fn string_durations_map_to_windows_but_fractional_ones_do_not() {
+        let (five_hour, seven_day, _, _) = parse_usage(
+            &json!({"rate_limit":{"primary_window":{"used_percent":9.0,"limit_window_seconds":"18000"},"secondary_window":{"used_percent":18.0,"window_seconds":"604800.5"}}}),
+            1,
+        );
+        assert_eq!(five_hour.used_percent, Some(9.0));
+        assert_eq!(seven_day.used_percent, None);
+    }
+
+    #[test]
+    fn reset_after_seconds_accepts_a_string() {
+        let (five_hour, _, _, _) = parse_usage(
+            &json!({"rate_limit":{"primary_window":{"reset_after_seconds":"90","limit_window_seconds":18000}}}),
+            1_700_000_000,
+        );
+        assert_eq!(five_hour.reset_at_epoch, Some(1_700_000_090));
     }
 
     #[test]
