@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WindowUsage {
@@ -142,14 +143,20 @@ fn exact_integer(value: &Value) -> Option<i64> {
         })
     })
 }
+/// Timestamps arrive either as epoch numbers, in seconds or milliseconds, or as an RFC 3339 string.
 fn epoch(value: Option<&Value>) -> Option<i64> {
-    let value = value?;
-    let seconds = number(value)?;
-    Some(if seconds > 100_000_000_000 {
-        seconds / 1000
-    } else {
-        seconds
-    })
+    match value? {
+        Value::String(text) => OffsetDateTime::parse(text, &Rfc3339)
+            .ok()
+            .map(OffsetDateTime::unix_timestamp),
+        value => number(value).map(|seconds| {
+            if seconds > 100_000_000_000 {
+                seconds / 1000
+            } else {
+                seconds
+            }
+        }),
+    }
 }
 pub fn now_epoch() -> i64 {
     SystemTime::now()
@@ -198,6 +205,24 @@ mod tests {
             .map(|credit| credit.expires_at_epoch)
             .collect::<Vec<_>>();
         assert_eq!(parsed, expiries.map(Some));
+    }
+
+    #[test]
+    fn parses_rfc_3339_string_expiry() {
+        let (credits, _) = parse_credits(
+            &json!({"credits":[{"expires_at":"2026-10-04T01:14:37.945219Z"},{"expires_at":"2026-10-04T02:00:00+01:00"}]}),
+        );
+        let parsed = credits
+            .iter()
+            .map(|credit| credit.expires_at_epoch)
+            .collect::<Vec<_>>();
+        assert_eq!(parsed, [Some(1_791_076_477), Some(1_791_075_600)]);
+    }
+
+    #[test]
+    fn unparseable_expiry_string_stays_unavailable() {
+        let (credits, _) = parse_credits(&json!({"credits":[{"expires_at":"whenever"}]}));
+        assert_eq!(credits[0].expires_at_epoch, None);
     }
 
     #[test]
