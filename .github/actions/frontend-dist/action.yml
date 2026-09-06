@@ -1,0 +1,14 @@
+name: frontend dist
+description: Build dist/, which tauri-build requires before any cargo command.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: pnpm
+    - shell: bash
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm vite build
