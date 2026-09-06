@@ -12,7 +12,7 @@ Delegated: Tauri 2, Rust, Vite, React, and TypeScript. Rust owns credentials, AP
 
 ## Users
 
-Codex users on Linux who want a quick, private view of their 5-hour and 7-day allowance while working.
+Codex users on Linux, macOS, and Windows who want a quick, private view of their 5-hour and 7-day allowance while working. Windows users may hold their Codex login inside WSL.
 
 ## Product Purpose
 

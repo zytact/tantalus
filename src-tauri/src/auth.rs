@@ -1,5 +1,8 @@
 use serde_json::Value;
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone)]
@@ -18,17 +21,62 @@ pub enum AuthError {
     MissingToken,
 }
 
-pub fn auth_path() -> Option<PathBuf> {
-    env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
-        .map(|directory| directory.join("auth.json"))
+/// Reads the first readable Codex credential file. `CODEX_HOME` wins outright; otherwise the
+/// native home directory is tried before any WSL distribution home.
+pub fn read_credentials() -> Result<Credentials, AuthError> {
+    if let Some(directory) = env::var_os("CODEX_HOME") {
+        return read_from(&PathBuf::from(directory).join("auth.json"));
+    }
+    let candidates = native_auth_path()
+        .into_iter()
+        .chain(std::iter::once_with(wsl_auth_paths).flatten());
+    let mut last_error = AuthError::MissingFile;
+    for path in candidates {
+        match read_from(&path) {
+            Ok(credentials) => return Ok(credentials),
+            Err(AuthError::MissingFile) => {}
+            Err(error) => last_error = error,
+        }
+    }
+    Err(last_error)
 }
 
-pub fn read_credentials() -> Result<Credentials, AuthError> {
-    let path = auth_path().ok_or(AuthError::MissingFile)?;
+fn read_from(path: &Path) -> Result<Credentials, AuthError> {
     let raw = fs::read_to_string(path).map_err(|_| AuthError::MissingFile)?;
     parse_credentials(&raw)
+}
+
+fn native_auth_path() -> Option<PathBuf> {
+    home_directory().map(|home| home.join(".codex").join("auth.json"))
+}
+
+fn home_directory() -> Option<PathBuf> {
+    if let Some(home) = env::var_os("HOME").filter(|home| !home.is_empty()) {
+        return Some(PathBuf::from(home));
+    }
+    #[cfg(windows)]
+    {
+        if let Some(profile) = env::var_os("USERPROFILE").filter(|value| !value.is_empty()) {
+            return Some(PathBuf::from(profile));
+        }
+        let drive = env::var_os("HOMEDRIVE")?;
+        let path = env::var_os("HOMEPATH")?;
+        let mut home = PathBuf::from(drive);
+        home.push(PathBuf::from(path));
+        return Some(home);
+    }
+    #[cfg(not(windows))]
+    None
+}
+
+#[cfg(windows)]
+fn wsl_auth_paths() -> Vec<PathBuf> {
+    wsl::auth_paths()
+}
+
+#[cfg(not(windows))]
+fn wsl_auth_paths() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 pub fn parse_credentials(raw: &str) -> Result<Credentials, AuthError> {
@@ -61,6 +109,84 @@ fn string_at(value: &Value, path: &[&str]) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// Windows hosts can hold their Codex login inside a WSL distribution, reachable over the
+/// `\\wsl.localhost` share. Distribution names are listed once per process; the home directories
+/// behind them are read on every lookup so a fresh login is picked up without a restart.
+#[cfg(windows)]
+mod wsl {
+    use std::{
+        fs, os::windows::process::CommandExt, path::PathBuf, process::Command, sync::OnceLock,
+    };
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const SHARE_ROOTS: [&str; 2] = [r"\\wsl.localhost", r"\\wsl$"];
+
+    pub fn auth_paths() -> Vec<PathBuf> {
+        distributions()
+            .iter()
+            .flat_map(|distribution| distribution_auth_paths(distribution))
+            .collect()
+    }
+
+    fn distributions() -> &'static [String] {
+        static DISTRIBUTIONS: OnceLock<Vec<String>> = OnceLock::new();
+        DISTRIBUTIONS.get_or_init(|| {
+            Command::new("wsl.exe")
+                .args(["--list", "--quiet"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map(|output| super::distribution_names(&output.stdout))
+                .unwrap_or_default()
+        })
+    }
+
+    fn distribution_auth_paths(distribution: &str) -> Vec<PathBuf> {
+        SHARE_ROOTS
+            .iter()
+            .find_map(|root| {
+                let base = PathBuf::from(root).join(distribution);
+                let entries = fs::read_dir(base.join("home")).ok()?;
+                let homes = entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .chain(std::iter::once(base.join("root")));
+                Some(
+                    homes
+                        .map(|home| home.join(".codex").join("auth.json"))
+                        .collect(),
+                )
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// `wsl.exe --list --quiet` writes UTF-16LE on most Windows builds and UTF-8 on some, so the
+/// encoding is detected from the bytes rather than assumed.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn distribution_names(output: &[u8]) -> Vec<String> {
+    let text = if output.len() >= 2
+        && output.len().is_multiple_of(2)
+        && output.chunks_exact(2).all(|pair| pair[1] == 0)
+    {
+        let units: Vec<u16> = output
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(output).into_owned()
+    };
+    text.lines()
+        .map(|line| {
+            line.trim_matches(|character: char| {
+                character.is_whitespace() || character == '\u{feff}' || character == '\0'
+            })
+        })
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +204,19 @@ mod tests {
             assert_eq!(credentials.access_token, "a");
             assert_eq!(credentials.account_id.as_deref(), Some("id"));
         }
+    }
+
+    #[test]
+    fn reads_distribution_names_from_either_console_encoding() {
+        let utf16: Vec<u8> = "Ubuntu\r\nDebian\r\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(distribution_names(&utf16), ["Ubuntu", "Debian"]);
+        assert_eq!(
+            distribution_names(b"Ubuntu\nDebian\n"),
+            ["Ubuntu", "Debian"]
+        );
+        assert!(distribution_names(b"").is_empty());
     }
 }
