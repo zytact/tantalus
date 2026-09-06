@@ -27,11 +27,18 @@ pub fn read_credentials() -> Result<Credentials, AuthError> {
     if let Some(directory) = env::var_os("CODEX_HOME") {
         return read_from(&PathBuf::from(directory).join("auth.json"));
     }
-    let candidates = native_auth_path()
-        .into_iter()
-        .chain(std::iter::once_with(wsl_auth_paths).flatten());
+    let native = first_readable(native_auth_path());
+    if !matches!(native, Err(AuthError::MissingFile)) {
+        return native;
+    }
+    // Touching the WSL share starts the distribution behind it, so it is only scanned once the
+    // native home has turned up nothing.
+    first_readable(wsl_auth_paths())
+}
+
+fn first_readable(paths: impl IntoIterator<Item = PathBuf>) -> Result<Credentials, AuthError> {
     let mut last_error = AuthError::MissingFile;
-    for path in candidates {
+    for path in paths {
         match read_from(&path) {
             Ok(credentials) => return Ok(credentials),
             Err(AuthError::MissingFile) => {}

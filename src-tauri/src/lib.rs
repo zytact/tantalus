@@ -49,7 +49,12 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
     if state.refreshing.swap(true, Ordering::AcqRel) {
         return state.snapshot.lock().await.clone();
     }
-    let result: Result<UsageSnapshot, RefreshError> = match auth::read_credentials() {
+    // Reading credentials hits the filesystem, and on Windows that can mean a WSL share that
+    // takes seconds to answer, so it stays off the async worker threads.
+    let credentials = tauri::async_runtime::spawn_blocking(auth::read_credentials)
+        .await
+        .expect("credential read panicked");
+    let result: Result<UsageSnapshot, RefreshError> = match credentials {
         Ok(credentials) => api::fetch_snapshot(&state.client, &credentials)
             .await
             .map_err(RefreshError::Api),
