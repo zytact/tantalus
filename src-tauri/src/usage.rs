@@ -115,8 +115,8 @@ fn parse_window(value: Option<&Value>, now: i64) -> WindowUsage {
     let used_percent = value.get("used_percent").and_then(Value::as_f64);
     let limit_window_seconds = value
         .get("limit_window_seconds")
-        .and_then(number)
-        .or_else(|| value.get("window_seconds").and_then(number));
+        .and_then(exact_integer)
+        .or_else(|| value.get("window_seconds").and_then(exact_integer));
     let reset_at_epoch = value
         .get("reset_after_seconds")
         .and_then(number)
@@ -130,6 +130,17 @@ fn parse_window(value: Option<&Value>, now: i64) -> WindowUsage {
 }
 fn number(value: &Value) -> Option<i64> {
     value.as_f64().map(|number| number as i64)
+}
+fn exact_integer(value: &Value) -> Option<i64> {
+    value.as_i64().or_else(|| {
+        value.as_f64().and_then(|number| {
+            (number.is_finite()
+                && number.fract() == 0.0
+                && number >= i64::MIN as f64
+                && number <= i64::MAX as f64)
+                .then_some(number as i64)
+        })
+    })
 }
 fn epoch(value: Option<&Value>) -> Option<i64> {
     let value = value?;
@@ -167,21 +178,58 @@ mod tests {
         assert_eq!(reached, Some(true));
     }
     #[test]
-    fn unknown_values_stay_unavailable_and_credit_alternatives_work() {
+    fn unknown_values_stay_unavailable() {
         let (primary, _, _, _) = parse_usage(&json!({"rate_limit":{"primary_window":{}}}), 1);
         assert_eq!(primary.used_percent, None);
-        let (credits, count) = parse_credits(
-            &json!({"data":[{"expiresAt":1700000000000},{"expiration_at":1700000002}]}),
+    }
+
+    #[test]
+    fn parses_credit_container_and_expiry_field_alternatives() {
+        let responses = [
+            json!({"credits":[{"expires_at":1}, {"expiresAt":2}]}),
+            json!({"data":[{"expiry":3}, {"expires":4}]}),
+            json!({"items":[{"expiration":5}, {"expiration_at":6000}]}),
+        ];
+        let expiries = [1, 2, 3, 4, 5, 6];
+
+        let parsed = responses
+            .iter()
+            .flat_map(|response| parse_credits(response).0)
+            .map(|credit| credit.expires_at_epoch)
+            .collect::<Vec<_>>();
+        assert_eq!(parsed, expiries.map(Some));
+    }
+
+    #[test]
+    fn available_count_takes_precedence_over_credit_array_length() {
+        let (_, count) = parse_credits(&json!({"credits":[{}],"available_count":3}));
+        assert_eq!(count, Some(3));
+    }
+
+    #[test]
+    fn parses_both_duration_field_alternatives() {
+        let (five_hour, seven_day, _, _) = parse_usage(
+            &json!({"rate_limit":{"primary_window":{"limit_window_seconds":18000},"secondary_window":{"window_seconds":604800}}}),
+            1,
         );
-        assert_eq!(count, Some(2));
-        assert_eq!(credits[0].expires_at_epoch, Some(1_700_000_000));
-        assert_eq!(credits[1].expires_at_epoch, Some(1_700_000_002));
+        assert_eq!(five_hour.limit_window_seconds, Some(18_000));
+        assert_eq!(seven_day.limit_window_seconds, Some(604_800));
     }
 
     #[test]
     fn missing_or_unfamiliar_duration_is_not_assigned_to_a_known_window() {
         let (five_hour, seven_day, _, _) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"used_percent":9.0},"secondary_window":{"used_percent":18.0,"limit_window_seconds":3600}}}),
+            1,
+        );
+        assert_eq!(five_hour.used_percent, None);
+        assert_eq!(seven_day.used_percent, None);
+    }
+
+    #[test]
+    fn fractional_durations_are_not_assigned_to_known_windows() {
+        let (five_hour, seven_day, _, _) = parse_usage(
+            &json!({"rate_limit":{"primary_window":{"used_percent":9.0,"limit_window_seconds":18000.9},"secondary_window":{"used_percent":18.0,"window_seconds":604800.1}}}),
             1,
         );
         assert_eq!(five_hour.used_percent, None);

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { usagePercent } from "./presentation";
 
 describe("display contract", () => {
   it("keeps unavailable usage distinct from zero", () => {
-    const display = (value: number | null) => value === null ? "Unavailable" : `${Math.round(value)}% used`;
-    expect(display(null)).toBe("Unavailable");
-    expect(display(0)).toBe("0% used");
+    expect(usagePercent(null)).toBe("Unavailable");
+    expect(usagePercent(0)).toBe("0% used");
   });
 });

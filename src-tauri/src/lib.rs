@@ -11,6 +11,21 @@ use tauri::{
 use tokio::sync::Mutex;
 use usage::{SnapshotStatus, UsageSnapshot};
 
+#[derive(Debug)]
+enum RefreshError {
+    Auth(auth::AuthError),
+    Api(api::ApiError),
+}
+
+impl std::fmt::Display for RefreshError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auth(error) => error.fmt(formatter),
+            Self::Api(error) => error.fmt(formatter),
+        }
+    }
+}
+
 struct AppState {
     snapshot: Mutex<UsageSnapshot>,
     refreshing: AtomicBool,
@@ -31,22 +46,21 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
     if state.refreshing.swap(true, Ordering::AcqRel) {
         return state.snapshot.lock().await.clone();
     }
-    let result = match auth::read_credentials() {
+    let result: Result<UsageSnapshot, RefreshError> = match auth::read_credentials() {
         Ok(credentials) => api::fetch_snapshot(&state.client, &credentials)
             .await
-            .map_err(|error| error.to_string()),
-        Err(error) => Err(error.to_string()),
+            .map_err(RefreshError::Api),
+        Err(error) => Err(RefreshError::Auth(error)),
     };
     let mut snapshot = state.snapshot.lock().await;
     match result {
         Ok(new_snapshot) => *snapshot = new_snapshot,
         Err(error) => {
-            let auth_missing = error.starts_with("Codex authentication");
-            snapshot.error_message = Some(error);
-            snapshot.status = if auth_missing {
-                SnapshotStatus::AuthMissing
-            } else if snapshot.last_successful_update_epoch.is_some() {
+            snapshot.error_message = Some(error.to_string());
+            snapshot.status = if snapshot.last_successful_update_epoch.is_some() {
                 SnapshotStatus::Stale
+            } else if matches!(error, RefreshError::Auth(auth::AuthError::MissingFile)) {
+                SnapshotStatus::AuthMissing
             } else {
                 SnapshotStatus::Error
             };
@@ -156,9 +170,8 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let state = handle.state::<AppState>();
                 refresh(&state, &handle).await;
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
                 loop {
-                    interval.tick().await;
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                     refresh(&state, &handle).await;
                 }
             });
