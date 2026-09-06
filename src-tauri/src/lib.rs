@@ -5,7 +5,7 @@ mod usage;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::{TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State, WindowEvent,
 };
 use tokio::sync::Mutex;
@@ -49,7 +49,12 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
     if state.refreshing.swap(true, Ordering::AcqRel) {
         return state.snapshot.lock().await.clone();
     }
-    let result: Result<UsageSnapshot, RefreshError> = match auth::read_credentials() {
+    // Reading credentials hits the filesystem, and on Windows that can mean a WSL share that
+    // takes seconds to answer, so it stays off the async worker threads.
+    let credentials = tauri::async_runtime::spawn_blocking(auth::read_credentials)
+        .await
+        .expect("credential read panicked");
+    let result: Result<UsageSnapshot, RefreshError> = match credentials {
         Ok(credentials) => api::fetch_snapshot(&state.client, &credentials)
             .await
             .map_err(RefreshError::Api),
@@ -115,20 +120,22 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
     }
 }
+
+/// A hollow square outline. The transparent interior keeps the icon legible on light and dark
+/// trays and lets macOS render it as a template image.
 fn tray_icon() -> tauri::image::Image<'static> {
     let mut rgba = vec![0u8; 32 * 32 * 4];
     for y in 5..27 {
         for x in 5..27 {
-            let i = (y * 32 + x) * 4;
-            let edge = x == 5 || x == 26 || y == 5 || y == 26;
-            rgba[i..i + 4].copy_from_slice(if edge {
-                &[18, 102, 163, 255]
-            } else {
-                &[247, 245, 238, 255]
-            });
+            let border = !(7..25).contains(&x) || !(7..25).contains(&y);
+            if border {
+                let i = (y * 32 + x) * 4;
+                rgba[i..i + 4].copy_from_slice(&[18, 102, 163, 255]);
+            }
         }
     }
     tauri::image::Image::new_owned(rgba, 32, 32)
@@ -149,7 +156,7 @@ pub fn run() {
                 MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &refresh_item, &quit])?;
-            TrayIconBuilder::with_id("usage")
+            let tray = TrayIconBuilder::with_id("usage")
                 .icon(tray_icon())
                 .menu(&menu)
                 .tooltip("Tantalus")
@@ -166,11 +173,20 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
+                    // Windows and Linux report every button here; only a completed left click
+                    // should open the window, since the right button belongs to the menu.
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         show_window(tray.app_handle());
                     }
-                })
-                .build(app)?;
+                });
+            #[cfg(target_os = "macos")]
+            let tray = tray.icon_as_template(true);
+            tray.build(app)?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let state = handle.state::<AppState>();
@@ -190,5 +206,11 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running Tantalus")
-        .run(|_, _| {});
+        .run(|_app, _event| {
+            // Clicking the dock icon on macOS reopens the window that closing only hid.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                show_window(_app);
+            }
+        });
 }
