@@ -6,9 +6,17 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      publish:
+        description: Publish a draft GitHub release. Leave off for a dry run that only uploads the bundles as workflow artifacts.
+        type: boolean
+        default: false
       tag:
-        description: Tag to publish the draft release under (e.g. v0.1.0)
-        required: true
+        description: Tag to publish under (e.g. v0.1.0). Required only when publish is on.
+        type: string
+        default: ""
+
+env:
+  PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
 
 jobs:
   bundle:
@@ -37,6 +45,12 @@ jobs:
       contents: write
 
     steps:
+      - if: env.PUBLISH == 'true' && github.event_name == 'workflow_dispatch' && inputs.tag == ''
+        shell: bash
+        run: |
+          echo "::error::publish is on but no tag was given"
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
@@ -59,12 +73,30 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: tauri-apps/tauri-action@v0
+      # Without tagName, tauri-action builds the bundles and creates no release.
+      - if: env.PUBLISH != 'true'
+        uses: tauri-apps/tauri-action@v0
+        with:
+          args: ${{ matrix.args }}
+
+      - if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/*.deb
+            src-tauri/target/**/*.rpm
+            src-tauri/target/**/*.dmg
+            src-tauri/target/**/*setup.exe
+
+      - if: env.PUBLISH == 'true'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: Tantalus ${{ github.event.inputs.tag || github.ref_name }}
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: Tantalus ${{ inputs.tag || github.ref_name }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
