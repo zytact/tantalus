@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countdown, remainingPercent, usagePercent } from "./presentation";
+import { countdown, creditExpiry, remainingPercent, usagePercent } from "./presentation";
 
 describe("display contract", () => {
   it("keeps unavailable usage distinct from zero", () => {
@@ -15,5 +15,10 @@ describe("display contract", () => {
     expect(countdown(now, now)).toBe("Resetting now");
     expect(countdown(now + 3600 * 3 + 60 * 29, now)).toBe("3h 29m");
     expect(countdown(now + 86_400 * 4 + 3600 * 20, now)).toBe("4d 20h");
+  });
+
+  it("dates a credit expiry that sits weeks out", () => {
+    expect(creditExpiry(null)).toBe("No expiry reported");
+    expect(creditExpiry(Date.UTC(2026, 9, 4, 12) / 1000)).toContain("Oct 4");
   });
 });

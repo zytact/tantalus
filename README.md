@@ -32,7 +32,7 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 
 - Each refresh re-reads the credential file. `CODEX_HOME` wins when it is set. Otherwise the app reads `.codex/auth.json` under the home directory, which is `$HOME` on Linux and macOS and `%USERPROFILE%` on Windows.
 - On Windows, if no credential file sits in the Windows home directory, the app looks inside every installed WSL distribution over the `\\wsl.localhost` share, covering `/root` and each `/home` user. Reaching that share starts the distribution, so the login is found without running `codex login` again on Windows.
-- Rust owns the one-minute polling schedule. The webview receives token-free snapshot events and only asks Rust to refresh when the user presses Refresh.
+- Rust owns the five-minute polling schedule. The webview receives token-free snapshot events and only asks Rust to refresh when the user presses Refresh.
 - Network requests time out after 12 seconds. Refreshes do not overlap.
 - The app tries WHAM usage first, then Codex usage, and fetches reset credits separately.
 - Tokens and account IDs remain in Rust memory only. They are never sent to the webview, written to disk, or logged.

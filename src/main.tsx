@@ -123,7 +123,7 @@ function App() {
         )}
       </section>
 
-      <footer>Auto-refreshes every minute</footer>
+      <footer>Auto-refreshes every 5 minutes</footer>
     </main>
   );
 }
