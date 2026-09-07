@@ -20,14 +20,23 @@ provider's 5-hour window consumed, when it resets, and what remains.
 Open the app window via tray **Show usage** or the dock icon on macOS. The
 Short window is the first entry inside each provider block, below that
 provider's switch row, and only renders while the switch is on. Under Tauri
-it reads `Short window 5 hours`. A plain browser never receives the snapshot
-that renders this entry.
+or the mock it reads `Short window 5 hours`. A bare browser tab never
+receives the snapshot that renders this entry.
 
 ## Driving it with browser tab
 
+Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the first
+entry inside each provider block is the Short window. Codex reads
+`42%` with `role=progressbar[name="Short window usage"]`,
+`aria-valuenow="42"`, `Resets` near `3h 29m`, and `Remaining 58%`;
+Claude reads `65%` the same way. Click each provider switch off and back
+on to confirm the entry vanishes and returns with its figure.
+`Window unavailable` plus an `Unavailable` figure is the
+`auth_missing`-scenario rendering for this entry.
+
 1. Launch on an isolated port: `.agents/skills/verify-tantalus/scripts/launch.sh 1421`
-2. Navigate a browser tab to `http://localhost:1421/` and snapshot
-3. In a plain browser, wait for `cached_usage` to reject and assert
+2. Install the mock and remount (see `SKILL.md` Drive step 3), then snapshot
+3. Without the mock, `cached_usage` rejects and the app shows
    `Could not load provider settings`. Do not assert a provider block,
    region, progressbar, or facts there.
 4. Static proof is `scripts/check-ui.sh 1421`; it checks the served shell,

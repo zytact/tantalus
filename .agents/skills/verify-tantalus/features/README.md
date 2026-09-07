@@ -27,5 +27,10 @@ that touches the network or the real logins, and it never logs or stores a
 token.
 
 Every window and extras entry is rendered once per enabled provider only
-after Tauri provides a snapshot. Do not use a plain-browser snapshot to
-assert those entries or interact with Refresh or a provider switch.
+after a snapshot arrives: from Tauri on a desktop, or from
+`scripts/tauri-mock.js` headless (Drive step 3 in `SKILL.md`). A
+bare-browser snapshot without the mock shows only the load error, so never
+use it to assert entries or to touch Refresh or a provider switch. Status
+words (`Live`, `Blocked until reset`, `Cached`, `Not signed in`, `Could
+not refresh`, `Off`) are mock scenarios plus a Refresh click away; the
+tray menu, tooltip, and 5-minute polling stay manual-only.

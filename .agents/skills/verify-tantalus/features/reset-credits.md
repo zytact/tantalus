@@ -24,9 +24,16 @@ while the Codex switch is on. Empty until the Rust side fetches
 
 ## Driving it with browser tab
 
+Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the Codex
+block ends with `aria-label="Reset credits"`, headline `2`, and one row
+per credit with an `Expires Oct 4, ...` expiry; the Claude block shows
+`aria-label="Extra usage"` with `12.50 USD` and a `Monthly limit 50.00
+USD` row instead. The `auth_missing` scenario renders the empty state:
+`Unavailable` headline plus `No credit details available.`
+
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
    static shell.
-2. In a plain browser, `cached_usage` rejects. There are no Reset credits or
+2. In a bare browser tab, `cached_usage` rejects. There are no Reset credits or
    Extra usage regions to assert.
 3. Formatter proof: `pnpm test` asserts `creditExpiry(null)` is
    `No expiry reported` and a 2026 October epoch contains `Oct 4`
@@ -38,7 +45,7 @@ while the Codex switch is on. Empty until the Rust side fetches
    `.agents/skills/verify-tantalus/scripts/live-check.sh` is the real
    credits payload. Confirm its container, `available_count`, and per-credit
    expiries match the headline count and rows.
-6. Ready-state proof needs `pnpm tauri dev`: count headline plus one row per
+6. Ready-state proof needs `pnpm tauri dev` or the mock: count headline plus one row per
    credit, each expiry naming month and day (weekday alone is not enough
    weeks out, per `presentation.ts`). In the Claude block, expect
    `Extra usage` with a `Monthly limit` row instead, matching

@@ -36,12 +36,13 @@ calls happen only through `.agents/skills/verify-tantalus/scripts/live-check.sh`
 (Drive step 4).
 
 Ready means: HTTP 200 on `/`, HTML contains `<div id="root">`, and the dev
-server process from the pidfile is alive. In a plain browser tab,
-`invoke("cached_usage")` rejects because Tauri IPC does not exist outside
-`pnpm tauri dev`. The app starts without a snapshot, then shows `Could not
-load provider settings`. It renders no provider sections or switches, and
-the Refresh button remains disabled. Headless verification proves only that
-plain-browser error state and the static served shell.
+server process from the pidfile is alive. A bare tab without the mock is
+only the error baseline: `invoke("cached_usage")` rejects without Tauri
+IPC, so the app shows `Could not load provider settings` with no provider
+sections and a disabled Refresh. The full webview is driven headless
+through the mock in Drive step 3, which installs the same IPC surface the
+app touches and remounts it, so the tab renders both providers, their
+switches, and every entry like a user sees them.
 
 Full desktop launch (`pnpm tauri dev`) is manual-only, on a real Linux, macOS,
 or Windows desktop with tray support. It needs the Tauri system deps
@@ -110,20 +111,56 @@ It curls the dev server and asserts the served HTML has the root div and the
 client bundle references the real handles: `Short window`, `Long window`,
 `Reset credits`, `Refresh`, `Auto-refreshes every 5 minutes`.
 
-3. Browser tab. Navigate a collaborative tab to `http://localhost:<PORT>/`
-and snapshot after `cached_usage` rejects. Plain-browser proof is limited to
-visible `Allowance`, `Could not load provider settings`, and
-`AUTO-REFRESHES EVERY 5 MINUTES`, plus a disabled
-`role=button[name="Refresh"]`. It has no provider switches, window regions,
-progressbars, reset-credit regions, or interactive actions to drive.
+3. Browser tab, mock-driven. This is the real user path, headless:
+`scripts/tauri-mock.js` answers `cached_usage`, `refresh_usage`, and
+`set_provider_enabled` plus the `plugin:event|listen/emit/unlisten`
+wiring, with synthetic Ready figures in Rust's shapes and no tokens or
+network. Two evaluates install it; both must be promise chains, since
+this harness has no top-level await and a dynamic import of the mock
+fails on MIME, so fetch plus indirect eval:
 
-The Ready, Stale, AuthMissing, and Error renderings, the real switch
-behavior, and the tray menu (one line per enabled provider formatted
-`Codex  5h 42%  7d 8%`, then `Show usage`, `Refresh now`, `Quit`) are only
-drivable under `pnpm tauri dev` on a real desktop. There, drive with the
-keyboard and menu, not coordinates: Tab to Refresh, Enter, and read each
-provider's status word (`Live`, `Blocked until reset`, `Cached`,
-`Not signed in`, `Could not refresh`, `Off`).
+```js
+fetch('/.agents/skills/verify-tantalus/scripts/tauri-mock.js').then(r => r.text()).then(src => { (0,eval)(src); return !!window.__TANTALUS_MOCK__; })
+```
+
+```js
+window.__TANTALUS_MOCK__.remount().then(() => 'remounted')
+```
+
+The remount swaps `#root` for a fresh node and re-imports
+`/src/main.tsx` cache-busted, so a new App mounts against the mock
+(the first error-state tree stays detached). Then drive it like a user:
+snapshot shows `Allowance` with an `updated` time, `role=switch[name="Codex"]`
+and `[name="Claude"]` both on, four `role=progressbar` entries, `Reset
+credits` (Codex) and `Extra usage` (Claude) regions, and an enabled
+Refresh. Click the switches and Refresh, not coordinates where a role
+target exists. Status words come from
+`window.__TANTALUS_MOCK__.scenario(...)` followed by a Refresh click:
+`stale` reads `Cached` with the figures intact and a `role=status`
+notice, `blocked` reads `Blocked until reset`, `auth_missing` reads
+`Not signed in` with `Window unavailable` fallbacks and a `no successful
+update yet` header, `error` reads `Could not refresh`, and `ready`
+returns to `Live`. Switching a provider off hides its entries, reads
+`Off`, and persists the `{"codex":true,"claude":false}`-shaped choice to
+localStorage (the mock's stand-in for `providers.json`); switching it
+back on refreshes that provider immediately. The Refresh click flips the
+button to `Refreshing` with `aria-busy=true` mid-flight; the mock
+answers after ~350ms, so read that state from the same tick (click, then
+a 100ms `setTimeout` read in one expression).
+
+Without the mock the tab stays on the error baseline (`Could not load
+provider settings`, disabled Refresh, no sections). Landing there means
+the mock was not installed before the remount: reinstall and remount
+rather than asserting entries.
+
+The tray menu (one line per enabled provider formatted
+`Codex  5h 42%  7d 8%`, then `Show usage`, `Refresh now`, `Quit`), the
+tooltip, the 5-minute polling cadence, and the real `providers.json`
+write have no browser surface and stay manual-only under `pnpm tauri dev`
+on a real desktop. There, drive with the keyboard and menu, not
+coordinates: Tab to Refresh, Enter, and read each provider's status word
+(`Live`, `Blocked until reset`, `Cached`, `Not signed in`,
+`Could not refresh`, `Off`).
 
 Never point `CODEX_HOME` or `CLAUDE_CONFIG_DIR` at the real home during
 verification. When a credential fixture is needed, create
@@ -165,25 +202,29 @@ Write every run to `/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>/`:
 - `index.html` (`curl http://localhost:<PORT>/` body)
 - `check-ui.log` (static shell assertions)
 - `visible-text.txt` (browser snapshot visible text) and `snapshot.json`
-  (the disabled Refresh button plus ARIA) when the plain browser tab was used
+  (switches, progressbars, Refresh state, status words) from the
+  mock-driven tab; without the mock the same files capture only the
+  `Could not load provider settings` baseline
 - `live-usage.json`, `live-credits.json`, `live-claude-usage.json` (raw API
   bodies, no tokens), and `live-check.log` (redacted summary: endpoint,
   statuses, window keys, credit counts) from the single live refresh
 - `screenshot.png` when the harness captures one
 
 Proof standards: exercise the real user path, not internal setters or
-test-only endpoints. Capture the action and the resulting state, not just the
-final screen. Verify side effects alongside what is visible: `dist/` from
-`pnpm build`, suite exit codes, the live HTTP statuses and figures, and
-(under Tauri only) the tray tooltip and menu labels. Fixture suites prove the
-parsing edges; the single live refresh proves the real credential files, the
+test-only endpoints. The mock-driven tab is that path for the webview:
+click the actual switches and Refresh and read the resulting state, not
+just the final screen. Verify side effects alongside what is visible: `dist/` from
+`pnpm build`, suite exit codes, the live HTTP statuses and figures, the
+mock's localStorage persistence stand-in, and (under Tauri only) the tray
+tooltip and menu labels. Fixture suites prove the parsing edges; the single live refresh proves the real credential files, the
 WHAM-first fallback, and the Ready path against
 `https://chatgpt.com/backend-api/*` and
 `https://api.anthropic.com/api/oauth/usage`. Reads only: one GET per
-endpoint, no writes, no polling loop. The provider switches do write
-`providers.json`, so they are proven under `pnpm tauri dev` only, never by
-the headless harness. Tantalus has
-no dry-run flag, so there is nothing to second-guess by name.
+endpoint, no writes, no polling loop. The provider switches write
+`providers.json` for real, so the on-disk write itself is proven under
+`pnpm tauri dev` only; the webview half (hide entries, `Off` word,
+immediate refresh on re-enable) is proven headless through the mock.
+Tantalus has no dry-run flag, so there is nothing to second-guess by name.
 
 ## Cleanup
 
@@ -202,11 +243,13 @@ iteration too, so broken attempts do not strand ports.
 
 ## Helpers
 
-All helpers live in `scripts/` and are executable:
+All helpers live in `scripts/`; the shell ones are executable:
 
 - `scripts/doctor.sh [PORT]` - read-only instance check described above
 - `scripts/launch.sh [PORT]` - isolated vite start plus readiness wait
 - `scripts/check-ui.sh <PORT>` - curl assertions for the served shell
+- `scripts/tauri-mock.js` - browser-loaded Tauri IPC mock for Drive step 3
+  (fetched plus indirect-evaled from the tab, never run under node)
 - `.agents/skills/verify-tantalus/scripts/live-check.sh <EVIDENCE_DIR>` -
   single redacted live refresh
 - `scripts/cleanup.sh` - kill only what launch started, keep evidence

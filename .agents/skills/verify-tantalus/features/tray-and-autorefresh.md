@@ -34,10 +34,11 @@ names the schedule.
 
 ## Driving it with harness
 
-Headless cannot drive the tray: there is no menu, tooltip, or polling
-outside the Tauri runtime. A plain-browser snapshot can assert the footer
-text and `Could not load provider settings`, but it cannot assert provider
-sections or interact with controls.
+Headless drives the webview, not the tray: the mock renders the footer
+and every provider section, but there is no menu, tooltip, or polling
+outside the Tauri runtime. A bare-browser snapshot without the mock can
+assert only the footer text and `Could not load provider settings`, never
+provider sections or controls.
 
 Real proof is manual on a desktop OS:
 

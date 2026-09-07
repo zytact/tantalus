@@ -26,17 +26,26 @@ Restart the app and it is still off.
 
 ## Driving it with browser tab
 
+Mock-driven (Drive step 3 in `SKILL.md`): after the remount, click the
+Codex or Claude row (`role=switch`). The knob slides, the status word
+becomes `Off`, and everything below that row disappears; the other
+provider keeps refreshing. Read back localStorage
+`tantalus-mock-enabled`: it holds the `{"codex":true,"claude":false}`-shaped
+choice, the mock's stand-in for `providers.json`. Switch back on and the
+entries return with a fresh fetch. `window.__TANTALUS_MOCK__.reset()`
+clears the stored choice.
+
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
    static shell.
-2. In a plain browser, `cached_usage` rejects and the app shows `Could not
+2. In a bare browser tab, `cached_usage` rejects and the app shows `Could not
    load provider settings`. It renders no switches, so do not click or assert
    a provider switch there.
 3. Logic proof without Tauri: `pnpm test` covers `statusLine(..., false)`
    returning `Off`; `cargo test` covers the `providers.json` round trip
    (`settings::tests`) and that a disabled provider is never read
    (`a_disabled_provider_is_never_read`)
-4. Real proof needs `pnpm tauri dev` on a desktop: switch Claude off, confirm
-   its entries vanish, its tray line disappears, `providers.json` reads
+4. Real proof needs `pnpm tauri dev` on a desktop or the mock in any browser: switch Claude off, confirm
+   its entries vanish, its tray line disappears (Tauri only), `providers.json` reads
    `{"codex":true,"claude":false}`, and Codex keeps refreshing. Switch it
    back on and confirm an immediate refresh.
 
