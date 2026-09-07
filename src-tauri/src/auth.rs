@@ -5,6 +5,37 @@ use std::{
 };
 use thiserror::Error;
 
+/// The two logins Tantalus reads. Each one keeps its credentials in its own directory, under its
+/// own override variable, so every lookup is parameterised by the provider rather than duplicated.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Provider {
+    Codex,
+    Claude,
+}
+
+impl Provider {
+    fn home_variable(self) -> &'static str {
+        match self {
+            Self::Codex => "CODEX_HOME",
+            Self::Claude => "CLAUDE_CONFIG_DIR",
+        }
+    }
+
+    fn directory(self) -> &'static str {
+        match self {
+            Self::Codex => ".codex",
+            Self::Claude => ".claude",
+        }
+    }
+
+    fn file(self) -> &'static str {
+        match self {
+            Self::Codex => "auth.json",
+            Self::Claude => ".credentials.json",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Credentials {
     pub access_token: String,
@@ -13,27 +44,27 @@ pub struct Credentials {
 
 #[derive(Debug, Error)]
 pub enum AuthError {
-    #[error("Codex authentication file was not found")]
+    #[error("No sign-in was found for this provider")]
     MissingFile,
-    #[error("Codex authentication file is not valid JSON")]
+    #[error("The sign-in file is not valid JSON")]
     Parse,
-    #[error("Codex authentication is missing an access token")]
+    #[error("The sign-in file is missing an access token")]
     MissingToken,
 }
 
-/// Reads the first readable Codex credential file. `CODEX_HOME` wins outright; otherwise the
-/// native home directory is tried before any WSL distribution home.
-pub fn read_credentials() -> Result<Credentials, AuthError> {
-    if let Some(directory) = env::var_os("CODEX_HOME") {
-        return read_from(&PathBuf::from(directory).join("auth.json"));
+/// Reads the first readable credential file for `provider`. Its home variable wins outright;
+/// otherwise the native home directory is tried before any WSL distribution home.
+pub fn read_credentials(provider: Provider) -> Result<Credentials, AuthError> {
+    if let Some(directory) = env::var_os(provider.home_variable()) {
+        return read_from(&PathBuf::from(directory).join(provider.file()));
     }
-    let native = first_readable(native_auth_path());
+    let native = first_readable(native_auth_path(provider));
     if !matches!(native, Err(AuthError::MissingFile)) {
         return native;
     }
     // Touching the WSL share starts the distribution behind it, so it is only scanned once the
     // native home has turned up nothing.
-    first_readable(wsl_auth_paths())
+    first_readable(wsl_auth_paths(provider))
 }
 
 fn first_readable(paths: impl IntoIterator<Item = PathBuf>) -> Result<Credentials, AuthError> {
@@ -53,8 +84,8 @@ fn read_from(path: &Path) -> Result<Credentials, AuthError> {
     parse_credentials(&raw)
 }
 
-fn native_auth_path() -> Option<PathBuf> {
-    home_directory().map(|home| home.join(".codex").join("auth.json"))
+fn native_auth_path(provider: Provider) -> Option<PathBuf> {
+    home_directory().map(|home| home.join(provider.directory()).join(provider.file()))
 }
 
 fn home_directory() -> Option<PathBuf> {
@@ -77,12 +108,12 @@ fn home_directory() -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn wsl_auth_paths() -> Vec<PathBuf> {
-    wsl::auth_paths()
+fn wsl_auth_paths(provider: Provider) -> Vec<PathBuf> {
+    wsl::auth_paths(provider)
 }
 
 #[cfg(not(windows))]
-fn wsl_auth_paths() -> Vec<PathBuf> {
+fn wsl_auth_paths(_provider: Provider) -> Vec<PathBuf> {
     Vec::new()
 }
 
@@ -94,6 +125,7 @@ pub fn parse_credentials(raw: &str) -> Result<Credentials, AuthError> {
         .or_else(|| string_at(&value, &["access"]))
         .or_else(|| string_at(&value, &["chatgptAuthTokens", "access_token"]))
         .or_else(|| string_at(&value, &["chatgpt_auth", "access_token"]))
+        .or_else(|| string_at(&value, &["claudeAiOauth", "accessToken"]))
         .filter(|value| !value.is_empty())
         .ok_or(AuthError::MissingToken)?;
     let account_id = string_at(&value, &["account_id"])
@@ -116,11 +148,12 @@ fn string_at(value: &Value, path: &[&str]) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// Windows hosts can hold their Codex login inside a WSL distribution, reachable over the
+/// Windows hosts can hold their logins inside a WSL distribution, reachable over the
 /// `\\wsl.localhost` share. Distribution names are listed once per process; the home directories
 /// behind them are read on every lookup so a fresh login is picked up without a restart.
 #[cfg(windows)]
 mod wsl {
+    use super::Provider;
     use std::{
         fs, os::windows::process::CommandExt, path::PathBuf, process::Command, sync::OnceLock,
     };
@@ -128,10 +161,10 @@ mod wsl {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const SHARE_ROOTS: [&str; 2] = [r"\\wsl.localhost", r"\\wsl$"];
 
-    pub fn auth_paths() -> Vec<PathBuf> {
+    pub fn auth_paths(provider: Provider) -> Vec<PathBuf> {
         distributions()
             .iter()
-            .flat_map(|distribution| distribution_auth_paths(distribution))
+            .flat_map(|distribution| distribution_auth_paths(distribution, provider))
             .collect()
     }
 
@@ -147,7 +180,7 @@ mod wsl {
         })
     }
 
-    fn distribution_auth_paths(distribution: &str) -> Vec<PathBuf> {
+    fn distribution_auth_paths(distribution: &str, provider: Provider) -> Vec<PathBuf> {
         SHARE_ROOTS
             .iter()
             .find_map(|root| {
@@ -159,7 +192,7 @@ mod wsl {
                     .chain(std::iter::once(base.join("root")));
                 Some(
                     homes
-                        .map(|home| home.join(".codex").join("auth.json"))
+                        .map(|home| home.join(provider.directory()).join(provider.file()))
                         .collect(),
                 )
             })
@@ -211,6 +244,15 @@ mod tests {
             assert_eq!(credentials.access_token, "a");
             assert_eq!(credentials.account_id.as_deref(), Some("id"));
         }
+    }
+
+    #[test]
+    fn reads_the_claude_oauth_token() {
+        let credentials =
+            parse_credentials(r#"{"claudeAiOauth":{"accessToken":"a","refreshToken":"r"}}"#)
+                .unwrap();
+        assert_eq!(credentials.access_token, "a");
+        assert_eq!(credentials.account_id, None);
     }
 
     #[test]

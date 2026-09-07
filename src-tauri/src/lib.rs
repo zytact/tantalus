@@ -2,6 +2,7 @@ mod api;
 mod auth;
 mod usage;
 
+use auth::Provider;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -9,7 +10,7 @@ use tauri::{
     AppHandle, Emitter, Manager, State,
 };
 use tokio::sync::Mutex;
-use usage::{SnapshotStatus, UsageSnapshot};
+use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
 
 #[derive(Debug)]
 enum RefreshError {
@@ -49,54 +50,74 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
     if state.refreshing.swap(true, Ordering::AcqRel) {
         return state.snapshot.lock().await.clone();
     }
-    // Reading credentials hits the filesystem, and on Windows that can mean a WSL share that
-    // takes seconds to answer, so it stays off the async worker threads.
-    let credentials = tauri::async_runtime::spawn_blocking(auth::read_credentials)
-        .await
-        .expect("credential read panicked");
-    let result: Result<UsageSnapshot, RefreshError> = match credentials {
-        Ok(credentials) => api::fetch_snapshot(&state.client, &credentials)
-            .await
-            .map_err(RefreshError::Api),
-        Err(error) => Err(RefreshError::Auth(error)),
-    };
+    let (codex, claude) = tokio::join!(
+        read_provider(state, Provider::Codex),
+        read_provider(state, Provider::Claude)
+    );
     let mut snapshot = state.snapshot.lock().await;
-    match result {
-        Ok(new_snapshot) => *snapshot = new_snapshot,
-        Err(error) => {
-            snapshot.error_message = Some(error.to_string());
-            snapshot.status = if snapshot.last_successful_update_epoch.is_some() {
-                SnapshotStatus::Stale
-            } else if matches!(error, RefreshError::Auth(auth::AuthError::MissingFile)) {
-                SnapshotStatus::AuthMissing
-            } else {
-                SnapshotStatus::Error
-            };
-        }
-    }
+    apply(&mut snapshot.codex, codex);
+    apply(&mut snapshot.claude, claude);
     state.refreshing.store(false, Ordering::Release);
     update_tray_menu(app, &snapshot);
     let _ = app.emit("usage-snapshot", snapshot.clone());
     snapshot.clone()
 }
 
+async fn read_provider(
+    state: &AppState,
+    provider: Provider,
+) -> Result<ProviderUsage, RefreshError> {
+    // Reading credentials hits the filesystem, and on Windows that can mean a WSL share that
+    // takes seconds to answer, so it stays off the async worker threads.
+    let credentials =
+        tauri::async_runtime::spawn_blocking(move || auth::read_credentials(provider))
+            .await
+            .expect("credential read panicked")
+            .map_err(RefreshError::Auth)?;
+    match provider {
+        Provider::Codex => api::fetch_codex(&state.client, &credentials).await,
+        Provider::Claude => api::fetch_claude(&state.client, &credentials).await,
+    }
+    .map_err(RefreshError::Api)
+}
+
+/// A failed provider keeps whatever it last read, so a signed-out Claude never blanks out Codex.
+fn apply(provider: &mut ProviderUsage, result: Result<ProviderUsage, RefreshError>) {
+    match result {
+        Ok(fresh) => *provider = fresh,
+        Err(error) => {
+            provider.status = if provider.last_successful_update_epoch.is_some() {
+                SnapshotStatus::Stale
+            } else if matches!(error, RefreshError::Auth(auth::AuthError::MissingFile)) {
+                SnapshotStatus::AuthMissing
+            } else {
+                SnapshotStatus::Error
+            };
+            provider.error_message = Some(error.to_string());
+        }
+    }
+}
+
 fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
         return;
     };
-    let summary = match snapshot.five_hour.used_percent {
-        Some(value) => format!("5h: {:.0}% used", value),
-        None => "5h: unavailable".to_owned(),
-    };
-    let secondary = match snapshot.seven_day.used_percent {
-        Some(value) => format!("7d: {:.0}% used", value),
-        None => "7d: unavailable".to_owned(),
-    };
-    let Ok(summary_item) = MenuItem::with_id(app, "summary", summary, false, None::<&str>) else {
+    let Ok(codex_item) = MenuItem::with_id(
+        app,
+        "codex",
+        tray_line("Codex", &snapshot.codex),
+        false,
+        None::<&str>,
+    ) else {
         return;
     };
-    let Ok(secondary_item) = MenuItem::with_id(app, "secondary", secondary, false, None::<&str>)
-    else {
+    let Ok(claude_item) = MenuItem::with_id(
+        app,
+        "claude",
+        tray_line("Claude", &snapshot.claude),
+        false,
+        None::<&str>,
+    ) else {
         return;
     };
     let Ok(show) = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>) else {
@@ -111,9 +132,24 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     };
     if let Ok(menu) = Menu::with_items(
         app,
-        &[&summary_item, &secondary_item, &show, &refresh_item, &quit],
+        &[&codex_item, &claude_item, &show, &refresh_item, &quit],
     ) {
         let _ = tray.set_menu(Some(menu));
+    }
+}
+
+fn tray_line(name: &str, provider: &ProviderUsage) -> String {
+    format!(
+        "{name}  5h {}  7d {}",
+        percent(provider.five_hour.used_percent),
+        percent(provider.seven_day.used_percent)
+    )
+}
+
+fn percent(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:.0}%"),
+        None => "--".to_owned(),
     }
 }
 

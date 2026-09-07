@@ -3,6 +3,9 @@ use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+pub const FIVE_HOUR_SECONDS: i64 = 18_000;
+pub const SEVEN_DAY_SECONDS: i64 = 604_800;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WindowUsage {
     pub used_percent: Option<f64>,
@@ -13,41 +16,43 @@ pub struct WindowUsage {
 pub struct ResetCredit {
     pub expires_at_epoch: Option<i64>,
 }
+/// Claude's paid overflow allowance. Codex has no equivalent and leaves this empty.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UsageSnapshot {
+pub struct ExtraUsage {
+    pub enabled: bool,
+    pub used_credits: Option<f64>,
+    pub monthly_limit: Option<f64>,
+    pub currency: Option<String>,
+}
+/// One provider's reading. Each provider succeeds or fails on its own, so status and freshness
+/// live here rather than on the snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderUsage {
     pub five_hour: WindowUsage,
     pub seven_day: WindowUsage,
     pub allowed: Option<bool>,
     pub limit_reached: Option<bool>,
     pub reset_credits: Vec<ResetCredit>,
     pub reset_credit_count: Option<usize>,
+    pub extra_usage: Option<ExtraUsage>,
     pub last_successful_update_epoch: Option<i64>,
     pub status: SnapshotStatus,
     pub error_message: Option<String>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageSnapshot {
+    pub codex: ProviderUsage,
+    pub claude: ProviderUsage,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapshotStatus {
     Ready,
+    #[default]
     Loading,
     Stale,
     AuthMissing,
     Error,
-}
-impl Default for UsageSnapshot {
-    fn default() -> Self {
-        Self {
-            five_hour: WindowUsage::default(),
-            seven_day: WindowUsage::default(),
-            allowed: None,
-            limit_reached: None,
-            reset_credits: vec![],
-            reset_credit_count: None,
-            last_successful_update_epoch: None,
-            status: SnapshotStatus::Loading,
-            error_message: None,
-        }
-    }
 }
 
 pub fn parse_usage(
@@ -69,16 +74,67 @@ pub fn parse_usage(
     let windows = [primary, secondary];
     let five_hour = windows
         .iter()
-        .find(|window| window.limit_window_seconds == Some(18_000))
+        .find(|window| window.limit_window_seconds == Some(FIVE_HOUR_SECONDS))
         .cloned()
         .unwrap_or_default();
     let seven_day = windows
         .iter()
-        .find(|window| window.limit_window_seconds == Some(604_800))
+        .find(|window| window.limit_window_seconds == Some(SEVEN_DAY_SECONDS))
         .cloned()
         .unwrap_or_default();
     (five_hour, seven_day, allowed, limit_reached)
 }
+
+/// Claude names its windows instead of reporting a duration, so the duration is supplied here.
+/// A `locked_reason` on either window is the only signal that the account is actually cut off.
+pub fn parse_claude_usage(
+    value: &Value,
+) -> (WindowUsage, WindowUsage, Option<bool>, Option<ExtraUsage>) {
+    let five_hour = claude_window(value.get("five_hour"), FIVE_HOUR_SECONDS);
+    let seven_day = claude_window(value.get("seven_day"), SEVEN_DAY_SECONDS);
+    let locked = ["five_hour", "seven_day"]
+        .iter()
+        .filter_map(|key| value.get(key))
+        .any(|window| {
+            window
+                .get("locked_reason")
+                .is_some_and(|reason| !reason.is_null())
+        });
+    (
+        five_hour,
+        seven_day,
+        Some(locked),
+        parse_extra_usage(value.get("extra_usage")),
+    )
+}
+
+fn claude_window(value: Option<&Value>, seconds: i64) -> WindowUsage {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return WindowUsage::default();
+    };
+    WindowUsage {
+        used_percent: value.get("utilization").and_then(Value::as_f64),
+        limit_window_seconds: Some(seconds),
+        reset_at_epoch: epoch(value.get("resets_at")),
+    }
+}
+
+fn parse_extra_usage(value: Option<&Value>) -> Option<ExtraUsage> {
+    let value = value.filter(|value| !value.is_null())?;
+    Some(ExtraUsage {
+        enabled: value
+            .get("is_enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        used_credits: value.get("used_credits").and_then(Value::as_f64),
+        monthly_limit: value.get("monthly_limit").and_then(Value::as_f64),
+        currency: value
+            .get("currency")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    })
+}
+
 pub fn parse_credits(value: &Value) -> (Vec<ResetCredit>, Option<usize>) {
     let items = ["credits", "data", "items"]
         .iter()
@@ -181,6 +237,7 @@ fn to_seconds(epoch: i64) -> i64 {
         epoch
     }
 }
+
 pub fn now_epoch() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -317,5 +374,58 @@ mod tests {
         );
         assert_eq!(five_hour.used_percent, None);
         assert_eq!(seven_day.used_percent, None);
+    }
+
+    #[test]
+    fn reads_claude_windows_and_extra_usage() {
+        let (five_hour, seven_day, locked, extra) = parse_claude_usage(&json!({
+            "five_hour": {"utilization": 65.0, "resets_at": "2026-09-07T00:39:59.850576+00:00", "locked_reason": null},
+            "seven_day": {"utilization": 74.0, "resets_at": "2026-09-07T00:39:59.850576+00:00"},
+            "seven_day_opus": null,
+            "extra_usage": {"is_enabled": true, "used_credits": 12.5, "monthly_limit": 50.0, "currency": "USD"}
+        }));
+        assert_eq!(five_hour.used_percent, Some(65.0));
+        assert_eq!(five_hour.limit_window_seconds, Some(FIVE_HOUR_SECONDS));
+        assert_eq!(five_hour.reset_at_epoch, Some(1_788_741_599));
+        assert_eq!(seven_day.limit_window_seconds, Some(SEVEN_DAY_SECONDS));
+        assert_eq!(locked, Some(false));
+        let extra = extra.unwrap();
+        assert!(extra.enabled);
+        assert_eq!(extra.used_credits, Some(12.5));
+        assert_eq!(extra.currency.as_deref(), Some("USD"));
+    }
+
+    #[test]
+    fn absent_claude_windows_stay_unavailable() {
+        let (five_hour, seven_day, locked, extra) =
+            parse_claude_usage(&json!({"five_hour": null, "extra_usage": null}));
+        assert_eq!(five_hour.used_percent, None);
+        assert_eq!(five_hour.limit_window_seconds, None);
+        assert_eq!(seven_day.used_percent, None);
+        assert_eq!(locked, Some(false));
+        assert!(extra.is_none());
+    }
+
+    #[test]
+    fn a_locked_window_reports_the_limit_as_reached() {
+        let (_, _, locked, _) = parse_claude_usage(
+            &json!({"seven_day": {"utilization": 100.0, "locked_reason": "usage_limit"}}),
+        );
+        assert_eq!(locked, Some(true));
+    }
+
+    #[test]
+    fn claude_reset_stamps_read_their_offset_and_reject_junk() {
+        let parse = |stamp| {
+            parse_claude_usage(&json!({"five_hour": {"resets_at": stamp}}))
+                .0
+                .reset_at_epoch
+        };
+        assert_eq!(
+            parse("2026-09-07T00:39:59.850576+00:00"),
+            Some(1_788_741_599)
+        );
+        assert_eq!(parse("2026-09-07T05:39:59+05:30"), Some(1_788_739_799));
+        assert_eq!(parse("whenever"), None);
     }
 }
