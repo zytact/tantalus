@@ -13,7 +13,8 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 - A provider switched off has no tray line at all (`update_tray_menu`)
 - Tooltip `Tantalus`; left-click Up shows the window (right button belongs to
   the menu); macOS dock Reopen shows it; template icon on macOS
-- Closing the window hides it in the tray; **Quit** exits and stops polling
+- Closing the window destroys it and leaves the app in the tray; **Show usage**
+  builds a new one; **Quit** exits and stops polling
 - Rust owns polling: initial refresh at startup, then every 300 seconds via
   `tokio::time::sleep`, emitting `usage-snapshot` to the webview
 - Credential sources per provider: `CODEX_HOME/auth.json` else
@@ -47,7 +48,8 @@ Real proof is manual on a desktop OS:
 2. Read the tray menu: each provider line matches that provider's window
    figures, and a switched-off provider has no line
 3. Click **Show usage**, close the window, confirm the tray icon persists,
-   then **Quit** and confirm the process exits
+   then **Show usage** again and confirm the new window's minimize, maximize
+   and close buttons all respond, then **Quit** and confirm the process exits
 4. Leave it 5+ minutes and confirm the `updated` time advances without input
 5. Open webview devtools and search for the token: it must be absent
 

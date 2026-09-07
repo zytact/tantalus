@@ -332,9 +332,15 @@ fn show_window(app: &AppHandle) {
     else {
         return;
     };
-    if let Ok(builder) = tauri::WebviewWindowBuilder::from_config(app, &config) {
-        let _ = builder.build();
-    }
+    // Every caller is an event handler, and building a window from one deadlocks on Windows.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = tauri::WebviewWindowBuilder::from_config(&app, &config)
+            .and_then(|builder| builder.build())
+        {
+            eprintln!("Failed to open the window: {error}");
+        }
+    });
 }
 
 /// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
