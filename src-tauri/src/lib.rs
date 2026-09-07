@@ -5,7 +5,6 @@ mod usage;
 
 use auth::Provider;
 use std::{
-    future::Future,
     path::PathBuf,
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -103,40 +102,15 @@ async fn read_enabled(
     state: &AppState,
     provider: Provider,
 ) -> Option<Result<ProviderUsage, RefreshError>> {
-    read_enabled_with(
-        state,
-        provider,
-        move || async move {
-            tauri::async_runtime::spawn_blocking(move || auth::read_credentials(provider))
-                .await
-                .expect("credential read panicked")
-        },
-        move |credentials| fetch_provider(state, provider, credentials),
-    )
-    .await
-}
-
-async fn read_enabled_with<ReadCredentials, CredentialsFuture, Fetch, FetchFuture>(
-    state: &AppState,
-    provider: Provider,
-    read_credentials: ReadCredentials,
-    fetch: Fetch,
-) -> Option<Result<ProviderUsage, RefreshError>>
-where
-    ReadCredentials: FnOnce() -> CredentialsFuture,
-    CredentialsFuture: Future<Output = Result<auth::Credentials, auth::AuthError>>,
-    Fetch: FnOnce(Result<auth::Credentials, auth::AuthError>) -> FetchFuture,
-    FetchFuture: Future<Output = Result<ProviderUsage, RefreshError>>,
-{
-    if !provider_enabled(state, provider).await {
-        return None;
-    }
-    let credentials = read_credentials().await;
     let _request = provider_request(state, provider).lock().await;
     if !provider_enabled(state, provider).await {
         return None;
     }
-    Some(fetch(credentials).await)
+    let credentials =
+        tauri::async_runtime::spawn_blocking(move || auth::read_credentials(provider))
+            .await
+            .expect("credential read panicked");
+    Some(fetch_provider(state, provider, credentials).await)
 }
 
 async fn apply_provider_toggle<P>(
@@ -530,42 +504,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disabling_during_credential_read_prevents_a_fetch() {
+    async fn a_refresh_queued_after_disable_does_not_read_credentials() {
         let state = Arc::new(state());
-        let (credential_started, credential_started_wait) = oneshot::channel();
-        let (continue_credentials, continue_credentials_wait) = oneshot::channel();
-        let (fetch_started, mut fetch_started_wait) = oneshot::channel::<()>();
-        let reader = tokio::spawn({
+        let request = provider_request(&state, Provider::Codex).lock().await;
+        let (disable_started, disable_started_wait) = oneshot::channel();
+        let disabling = tokio::spawn({
             let state = Arc::clone(&state);
             async move {
-                read_enabled_with(
-                    &state,
-                    Provider::Codex,
-                    move || async move {
-                        credential_started.send(()).unwrap();
-                        continue_credentials_wait.await.unwrap();
-                        Ok(auth::Credentials {
-                            access_token: "token".to_owned(),
-                            account_id: None,
-                        })
-                    },
-                    move |_| async move {
-                        fetch_started.send(()).unwrap();
-                        Ok(ProviderUsage::default())
-                    },
-                )
-                .await
+                disable_started.send(()).unwrap();
+                apply_provider_toggle(&state, Provider::Codex, false, |_| {})
+                    .await
+                    .unwrap();
             }
         });
-
-        credential_started_wait.await.unwrap();
-        apply_provider_toggle(&state, Provider::Codex, false, |_| {})
-            .await
-            .unwrap();
-        continue_credentials.send(()).unwrap();
-
+        disable_started_wait.await.unwrap();
+        tokio::task::yield_now().await;
+        let reader = tokio::spawn({
+            let state = Arc::clone(&state);
+            async move { read_enabled(&state, Provider::Codex).await }
+        });
+        tokio::task::yield_now().await;
+        drop(request);
+        disabling.await.unwrap();
         assert!(reader.await.unwrap().is_none());
-        assert!(fetch_started_wait.try_recv().is_err());
         assert!(!provider_enabled(&state, Provider::Codex).await);
     }
 
