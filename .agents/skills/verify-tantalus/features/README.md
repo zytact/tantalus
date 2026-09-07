@@ -16,7 +16,8 @@ Headless (`pnpm vite` plus a browser tab) proves the Loading shell and the
 formatter contracts. Ready, Stale, AuthMissing, and tray behavior need
 `pnpm tauri dev` on a real desktop with credentials. Fixture suites
 (`pnpm test`, `cargo test`) prove the parsing edges; one redacted live
-refresh via `scripts/live-check.sh` (WHAM first, Codex fallback, credits
+refresh via `.agents/skills/verify-tantalus/scripts/live-check.sh` (WHAM
+first, Codex fallback, credits
 separately, Claude usage from `api.anthropic.com`, 12s timeout, single pass)
 proves both real credential files and the Ready path. It is the only step
 that touches the network or the real logins, and it never logs or stores a

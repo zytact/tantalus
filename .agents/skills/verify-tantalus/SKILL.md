@@ -32,7 +32,8 @@ That helper picks the given port (or scans 1421-1450 when omitted), starts
 `<title>Tantalus</title>`, and writes the pid and port to
 `/tmp/opencode/tantalus-verify/run.pid` and `run.port`. The launch itself
 never touches `~/.codex/auth.json` and never calls the network. Live API
-calls happen only through `scripts/live-check.sh` (Drive step 4).
+calls happen only through `.agents/skills/verify-tantalus/scripts/live-check.sh`
+(Drive step 4).
 
 Ready means: HTTP 200 on `/`, HTML contains `<div id="root">`, and the dev
 server process from the pidfile is alive. In a plain browser tab the console
@@ -74,7 +75,8 @@ It answers "is this instance worth driving?" without changing state:
   `devUrl http://localhost:1420`) and `dist/` exists after `pnpm build`
 - auth check is read-only: notes whether `CODEX_HOME` is set and whether
   `$HOME/.codex/auth.json` exists, but never prints the token. It does not
-  cover the Claude login; `scripts/live-check.sh` reports that one.
+  cover the Claude login;
+  `.agents/skills/verify-tantalus/scripts/live-check.sh` reports that one.
 - fails closed when the port answers but the pid is not ours: stop and pick
   another port instead of driving someone else's server
 
@@ -152,7 +154,7 @@ per request, no loop:
 
 ```sh
 EVIDENCE=/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>
-scripts/live-check.sh "$EVIDENCE" 2>&1 | tee "$EVIDENCE/live-check.log"
+.agents/skills/verify-tantalus/scripts/live-check.sh "$EVIDENCE" 2>&1 | tee "$EVIDENCE/live-check.log"
 ```
 
 It resolves credentials the same way Rust does (`CODEX_HOME/auth.json` wins,
@@ -219,7 +221,8 @@ All helpers live in `scripts/` and are executable:
 - `scripts/doctor.sh [PORT]` - read-only instance check described above
 - `scripts/launch.sh [PORT]` - isolated vite start plus readiness wait
 - `scripts/check-ui.sh <PORT>` - curl assertions for the served shell
-- `scripts/live-check.sh <EVIDENCE_DIR>` - single redacted live refresh
+- `.agents/skills/verify-tantalus/scripts/live-check.sh <EVIDENCE_DIR>` -
+  single redacted live refresh
 - `scripts/cleanup.sh` - kill only what launch started, keep evidence
 
 Feature map is in `features/`: `README.md` plus one file per user-facing

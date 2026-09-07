@@ -11,8 +11,9 @@ enabled provider at once.
   and `set_provider_enabled` (switch), snapshot event `usage-snapshot`
 - A switched-off provider is skipped: no credential read, no request
   (`src-tauri/src/lib.rs` `read_enabled`)
-- No overlapping refreshes: Rust `refreshing` AtomicBool returns the cached
-  snapshot when a refresh is already running
+- Rust tracks refresh state with an AtomicU8. An overlapping trigger returns
+  the cached snapshot to that caller and queues one follow-up pass after the
+  active pass. Network requests never overlap.
 - 12-second network timeout (`src-tauri/src/api.rs` `client()`)
 - Failure keeps the last successful reading and labels it stale; without any
   success the status becomes `auth_missing` (missing file) or `error`
@@ -36,7 +37,8 @@ providers only.
    That is expected.
 3. Logic proof headless: `pnpm test` plus
    `cargo test --manifest-path src-tauri/Cargo.toml`
-4. Live proof (necessary, single pass): `scripts/live-check.sh "$EVIDENCE"`
+4. Live proof (necessary, single pass):
+   `.agents/skills/verify-tantalus/scripts/live-check.sh "$EVIDENCE"`
    performs exactly one refresh against the real APIs with the real
    credential files. It mirrors `api.rs` (WHAM first, Codex fallback,
    credits separately, Claude usage from `api.anthropic.com`, 12s timeout,
@@ -65,5 +67,8 @@ providers only.
   Claude usage from `api.anthropic.com/api/oauth/usage`. One endpoint
   failing does not have to fail the others the same way, and the two
   providers fail independently.
+- A trigger during an active refresh receives the current cached snapshot.
+  It also queues one follow-up pass, so wait for that pass before judging the
+  final state. The app still makes no overlapping network requests.
 - Do not assert token or account ID strings anywhere in the webview. Tokens
   stay in Rust memory only and are never emitted to the frontend.

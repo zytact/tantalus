@@ -36,7 +36,7 @@ it reads `Short window 5 hours`; headless in a plain browser it reads
    `Window unavailable` regions (two per provider)
 5. Formatter proof without Tauri: `pnpm test` covers `usagePercent`,
    `remainingPercent`, and `countdown` buckets used by this entry
-6. Live proof: `scripts/live-check.sh` records the real 18000-second Codex
+6. Live proof: `.agents/skills/verify-tantalus/scripts/live-check.sh` records the real 18000-second Codex
    window in `live-usage.json` and the Claude `five_hour` object in
    `live-claude-usage.json`. Confirm `used_percent` (Codex) and
    `utilization` (Claude) parse into the figure and `Resets` countdown.

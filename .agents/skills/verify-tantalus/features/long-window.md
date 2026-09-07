@@ -1,7 +1,8 @@
 # Long window (7 days)
 
 The second ledger entry inside each provider block. Same shape as the short
-window but bound to the 604800-second window.
+window. It is available only when Codex reports the recognized 604800-second
+window or Claude supplies `seven_day`.
 
 ## Sub-features
 
@@ -14,8 +15,9 @@ window but bound to the 604800-second window.
 
 Second entry inside a provider block, under that provider's Short window,
 and only while the provider's switch is on. Under Tauri it reads
-`Long window 7 days`; headless it reads `Window unavailable` like the first
-entry.
+`Long window 7 days` when Codex reports the recognized 604800-second window
+or Claude supplies `seven_day`. Otherwise it reads `Window unavailable`,
+like the first entry in the headless shell.
 
 ## Driving it with browser tab
 
