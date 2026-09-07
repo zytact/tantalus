@@ -5,6 +5,7 @@ mod usage;
 
 use auth::Provider;
 use std::{
+    future::Future,
     path::PathBuf,
     sync::atomic::{AtomicU8, Ordering},
 };
@@ -87,11 +88,9 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
             if repeat_refresh(&state.refreshing) {
                 None
             } else {
-                let published = publish_snapshot(&snapshot, |snapshot| {
-                    update_tray_menu(app, snapshot);
-                    let _ = app.emit("usage-snapshot", snapshot.clone());
-                });
-                Some(published)
+                update_tray_menu(app, &snapshot);
+                let _ = app.emit("usage-snapshot", snapshot.clone());
+                Some(snapshot.clone())
             }
         };
         if let Some(snapshot) = snapshot {
@@ -104,18 +103,40 @@ async fn read_enabled(
     state: &AppState,
     provider: Provider,
 ) -> Option<Result<ProviderUsage, RefreshError>> {
+    read_enabled_with(
+        state,
+        provider,
+        move || async move {
+            tauri::async_runtime::spawn_blocking(move || auth::read_credentials(provider))
+                .await
+                .expect("credential read panicked")
+        },
+        move |credentials| fetch_provider(state, provider, credentials),
+    )
+    .await
+}
+
+async fn read_enabled_with<ReadCredentials, CredentialsFuture, Fetch, FetchFuture>(
+    state: &AppState,
+    provider: Provider,
+    read_credentials: ReadCredentials,
+    fetch: Fetch,
+) -> Option<Result<ProviderUsage, RefreshError>>
+where
+    ReadCredentials: FnOnce() -> CredentialsFuture,
+    CredentialsFuture: Future<Output = Result<auth::Credentials, auth::AuthError>>,
+    Fetch: FnOnce(Result<auth::Credentials, auth::AuthError>) -> FetchFuture,
+    FetchFuture: Future<Output = Result<ProviderUsage, RefreshError>>,
+{
+    if !provider_enabled(state, provider).await {
+        return None;
+    }
+    let credentials = read_credentials().await;
     let _request = provider_request(state, provider).lock().await;
     if !provider_enabled(state, provider).await {
         return None;
     }
-    let credentials =
-        tauri::async_runtime::spawn_blocking(move || auth::read_credentials(provider))
-            .await
-            .expect("credential read panicked");
-    if !provider_enabled(state, provider).await {
-        return None;
-    }
-    Some(fetch_provider(state, provider, credentials).await)
+    Some(fetch(credentials).await)
 }
 
 async fn apply_provider_toggle<P>(
@@ -139,16 +160,8 @@ where
     if !enabled {
         *provider_usage(&mut snapshot, provider) = ProviderUsage::default();
     }
-    let published = publish_snapshot(&snapshot, publish);
-    Ok(published)
-}
-
-fn publish_snapshot<P>(snapshot: &UsageSnapshot, publish: P) -> UsageSnapshot
-where
-    P: FnOnce(&UsageSnapshot),
-{
-    publish(snapshot);
-    snapshot.clone()
+    publish(&snapshot);
+    Ok(snapshot.clone())
 }
 
 fn persist_provider_settings(
@@ -517,6 +530,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disabling_during_credential_read_prevents_a_fetch() {
+        let state = Arc::new(state());
+        let (credential_started, credential_started_wait) = oneshot::channel();
+        let (continue_credentials, continue_credentials_wait) = oneshot::channel();
+        let (fetch_started, mut fetch_started_wait) = oneshot::channel::<()>();
+        let reader = tokio::spawn({
+            let state = Arc::clone(&state);
+            async move {
+                read_enabled_with(
+                    &state,
+                    Provider::Codex,
+                    move || async move {
+                        credential_started.send(()).unwrap();
+                        continue_credentials_wait.await.unwrap();
+                        Ok(auth::Credentials {
+                            access_token: "token".to_owned(),
+                            account_id: None,
+                        })
+                    },
+                    move |_| async move {
+                        fetch_started.send(()).unwrap();
+                        Ok(ProviderUsage::default())
+                    },
+                )
+                .await
+            }
+        });
+
+        credential_started_wait.await.unwrap();
+        apply_provider_toggle(&state, Provider::Codex, false, |_| {})
+            .await
+            .unwrap();
+        continue_credentials.send(()).unwrap();
+
+        assert!(reader.await.unwrap().is_none());
+        assert!(fetch_started_wait.try_recv().is_err());
+        assert!(!provider_enabled(&state, Provider::Codex).await);
+    }
+
+    #[tokio::test]
     async fn a_failed_persistence_keeps_the_current_snapshot() {
         let mut state = state();
         let directory =
@@ -561,10 +614,10 @@ mod tests {
         });
         tokio::task::yield_now().await;
         assert!(!toggling.is_finished());
-        publish_snapshot(&refresh_snapshot, {
+        {
             let events = Arc::clone(&events);
-            move |snapshot| events.lock().unwrap().push(snapshot.enabled.codex)
-        });
+            events.lock().unwrap().push(refresh_snapshot.enabled.codex);
+        }
         drop(refresh_snapshot);
         toggling.await.unwrap();
         assert_eq!(*events.lock().unwrap(), [true, false]);

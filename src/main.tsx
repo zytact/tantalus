@@ -9,14 +9,6 @@ import { absoluteTime, countdown, creditAmount, creditExpiry, lastUpdate, remain
 import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import "./styles.css";
 
-const emptyWindow: WindowUsage = { used_percent: null, limit_window_seconds: null, reset_at_epoch: null };
-const emptyProvider: ProviderUsage = {
-  five_hour: emptyWindow, seven_day: emptyWindow, allowed: null, limit_reached: null,
-  reset_credits: [], reset_credit_count: null, extra_usage: null,
-  last_successful_update_epoch: null, status: "loading", error_message: null
-};
-const emptySnapshot: UsageSnapshot = { codex: emptyProvider, claude: emptyProvider, enabled: { codex: true, claude: true } };
-
 const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
 const providerNames: Record<ProviderId, string> = { codex: "Codex", claude: "Claude" };
 
@@ -111,20 +103,40 @@ function ProviderSection({ id, provider, enabled, onToggle }: { id: ProviderId; 
 }
 
 function App() {
-  const [snapshot, setSnapshot] = useState(emptySnapshot);
+  const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
+  const [snapshotError, setSnapshotError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
-    try { setSnapshot(await invoke<UsageSnapshot>("refresh_usage")); }
+    try {
+      setSnapshot(await invoke<UsageSnapshot>("refresh_usage"));
+      setSnapshotError(false);
+    }
     finally { setRefreshing(false); }
   };
 
   useEffect(() => {
-    void invoke<UsageSnapshot>("cached_usage").then(setSnapshot);
-    const unlisten = listen<UsageSnapshot>("usage-snapshot", (event) => setSnapshot(event.payload));
-    return () => { void unlisten.then((stop) => stop()); };
+    let mounted = true;
+    void invoke<UsageSnapshot>("cached_usage").then(
+      (cached) => { if (mounted) setSnapshot(cached); },
+      () => { if (mounted) setSnapshotError(true); }
+    );
+    let stop: (() => void) | undefined;
+    void listen<UsageSnapshot>("usage-snapshot", (event) => {
+      if (mounted) {
+        setSnapshot(event.payload);
+        setSnapshotError(false);
+      }
+    }).then((unlisten) => {
+      if (mounted) stop = unlisten;
+      else unlisten();
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+      stop?.();
+    };
   }, []);
 
   const setEnabled = async (provider: ProviderId, enabled: boolean) => {
@@ -136,7 +148,7 @@ function App() {
     }
   };
 
-  const updated = Math.max(
+  const updated = snapshot && Math.max(
     0,
     ...providerIds
       .filter((id) => snapshot.enabled[id])
@@ -148,16 +160,16 @@ function App() {
       <header>
         <div>
           <h1>Allowance</h1>
-          <p className="status">{lastUpdate(updated || null)}</p>
+          <p className="status">{snapshot ? lastUpdate(updated || null) : snapshotError ? "Could not load provider settings" : "Loading provider settings"}</p>
         </div>
-        <button onClick={() => void refresh()} disabled={refreshing} aria-busy={refreshing}>
+        <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
           {refreshing ? "Refreshing" : "Refresh"}
         </button>
       </header>
 
       {toggleError && <p className="notice" role="alert">{toggleError}</p>}
 
-      {providerIds.map((id) => (
+      {snapshot && providerIds.map((id) => (
         <ProviderSection
           key={id}
           id={id}
