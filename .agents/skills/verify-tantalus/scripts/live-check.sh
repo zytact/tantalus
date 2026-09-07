@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Single live refresh against the real Codex and Claude usage APIs.
+# Single live refresh against the real ChatGPT usage APIs.
 # Mirrors src-tauri/src/api.rs: WHAM usage first, Codex usage fallback,
-# reset credits separately, Claude usage from api.anthropic.com,
-# 12s timeout per request, one pass only (no loop).
-# The exit code reports the Codex leg; the Claude leg is reported in the log
-# and in live-claude-usage.json.
+# reset credits separately, 12s timeout per request, one pass only (no loop).
 # The token is read into memory, never printed, never written to disk,
 # and never passed on any command line. Response bodies contain no tokens.
 # Usage: live-check.sh <EVIDENCE_DIR>
@@ -30,7 +27,6 @@ else:
     candidates.append(os.path.join(os.path.expanduser("~"), ".codex", "auth.json"))
 
 def read_token(path, paths):
-    """Reads one credential file and returns its access token, never printing it."""
     try:
         with open(path, "r", encoding="utf-8") as handle:
             value = json.loads(handle.read())
@@ -162,7 +158,6 @@ if usage_body is not None:
 if credits_body is not None and credits_status == 200:
     print(f"LIVE: {summarize_credits(credits_body)}")
 
-# Claude is a separate login and a separate endpoint, so it is read and reported on its own.
 claude_home = os.environ.get("CLAUDE_CONFIG_DIR", "")
 claude_path = os.path.join(claude_home or os.path.join(os.path.expanduser("~"), ".claude"),
                            ".credentials.json")
@@ -180,7 +175,7 @@ else:
     try:
         with urllib.request.urlopen(request, timeout=12) as response:
             claude_status, claude_body = response.status, response.read()
-    except Exception as error:  # noqa: BLE001 - summarized, never leaks headers
+    except Exception as error:
         claude_status, claude_body = getattr(error, "code", None) or "error", None
     print(f"LIVE: claude usage -> {claude_status}")
     if claude_body is not None and claude_status == 200:
