@@ -1,8 +1,8 @@
 # Tray and autorefresh
 
 The app lives in the system tray. The window opens on launch and closing it
-hides the window rather than quitting; the tray owns the menu, the tooltip,
-and the 5-minute polling schedule.
+destroys the window rather than quitting the app; **Show usage** builds a new
+one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 
 ## Sub-features
 

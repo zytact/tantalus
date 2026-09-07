@@ -13,7 +13,7 @@ pnpm tauri dev
 
 Each provider has its own header row with a switch. Switching a provider off stops Tantalus polling it: no credential read, no request, no tray line, and its windows and credits leave the window. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
 
-Launching Tantalus opens the window. Closing it hides it in the tray, and the tray's **Show usage** item brings it back. Only one instance runs at a time, so launching it again while it is hidden raises the window that is already there. **Quit** exits the app and stops polling.
+Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Show usage** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
 
 ## Build and check
 
