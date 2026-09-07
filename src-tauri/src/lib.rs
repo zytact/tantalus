@@ -329,6 +329,13 @@ fn tray_icon() -> tauri::image::Image<'static> {
 pub fn run() {
     let client = api::client().expect("failed to create HTTP client");
     tauri::Builder::default()
+        // A second launch belongs to the instance already in the tray, so it raises that
+        // window instead of starting a rival process with its own tray icon.
+        .plugin(tauri_plugin_single_instance::init(
+            |app, _arguments, _cwd| {
+                show_window(app);
+            },
+        ))
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
             cached_usage,
