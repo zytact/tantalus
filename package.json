@@ -1,14 +1,14 @@
 {
   "name": "tantalus",
-  "private": true,
   "version": "0.0.3",
+  "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
-    "tauri": "tauri"
+    "dev": "vp dev",
+    "build": "tsc --noEmit && vp build",
+    "test": "vp test run",
+    "tauri": "tauri",
+    "prepare": "vp config --no-agent"
   },
   "dependencies": {
     "@fontsource-variable/inter-tight": "^5.3.0",
@@ -25,7 +25,8 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7",
-    "vitest": "^3.2.4"
-  }
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "pnpm@11.24.0"
 }

@@ -1,6 +1,15 @@
-export type WindowUsage = { used_percent: number | null; limit_window_seconds: number | null; reset_at_epoch: number | null };
+export type WindowUsage = {
+  used_percent: number | null;
+  limit_window_seconds: number | null;
+  reset_at_epoch: number | null;
+};
 export type ResetCredit = { expires_at_epoch: number | null };
-export type ExtraUsage = { enabled: boolean; used_credits: number | null; monthly_limit: number | null; currency: string | null };
+export type ExtraUsage = {
+  enabled: boolean;
+  used_credits: number | null;
+  monthly_limit: number | null;
+  currency: string | null;
+};
 export type ProviderUsage = {
   five_hour: WindowUsage;
   seven_day: WindowUsage;
@@ -14,16 +23,25 @@ export type ProviderUsage = {
   error_message: string | null;
 };
 export type ProviderId = "codex" | "claude";
-export type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage; enabled: Record<ProviderId, boolean> };
+export type UsageSnapshot = {
+  codex: ProviderUsage;
+  claude: ProviderUsage;
+  enabled: Record<ProviderId, boolean>;
+};
 
 export function statusLine(provider: ProviderUsage, enabled: boolean): string {
   if (!enabled) return "Off";
   switch (provider.status) {
-    case "auth_missing": return "Not signed in";
-    case "error": return "Could not refresh";
-    case "stale": return "Cached";
-    case "loading": return "Loading";
-    default: return provider.allowed === false || provider.limit_reached ? "Blocked until reset" : "Live";
+    case "auth_missing":
+      return "Not signed in";
+    case "error":
+      return "Could not refresh";
+    case "stale":
+      return "Cached";
+    case "loading":
+      return "Loading";
+    default:
+      return provider.allowed === false || provider.limit_reached ? "Blocked until reset" : "Live";
   }
 }
 
@@ -50,7 +68,11 @@ export function countdown(epoch: number | null, now = Date.now() / 1000): string
 export function absoluteTime(epoch: number | null): string {
   return epoch === null
     ? "Unavailable"
-    : new Date(epoch * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+    : new Date(epoch * 1000).toLocaleString([], {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
 }
 
 /** Credits expire weeks out, so a weekday alone would not say which week. */
@@ -60,7 +82,7 @@ export function creditExpiry(epoch: number | null): string {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   });
   return `Expires ${date}`;
 }

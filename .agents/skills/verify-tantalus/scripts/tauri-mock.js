@@ -18,8 +18,16 @@ function readySnapshot() {
   const now = nowEpoch();
   return {
     codex: {
-      five_hour: { used_percent: 42, limit_window_seconds: 18000, reset_at_epoch: now + 3 * 3600 + 29 * 60 },
-      seven_day: { used_percent: 8, limit_window_seconds: 604800, reset_at_epoch: now + 4 * 86400 + 20 * 3600 },
+      five_hour: {
+        used_percent: 42,
+        limit_window_seconds: 18000,
+        reset_at_epoch: now + 3 * 3600 + 29 * 60,
+      },
+      seven_day: {
+        used_percent: 8,
+        limit_window_seconds: 604800,
+        reset_at_epoch: now + 4 * 86400 + 20 * 3600,
+      },
       allowed: true,
       limit_reached: false,
       reset_credits: [{ expires_at_epoch: 1791076477 }, { expires_at_epoch: 1791080077 }],
@@ -67,14 +75,18 @@ function loadEnabled() {
       const parsed = JSON.parse(raw);
       if (typeof parsed.codex === "boolean" && typeof parsed.claude === "boolean") return parsed;
     }
-  } catch { /* fall through to defaults, mimicking providers.json missing */ }
+  } catch {
+    /* fall through to defaults, mimicking providers.json missing */
+  }
   return { codex: true, claude: true };
 }
 
 function saveEnabled(enabled) {
   try {
     localStorage.setItem("tantalus-mock-enabled", JSON.stringify(enabled));
-  } catch { /* storage full or blocked: keep in-memory state only */ }
+  } catch {
+    /* storage full or blocked: keep in-memory state only */
+  }
 }
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -126,11 +138,16 @@ function applyModeToEnabled() {
       provider.error_message = "Mock network failure. The last successful reading remains visible.";
     } else if (mode === "auth_missing") {
       const blank = blankProvider();
-      snapshot[id] = { ...blank, status: "auth_missing", error_message: "No sign-in was found for this provider" };
+      snapshot[id] = {
+        ...blank,
+        status: "auth_missing",
+        error_message: "No sign-in was found for this provider",
+      };
     } else if (mode === "error") {
       if (provider.last_successful_update_epoch != null) {
         provider.status = "stale";
-        provider.error_message = "Mock refresh failed. The last successful reading remains visible.";
+        provider.error_message =
+          "Mock refresh failed. The last successful reading remains visible.";
       } else {
         const blank = blankProvider();
         snapshot[id] = { ...blank, status: "error", error_message: "Mock refresh failed." };
@@ -154,7 +171,10 @@ async function invoke(cmd, args = {}) {
   }
   if (cmd === "plugin:event|unlisten") {
     const list = listeners.get(args.event) ?? [];
-    listeners.set(args.event, list.filter((id) => id !== args.eventId));
+    listeners.set(
+      args.event,
+      list.filter((id) => id !== args.eventId),
+    );
     return null;
   }
   if (cmd === "cached_usage") return clone(snapshot);
@@ -187,10 +207,12 @@ async function invoke(cmd, args = {}) {
 }
 
 window.__TAURI_INTERNALS__ = {
-  ...(window.__TAURI_INTERNALS__ ?? {}),
+  ...window.__TAURI_INTERNALS__,
   invoke,
   transformCallback: registerCallback,
-  unregisterCallback: (id) => { callbacks.delete(id); },
+  unregisterCallback: (id) => {
+    callbacks.delete(id);
+  },
   runCallback,
   callbacks,
   metadata: {
@@ -199,8 +221,10 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
-  ...(window.__TAURI_EVENT_PLUGIN_INTERNALS__ ?? {}),
-  unregisterListener: (_event, id) => { callbacks.delete(id); },
+  ...window.__TAURI_EVENT_PLUGIN_INTERNALS__,
+  unregisterListener: (_event, id) => {
+    callbacks.delete(id);
+  },
 };
 
 async function remount() {

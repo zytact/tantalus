@@ -1,13 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { countdown, creditExpiry, remainingPercent, statusLine, usagePercent } from "./presentation";
+import { describe, expect, it } from "vite-plus/test";
+import {
+  countdown,
+  creditExpiry,
+  remainingPercent,
+  statusLine,
+  usagePercent,
+} from "./presentation";
 import type { ProviderUsage } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   seven_day: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
-  allowed: null, limit_reached: null, reset_credits: [], reset_credit_count: null,
-  extra_usage: null, last_successful_update_epoch: null, status: "ready", error_message: null,
-  ...fields
+  allowed: null,
+  limit_reached: null,
+  reset_credits: [],
+  reset_credit_count: null,
+  extra_usage: null,
+  last_successful_update_epoch: null,
+  status: "ready",
+  error_message: null,
+  ...fields,
 });
 
 describe("display contract", () => {

@@ -112,19 +112,24 @@ client bundle references the real handles: `Short window`, `Long window`,
 `Reset credits`, `Refresh`, `Auto-refreshes every 5 minutes`.
 
 3. Browser tab, mock-driven. This is the real user path, headless:
-`scripts/tauri-mock.js` answers `cached_usage`, `refresh_usage`, and
-`set_provider_enabled` plus the `plugin:event|listen/emit/unlisten`
-wiring, with synthetic Ready figures in Rust's shapes and no tokens or
-network. Two evaluates install it; both must be promise chains, since
-this harness has no top-level await and a dynamic import of the mock
-fails on MIME, so fetch plus indirect eval:
+   `scripts/tauri-mock.js` answers `cached_usage`, `refresh_usage`, and
+   `set_provider_enabled` plus the `plugin:event|listen/emit/unlisten`
+   wiring, with synthetic Ready figures in Rust's shapes and no tokens or
+   network. Two evaluates install it; both must be promise chains, since
+   this harness has no top-level await and a dynamic import of the mock
+   fails on MIME, so fetch plus indirect eval:
 
 ```js
-fetch('/.agents/skills/verify-tantalus/scripts/tauri-mock.js').then(r => r.text()).then(src => { (0,eval)(src); return !!window.__TANTALUS_MOCK__; })
+fetch("/.agents/skills/verify-tantalus/scripts/tauri-mock.js")
+  .then((r) => r.text())
+  .then((src) => {
+    (0, eval)(src);
+    return !!window.__TANTALUS_MOCK__;
+  });
 ```
 
 ```js
-window.__TANTALUS_MOCK__.remount().then(() => 'remounted')
+window.__TANTALUS_MOCK__.remount().then(() => "remounted");
 ```
 
 The remount swaps `#root` for a fresh node and re-imports
@@ -170,10 +175,10 @@ send a real token to the dev server or paste one into the browser tab.
 Tokens stay in Rust memory only per `src-tauri/src/lib.rs` and `api.rs`.
 
 4. Live refresh (necessary, single pass, redacted). This is the only step
-that touches the network or the real credential files, and it mirrors
-`src-tauri/src/api.rs` exactly: WHAM usage first, Codex usage fallback,
-reset credits separately, Claude usage from `api.anthropic.com`, 12s timeout
-per request, no loop:
+   that touches the network or the real credential files, and it mirrors
+   `src-tauri/src/api.rs` exactly: WHAM usage first, Codex usage fallback,
+   reset credits separately, Claude usage from `api.anthropic.com`, 12s timeout
+   per request, no loop:
 
 ```sh
 EVIDENCE=/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>
