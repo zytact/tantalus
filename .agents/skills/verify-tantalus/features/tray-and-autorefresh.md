@@ -35,9 +35,9 @@ names the schedule.
 ## Driving it with harness
 
 Headless cannot drive the tray: there is no menu, tooltip, or polling
-outside the Tauri runtime. Headless proof is limited to asserting the window
-footer text and the `Auto-refreshes every 5 minutes` string in a browser
-snapshot.
+outside the Tauri runtime. A plain-browser snapshot can assert the footer
+text and `Could not load provider settings`, but it cannot assert provider
+sections or interact with controls.
 
 Real proof is manual on a desktop OS:
 

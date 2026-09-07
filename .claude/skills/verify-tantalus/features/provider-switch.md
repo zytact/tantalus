@@ -26,17 +26,16 @@ Restart the app and it is still off.
 
 ## Driving it with browser tab
 
-1. Launch on an isolated port, navigate, snapshot
-2. Assert two `role=switch` rows named `Codex` and `Claude`, both
-   `aria-checked=true`, each showing `LOADING`
-3. Click a switch. Headless the DOM does not change: `set_provider_enabled`
-   rejects without the Rust side, exactly like `Refresh`. That is the harness
-   limit, not an app bug.
-4. Logic proof without Tauri: `pnpm test` covers `statusLine(..., false)`
+1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
+   static shell.
+2. In a plain browser, `cached_usage` rejects and the app shows `Could not
+   load provider settings`. It renders no switches, so do not click or assert
+   a provider switch there.
+3. Logic proof without Tauri: `pnpm test` covers `statusLine(..., false)`
    returning `Off`; `cargo test` covers the `providers.json` round trip
    (`settings::tests`) and that a disabled provider is never read
    (`a_disabled_provider_is_never_read`)
-5. Real proof needs `pnpm tauri dev` on a desktop: switch Claude off, confirm
+4. Real proof needs `pnpm tauri dev` on a desktop: switch Claude off, confirm
    its entries vanish, its tray line disappears, `providers.json` reads
    `{"codex":true,"claude":false}`, and Codex keeps refreshing. Switch it
    back on and confirm an immediate refresh.
@@ -47,5 +46,6 @@ Restart the app and it is still off.
   a real switch, so any selector using `aria-expanded` is stale.
 - Switching off discards that provider's figures. After switching back on,
   expect a fresh fetch rather than the old numbers.
-- A failure to write `providers.json` is logged to stderr and the switch
-  still applies for the session.
+- A failure to write `providers.json` returns an error. The command leaves
+  the switch, settings, and usage snapshot unchanged, and the UI shows
+  `Could not save provider setting.`

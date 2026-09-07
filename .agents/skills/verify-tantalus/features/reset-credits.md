@@ -24,10 +24,10 @@ while the Codex switch is on. Empty until the Rust side fetches
 
 ## Driving it with browser tab
 
-1. Launch on an isolated port, navigate, snapshot
-2. Headless expectation: two `Reset credits` regions, one per provider,
-   since the loading shell has no `extra_usage` for either. Each shows the
-   figure `Unavailable` and the text `No credit details available.`
+1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
+   static shell.
+2. In a plain browser, `cached_usage` rejects. There are no Reset credits or
+   Extra usage regions to assert.
 3. Formatter proof: `pnpm test` asserts `creditExpiry(null)` is
    `No expiry reported` and a 2026 October epoch contains `Oct 4`
 4. Parsing proof: `cargo test parses_credit_container...`,

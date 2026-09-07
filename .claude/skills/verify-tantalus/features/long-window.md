@@ -1,7 +1,8 @@
 # Long window (7 days)
 
 The second ledger entry inside each provider block. Same shape as the short
-window but bound to the 604800-second window.
+window. It is available only when Codex reports the recognized 604800-second
+window or Claude supplies `seven_day`.
 
 ## Sub-features
 
@@ -14,23 +15,23 @@ window but bound to the 604800-second window.
 
 Second entry inside a provider block, under that provider's Short window,
 and only while the provider's switch is on. Under Tauri it reads
-`Long window 7 days`; headless it reads `Window unavailable` like the first
-entry.
+`Long window 7 days` when Codex reports the recognized 604800-second window
+or Claude supplies `seven_day`. Otherwise it reads `Window unavailable`. A
+plain browser never receives the snapshot that renders this entry.
 
 ## Driving it with browser tab
 
-1. Launch on an isolated port and navigate a browser tab to it
-2. Snapshot and assert the second `role=region` inside a provider block plus
-   its `role=progressbar[name="Long window usage"]` (Tauri). Headless there
-   are four `Window unavailable usage` progressbars: the Codex long window is
-   the second, Claude's is the fourth, so index within the block rather than
-   by name alone.
+1. Launch on an isolated port. Static proof is `scripts/check-ui.sh <PORT>`.
+2. A plain-browser snapshot must not assert a provider block, region, or
+   progressbar. It only shows the provider-settings load error after
+   `cached_usage` rejects.
 3. Formatter proof: `pnpm test` countdown case `4d 20h` is the long-window
    bucket shape
 4. Live proof: `live-usage.json` carries the Codex 604800-second window and
    `live-claude-usage.json` carries the Claude `seven_day` object. Confirm
    the used figures and reset fields alongside the short window.
-5. Ready-state proof needs `pnpm tauri dev`: figure `N%`, `Resets` in
+5. Ready-state proof needs `pnpm tauri dev`: the second region inside each
+   enabled provider has `role=progressbar[name="Long window usage"]`, figure `N%`, `Resets` in
    `Nd Nh` form, `Remaining` at `100 - used`
 
 ## Gotchas

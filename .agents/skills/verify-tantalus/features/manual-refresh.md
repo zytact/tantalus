@@ -31,10 +31,11 @@ providers only.
 
 ## Driving it with browser tab
 
-1. Launch on an isolated port, navigate, snapshot the Refresh button
-2. Headless: click Refresh and confirm only a brief disabled state happens.
-   `invoke("refresh_usage")` rejects without Rust, so no new data appears.
-   That is expected.
+1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
+   static shell.
+2. In a plain browser, wait for `cached_usage` to reject. Snapshot the
+   disabled Refresh button and `Could not load provider settings`. Do not
+   click Refresh: without a snapshot it is disabled.
 3. Logic proof headless: `pnpm test` plus
    `cargo test --manifest-path src-tauri/Cargo.toml`
 4. Live proof (necessary, single pass):

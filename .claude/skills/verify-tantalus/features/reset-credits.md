@@ -24,17 +24,18 @@ while the Codex switch is on. Empty until the Rust side fetches
 
 ## Driving it with browser tab
 
-1. Launch on an isolated port, navigate, snapshot
-2. Headless expectation: two `Reset credits` regions, one per provider,
-   since the loading shell has no `extra_usage` for either. Each shows the
-   figure `Unavailable` and the text `No credit details available.`
+1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
+   static shell.
+2. In a plain browser, `cached_usage` rejects. There are no Reset credits or
+   Extra usage regions to assert.
 3. Formatter proof: `pnpm test` asserts `creditExpiry(null)` is
    `No expiry reported` and a 2026 October epoch contains `Oct 4`
 4. Parsing proof: `cargo test parses_credit_container...`,
    `parses_rfc_3339_string_expiry`, and `numeric_string_expiry_is_read...`
    cover the `credits` / `data` / `items` containers, the six expiry key
    spellings, RFC 3339 strings, and epoch strings with millis and fractions
-5. Live proof: `live-credits.json` from `scripts/live-check.sh` is the real
+5. Live proof: `live-credits.json` from
+   `.agents/skills/verify-tantalus/scripts/live-check.sh` is the real
    credits payload. Confirm its container, `available_count`, and per-credit
    expiries match the headline count and rows.
 6. Ready-state proof needs `pnpm tauri dev`: count headline plus one row per

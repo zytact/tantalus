@@ -12,16 +12,20 @@ when this index lists others.
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, status line, token privacy
 - [provider-switch](provider-switch.md) - per-provider on/off switch, persistence
 
-Headless (`pnpm vite` plus a browser tab) proves the Loading shell and the
-formatter contracts. Ready, Stale, AuthMissing, and tray behavior need
-`pnpm tauri dev` on a real desktop with credentials. Fixture suites
+Headless static checks prove that Vite serves the app shell and that its
+bundle contains the expected labels. In a plain browser, `cached_usage`
+rejects without Tauri IPC, so the app shows `Could not load provider settings`
+with no provider sections, switches, window entries, or extras. Formatter
+contracts come from the suites. Ready, Stale, AuthMissing, switch, and tray
+behavior need `pnpm tauri dev` on a real desktop with credentials. Fixture suites
 (`pnpm test`, `cargo test`) prove the parsing edges; one redacted live
-refresh via `scripts/live-check.sh` (WHAM first, Codex fallback, credits
+refresh via `.agents/skills/verify-tantalus/scripts/live-check.sh` (WHAM
+first, Codex fallback, credits
 separately, Claude usage from `api.anthropic.com`, 12s timeout, single pass)
 proves both real credential files and the Ready path. It is the only step
 that touches the network or the real logins, and it never logs or stores a
 token.
 
-Every window and extras entry is rendered once per provider, so a headless
-snapshot has two of each. Reaching any of them assumes that provider's
-switch is on.
+Every window and extras entry is rendered once per enabled provider only
+after Tauri provides a snapshot. Do not use a plain-browser snapshot to
+assert those entries or interact with Refresh or a provider switch.

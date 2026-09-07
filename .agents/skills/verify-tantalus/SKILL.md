@@ -36,12 +36,12 @@ calls happen only through `.agents/skills/verify-tantalus/scripts/live-check.sh`
 (Drive step 4).
 
 Ready means: HTTP 200 on `/`, HTML contains `<div id="root">`, and the dev
-server process from the pidfile is alive. In a plain browser tab the console
-shows `Uncaught (in promise)` errors from `invoke("cached_usage")`.
-That is expected: Tauri IPC does not exist outside `pnpm tauri dev`, so the
-view stays in its Loading shell (header `no successful update yet`, both
-switch rows `LOADING`, four `Window unavailable` regions, two per provider).
-That shell is what headless verification proves.
+server process from the pidfile is alive. In a plain browser tab,
+`invoke("cached_usage")` rejects because Tauri IPC does not exist outside
+`pnpm tauri dev`. The app starts without a snapshot, then shows `Could not
+load provider settings`. It renders no provider sections or switches, and
+the Refresh button remains disabled. Headless verification proves only that
+plain-browser error state and the static served shell.
 
 Full desktop launch (`pnpm tauri dev`) is manual-only, on a real Linux, macOS,
 or Windows desktop with tray support. It needs the Tauri system deps
@@ -110,29 +110,15 @@ It curls the dev server and asserts the served HTML has the root div and the
 client bundle references the real handles: `Short window`, `Long window`,
 `Reset credits`, `Refresh`, `Auto-refreshes every 5 minutes`.
 
-3. Browser tab (proves what the user sees). Navigate a collaborative tab to
-`http://localhost:<PORT>/` and snapshot. Stable handles from `src/main.tsx`:
+3. Browser tab. Navigate a collaborative tab to `http://localhost:<PORT>/`
+and snapshot after `cached_usage` rejects. Plain-browser proof is limited to
+visible `Allowance`, `Could not load provider settings`, and
+`AUTO-REFRESHES EVERY 5 MINUTES`, plus a disabled
+`role=button[name="Refresh"]`. It has no provider switches, window regions,
+progressbars, reset-credit regions, or interactive actions to drive.
 
-- `role=button[name="Refresh"]` (shows `Refreshing` and `aria-busy=true`
-  while the invoke is in flight)
-- `role=switch[name="Codex"]` and `role=switch[name="Claude"]` with
-  `aria-checked`; the entries below a row render only while it is checked
-- `role=region[name="Window unavailable"]` x4 in Loading state (two per
-  provider), or `role=region[name="Short window"]` and
-  `role=region[name="Long window"]` per provider once Tauri delivers
-  durations
-- `role=progressbar[name="Short window usage"]` with `aria-valuetext` of
-  `Unavailable` or `42%`
-- `role=region[name="Reset credits"]` (Codex) or
-  `role=region[name="Extra usage"]` (Claude), `role=status` for the degraded
-  notice
-- visible text anchors: `Allowance`, `AUTO-REFRESHES EVERY 5 MINUTES` (CSS
-  uppercases the `Auto-refreshes every 5 minutes` footer)
-
-Clicking Refresh or a provider switch in a plain browser tab does nothing
-observable, because `invoke` rejects without the Rust side. Do not treat that
-as a failure. The Ready, Stale, AuthMissing, and Error renderings, the real
-switch behavior, and the tray menu (one line per enabled provider formatted
+The Ready, Stale, AuthMissing, and Error renderings, the real switch
+behavior, and the tray menu (one line per enabled provider formatted
 `Codex  5h 42%  7d 8%`, then `Show usage`, `Refresh now`, `Quit`) are only
 drivable under `pnpm tauri dev` on a real desktop. There, drive with the
 keyboard and menu, not coordinates: Tab to Refresh, Enter, and read each
@@ -179,7 +165,7 @@ Write every run to `/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>/`:
 - `index.html` (`curl http://localhost:<PORT>/` body)
 - `check-ui.log` (static shell assertions)
 - `visible-text.txt` (browser snapshot visible text) and `snapshot.json`
-  (interactive elements plus ARIA) when the browser tab was used
+  (the disabled Refresh button plus ARIA) when the plain browser tab was used
 - `live-usage.json`, `live-credits.json`, `live-claude-usage.json` (raw API
   bodies, no tokens), and `live-check.log` (redacted summary: endpoint,
   statuses, window keys, credit counts) from the single live refresh
