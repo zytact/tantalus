@@ -11,7 +11,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-Each provider has its own header row. Clicking the row toggles that provider's windows and credits in and out of view.
+Each provider has its own header row with a switch. Switching a provider off stops Tantalus polling it: no credential read, no request, no tray line, and its windows and credits leave the window. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
 
 Closing the window hides it in the tray. Use the tray's **Show usage** item to bring it back. **Quit** exits the app and stops polling.
 
@@ -38,5 +38,6 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 - Network requests time out after 12 seconds. Refreshes do not overlap.
 - For Codex the app tries WHAM usage first, then Codex usage, and fetches reset credits separately. Claude usage comes from `api.anthropic.com/api/oauth/usage`.
 - The two providers are fetched together and fail independently, so a missing Claude login leaves the Codex reading intact.
+- A switched-off provider is skipped everywhere: the five-minute poll, the Refresh button, and the tray menu. Switching it off also drops the figures it last read.
 - Tokens and account IDs remain in Rust memory only. They are never sent to the webview, written to disk, or logged.
 - Failed refreshes retain the last successful reading and label it stale.

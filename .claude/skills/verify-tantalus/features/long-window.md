@@ -1,7 +1,7 @@
 # Long window (7 days)
 
-The second ledger entry. Same shape as the short window but bound to the
-604800-second window.
+The second ledger entry inside each provider block. Same shape as the short
+window but bound to the 604800-second window.
 
 ## Sub-features
 
@@ -12,27 +12,33 @@ The second ledger entry. Same shape as the short window but bound to the
 
 ## How to get to it (user POV)
 
-Second entry in the app window, under the Short window. Under Tauri it reads
+Second entry inside a provider block, under that provider's Short window,
+and only while the provider's switch is on. Under Tauri it reads
 `Long window 7 days`; headless it reads `Window unavailable` like the first
 entry.
 
 ## Driving it with browser tab
 
 1. Launch on an isolated port and navigate a browser tab to it
-2. Snapshot and assert the second `role=region` plus its
-   `role=progressbar[name="Long window usage"]` (Tauri) or second
-   `role=progressbar[name="Window unavailable usage"]` (headless)
+2. Snapshot and assert the second `role=region` inside a provider block plus
+   its `role=progressbar[name="Long window usage"]` (Tauri). Headless there
+   are four `Window unavailable usage` progressbars: the Codex long window is
+   the second, Claude's is the fourth, so index within the block rather than
+   by name alone.
 3. Formatter proof: `pnpm test` countdown case `4d 20h` is the long-window
    bucket shape
-4. Live proof: the same `live-usage.json` carries the 604800-second window.
-   Confirm its `used_percent` and reset fields alongside the short window.
+4. Live proof: `live-usage.json` carries the Codex 604800-second window and
+   `live-claude-usage.json` carries the Claude `seven_day` object. Confirm
+   the used figures and reset fields alongside the short window.
 5. Ready-state proof needs `pnpm tauri dev`: figure `N%`, `Resets` in
    `Nd Nh` form, `Remaining` at `100 - used`
 
 ## Gotchas
 
-- Primary and secondary windows are assigned by duration, not position.
-  `parse_usage` searches both for 18000 and 604800, so a swapped payload
-  still lands correctly (`cargo test maps_windows_by_duration...`).
-- Unknown durations (missing, 3600, fractional) leave both entries
+- For Codex, primary and secondary windows are assigned by duration, not
+  position. `parse_usage` searches both for 18000 and 604800, so a swapped
+  payload still lands correctly (`cargo test maps_windows_by_duration...`).
+  Claude reads the literal `seven_day` field and supplies the duration
+  itself, so that rule does not govern the Claude entry.
+- Unknown durations (missing, 3600, fractional) leave both Codex entries
   unavailable rather than guessing. Do not assert a zero in that case.

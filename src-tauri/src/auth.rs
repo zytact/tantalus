@@ -7,7 +7,8 @@ use thiserror::Error;
 
 /// The two logins Tantalus reads. Each one keeps its credentials in its own directory, under its
 /// own override variable, so every lookup is parameterised by the provider rather than duplicated.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Provider {
     Codex,
     Claude,

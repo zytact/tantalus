@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Single live refresh against the real ChatGPT usage APIs.
+# Single live refresh against the real Codex and Claude usage APIs.
 # Mirrors src-tauri/src/api.rs: WHAM usage first, Codex usage fallback,
-# reset credits separately, 12s timeout per request, one pass only (no loop).
+# reset credits separately, Claude usage from api.anthropic.com,
+# 12s timeout per request, one pass only (no loop).
+# The exit code reports the Codex leg; the Claude leg is reported in the log
+# and in live-claude-usage.json.
 # The token is read into memory, never printed, never written to disk,
 # and never passed on any command line. Response bodies contain no tokens.
 # Usage: live-check.sh <EVIDENCE_DIR>
@@ -17,6 +20,7 @@ evidence = sys.argv[1]
 wham = "https://chatgpt.com/backend-api/wham/usage"
 codex = "https://chatgpt.com/backend-api/codex/usage"
 credits_url = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+claude_url = "https://api.anthropic.com/api/oauth/usage"
 
 codex_home = os.environ.get("CODEX_HOME", "")
 candidates = []
@@ -24,6 +28,20 @@ if codex_home:
     candidates.append(os.path.join(codex_home, "auth.json"))
 else:
     candidates.append(os.path.join(os.path.expanduser("~"), ".codex", "auth.json"))
+
+def read_token(path, paths):
+    """Reads one credential file and returns its access token, never printing it."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.loads(handle.read())
+    except (OSError, json.JSONDecodeError):
+        return None
+    for keys in paths:
+        token = string_at(value, keys)
+        if token:
+            return token
+    return None
+
 
 def string_at(value, path):
     current = value
@@ -143,6 +161,41 @@ if usage_body is not None:
     print(f"LIVE: usage source={usage_source} {summarize_usage(usage_body)}")
 if credits_body is not None and credits_status == 200:
     print(f"LIVE: {summarize_credits(credits_body)}")
+
+# Claude is a separate login and a separate endpoint, so it is read and reported on its own.
+claude_home = os.environ.get("CLAUDE_CONFIG_DIR", "")
+claude_path = os.path.join(claude_home or os.path.join(os.path.expanduser("~"), ".claude"),
+                           ".credentials.json")
+claude_token = read_token(claude_path, (["claudeAiOauth", "accessToken"],
+                                        ["access_token"], ["accessToken"]))
+if not claude_token:
+    print(f"LIVE: claude auth_missing (no usable token at {claude_path})")
+else:
+    request = urllib.request.Request(claude_url, method="GET", headers={
+        "accept": "application/json",
+        "Authorization": f"Bearer {claude_token}",
+        "anthropic-beta": "oauth-2025-04-20",
+        "User-Agent": "tantalus/0.1",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            claude_status, claude_body = response.status, response.read()
+    except Exception as error:  # noqa: BLE001 - summarized, never leaks headers
+        claude_status, claude_body = getattr(error, "code", None) or "error", None
+    print(f"LIVE: claude usage -> {claude_status}")
+    if claude_body is not None and claude_status == 200:
+        with open(os.path.join(evidence, "live-claude-usage.json"), "wb") as handle:
+            handle.write(claude_body)
+        try:
+            payload = json.loads(claude_body)
+            windows = {key: sorted(payload.get(key).keys())
+                       for key in ("five_hour", "seven_day")
+                       if isinstance(payload.get(key), dict)}
+            print(f"LIVE: claude windows={windows} "
+                  f"extra_usage present={payload.get('extra_usage') is not None}")
+        except (json.JSONDecodeError, AttributeError):
+            print("LIVE: claude body is not the expected JSON object")
+del claude_token
 
 # Token and account id stay in this process only; nothing above prints them.
 if usage_body is None:

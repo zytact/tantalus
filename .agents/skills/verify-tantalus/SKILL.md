@@ -1,14 +1,17 @@
 ---
 name: verify-tantalus
-description: Drive the Tantalus Codex usage tray app (React webview plus Rust backend) through an isolated Vite server, vitest and cargo tests, a browser tab, and a single live refresh of the real ChatGPT usage APIs. Use when verifying the allowance view, refresh, tray behavior, or usage parsing.
+description: Drive the Tantalus Codex and Claude usage tray app (React webview plus Rust backend) through an isolated Vite server, vitest and cargo tests, a browser tab, and a single live refresh of the real usage APIs. Use when verifying the allowance view, refresh, the provider switches, tray behavior, or usage parsing.
 ---
 
 # Verify Tantalus
 
-Tantalus is a Tauri 2 desktop app. Rust reads `auth.json` and polls the
-usage APIs every 5 minutes. The React webview in `src/main.tsx` receives a
-token-free `UsageSnapshot` and renders Short window (5h), Long window (7d),
-Reset credits, a Refresh button, and a status line.
+Tantalus is a Tauri 2 desktop app. Rust reads the Codex and Claude
+credential files and polls the usage APIs every 5 minutes. The React webview
+in `src/main.tsx` receives a token-free `UsageSnapshot` and renders one block
+per provider: an on/off switch row with a status word, then Short window
+(5h), Long window (7d), and Reset credits (Codex) or Extra usage (Claude),
+above a shared Refresh button. A provider whose switch is off is not polled
+at all.
 
 ## Launch
 
@@ -33,11 +36,11 @@ calls happen only through `scripts/live-check.sh` (Drive step 4).
 
 Ready means: HTTP 200 on `/`, HTML contains `<div id="root">`, and the dev
 server process from the pidfile is alive. In a plain browser tab the console
-shows two `Uncaught (in promise)` errors from `invoke("cached_usage")`.
+shows `Uncaught (in promise)` errors from `invoke("cached_usage")`.
 That is expected: Tauri IPC does not exist outside `pnpm tauri dev`, so the
-view stays in its Loading shell (`Loading - no successful update yet`, two
-`Window unavailable` regions). That shell is what headless verification
-proves.
+view stays in its Loading shell (header `no successful update yet`, both
+switch rows `LOADING`, four `Window unavailable` regions, two per provider).
+That shell is what headless verification proves.
 
 Full desktop launch (`pnpm tauri dev`) is manual-only, on a real Linux, macOS,
 or Windows desktop with tray support. It needs the Tauri system deps
@@ -70,7 +73,8 @@ It answers "is this instance worth driving?" without changing state:
 - repo version matches `src-tauri/tauri.conf.json` (`productName Tantalus`,
   `devUrl http://localhost:1420`) and `dist/` exists after `pnpm build`
 - auth check is read-only: notes whether `CODEX_HOME` is set and whether
-  `$HOME/.codex/auth.json` exists, but never prints the token
+  `$HOME/.codex/auth.json` exists, but never prints the token. It does not
+  cover the Claude login; `scripts/live-check.sh` reports that one.
 - fails closed when the port answers but the pid is not ours: stop and pick
   another port instead of driving someone else's server
 
@@ -109,36 +113,42 @@ client bundle references the real handles: `Short window`, `Long window`,
 
 - `role=button[name="Refresh"]` (shows `Refreshing` and `aria-busy=true`
   while the invoke is in flight)
-- `role=region[name="Window unavailable"]` x2 in Loading state, or
-  `role=region[name="Short window"]` and `role=region[name="Long window"]`
-  once Tauri delivers durations
+- `role=switch[name="Codex"]` and `role=switch[name="Claude"]` with
+  `aria-checked`; the entries below a row render only while it is checked
+- `role=region[name="Window unavailable"]` x4 in Loading state (two per
+  provider), or `role=region[name="Short window"]` and
+  `role=region[name="Long window"]` per provider once Tauri delivers
+  durations
 - `role=progressbar[name="Short window usage"]` with `aria-valuetext` of
   `Unavailable` or `42%`
-- `role=region[name="Reset credits"]`, `role=status` for the degraded notice
+- `role=region[name="Reset credits"]` (Codex) or
+  `role=region[name="Extra usage"]` (Claude), `role=status` for the degraded
+  notice
 - visible text anchors: `Allowance`, `AUTO-REFRESHES EVERY 5 MINUTES` (CSS
   uppercases the `Auto-refreshes every 5 minutes` footer)
 
-Clicking Refresh in a plain browser tab does nothing observable beyond a
-brief disabled state, because `invoke("refresh_usage")` rejects without the
-Rust side. Do not treat that as a failure. The Ready, Stale, AuthMissing, and
-Error renderings plus the tray menu (`Show usage`, `Refresh now`, `Quit`,
-`5h: N% used`, `7d: N% used`) are only drivable under `pnpm tauri dev` on a
-real desktop. There, drive with the keyboard and menu, not coordinates:
-Tab to Refresh, Enter, and read the status line (`Live`, `Blocked until the
-next reset`, `Showing cached data`, `Authentication needed`,
-`Could not refresh`).
+Clicking Refresh or a provider switch in a plain browser tab does nothing
+observable, because `invoke` rejects without the Rust side. Do not treat that
+as a failure. The Ready, Stale, AuthMissing, and Error renderings, the real
+switch behavior, and the tray menu (one line per enabled provider formatted
+`Codex  5h 42%  7d 8%`, then `Show usage`, `Refresh now`, `Quit`) are only
+drivable under `pnpm tauri dev` on a real desktop. There, drive with the
+keyboard and menu, not coordinates: Tab to Refresh, Enter, and read each
+provider's status word (`Live`, `Blocked until reset`, `Cached`,
+`Not signed in`, `Could not refresh`, `Off`).
 
-Never point `CODEX_HOME` at the real home during verification. When a
-credential fixture is needed, create
+Never point `CODEX_HOME` or `CLAUDE_CONFIG_DIR` at the real home during
+verification. When a credential fixture is needed, create
 `/tmp/opencode/tantalus-verify/coverage-home/` with a fake `auth.json`
 (marked verification scaffolding) and let the cleanup helper delete it. Never
 send a real token to the dev server or paste one into the browser tab.
 Tokens stay in Rust memory only per `src-tauri/src/lib.rs` and `api.rs`.
 
 4. Live refresh (necessary, single pass, redacted). This is the only step
-that touches the network or the real credential file, and it mirrors
+that touches the network or the real credential files, and it mirrors
 `src-tauri/src/api.rs` exactly: WHAM usage first, Codex usage fallback,
-reset credits separately, 12s timeout per request, no loop:
+reset credits separately, Claude usage from `api.anthropic.com`, 12s timeout
+per request, no loop:
 
 ```sh
 EVIDENCE=/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>
@@ -146,14 +156,16 @@ scripts/live-check.sh "$EVIDENCE" 2>&1 | tee "$EVIDENCE/live-check.log"
 ```
 
 It resolves credentials the same way Rust does (`CODEX_HOME/auth.json` wins,
-else `~/.codex/auth.json`), reads the token into memory only, and never
+else `~/.codex/auth.json`; `CLAUDE_CONFIG_DIR/.credentials.json` wins, else
+`~/.claude/.credentials.json`), reads each token into memory only, and never
 prints it, writes it, or passes it on a command line. The log records only
 presence (`account_id present=True/False`), endpoint choice, HTTP statuses,
 window key names, and credit counts. Response bodies go to
-`live-usage.json` and `live-credits.json`; they contain usage figures, not
-tokens. Run it exactly once per proof run. Exit 0 means usage plus credits
-are 200 and JSON; exit 1 means the usage-failed error path; exit 2 means the
-auth-missing path. A 401/403 is a credential outcome, not a helper bug:
+`live-usage.json`, `live-credits.json`, and `live-claude-usage.json`; they
+contain usage figures, not tokens. Run it exactly once per proof run. The
+exit code reports the Codex leg: 0 means usage plus credits are 200 and
+JSON, 1 the usage-failed error path, 2 the auth-missing path. The Claude leg
+is reported on its own `LIVE: claude usage -> <status>` line. A 401/403 is a credential outcome, not a helper bug:
 record it and stop.
 
 ## Evidence
@@ -166,9 +178,9 @@ Write every run to `/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>/`:
 - `check-ui.log` (static shell assertions)
 - `visible-text.txt` (browser snapshot visible text) and `snapshot.json`
   (interactive elements plus ARIA) when the browser tab was used
-- `live-usage.json`, `live-credits.json` (raw API bodies, no tokens), and
-  `live-check.log` (redacted summary: endpoint, statuses, window keys,
-  credit counts) from the single live refresh
+- `live-usage.json`, `live-credits.json`, `live-claude-usage.json` (raw API
+  bodies, no tokens), and `live-check.log` (redacted summary: endpoint,
+  statuses, window keys, credit counts) from the single live refresh
 - `screenshot.png` when the harness captures one
 
 Proof standards: exercise the real user path, not internal setters or
@@ -176,10 +188,13 @@ test-only endpoints. Capture the action and the resulting state, not just the
 final screen. Verify side effects alongside what is visible: `dist/` from
 `pnpm build`, suite exit codes, the live HTTP statuses and figures, and
 (under Tauri only) the tray tooltip and menu labels. Fixture suites prove the
-parsing edges; the single live refresh proves the real credential file, the
+parsing edges; the single live refresh proves the real credential files, the
 WHAM-first fallback, and the Ready path against
-`https://chatgpt.com/backend-api/*`. Reads only: one GET per endpoint, no
-writes, no polling loop. Tantalus has
+`https://chatgpt.com/backend-api/*` and
+`https://api.anthropic.com/api/oauth/usage`. Reads only: one GET per
+endpoint, no writes, no polling loop. The provider switches do write
+`providers.json`, so they are proven under `pnpm tauri dev` only, never by
+the headless harness. Tantalus has
 no dry-run flag, so there is nothing to second-guess by name.
 
 ## Cleanup
@@ -208,5 +223,5 @@ All helpers live in `scripts/` and are executable:
 - `scripts/cleanup.sh` - kill only what launch started, keep evidence
 
 Feature map is in `features/`: `README.md` plus one file per user-facing
-feature. Drive the map entry named in the task; one mapped feature per proof
+feature, including `provider-switch.md` for the per-provider on/off switch. Drive the map entry named in the task; one mapped feature per proof
 run is enough because the map lists the rest.

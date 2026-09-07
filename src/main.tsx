@@ -5,26 +5,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { absoluteTime, countdown, creditAmount, creditExpiry, lastUpdate, remainingPercent, usagePercent } from "./presentation";
+import { absoluteTime, countdown, creditAmount, creditExpiry, lastUpdate, remainingPercent, statusLine, usagePercent } from "./presentation";
+import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import "./styles.css";
-
-type WindowUsage = { used_percent: number | null; limit_window_seconds: number | null; reset_at_epoch: number | null };
-type ResetCredit = { expires_at_epoch: number | null };
-type ExtraUsage = { enabled: boolean; used_credits: number | null; monthly_limit: number | null; currency: string | null };
-type ProviderUsage = {
-  five_hour: WindowUsage;
-  seven_day: WindowUsage;
-  allowed: boolean | null;
-  limit_reached: boolean | null;
-  reset_credits: ResetCredit[];
-  reset_credit_count: number | null;
-  extra_usage: ExtraUsage | null;
-  last_successful_update_epoch: number | null;
-  status: "ready" | "loading" | "stale" | "auth_missing" | "error";
-  error_message: string | null;
-};
-type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage };
-type ProviderId = keyof UsageSnapshot;
 
 const emptyWindow: WindowUsage = { used_percent: null, limit_window_seconds: null, reset_at_epoch: null };
 const emptyProvider: ProviderUsage = {
@@ -32,19 +15,10 @@ const emptyProvider: ProviderUsage = {
   reset_credits: [], reset_credit_count: null, extra_usage: null,
   last_successful_update_epoch: null, status: "loading", error_message: null
 };
-const emptySnapshot: UsageSnapshot = { codex: emptyProvider, claude: emptyProvider };
+const emptySnapshot: UsageSnapshot = { codex: emptyProvider, claude: emptyProvider, enabled: { codex: true, claude: true } };
 
+const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
 const providerNames: Record<ProviderId, string> = { codex: "Codex", claude: "Claude" };
-
-function statusLine(provider: ProviderUsage): string {
-  switch (provider.status) {
-    case "auth_missing": return "Not signed in";
-    case "error": return "Could not refresh";
-    case "stale": return "Cached";
-    case "loading": return "Loading";
-    default: return provider.allowed === false || provider.limit_reached ? "Blocked until reset" : "Live";
-  }
-}
 
 /** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
 function Entry({ label, span, duration, window: usage }: { label: string; span: string; duration: number; window: WindowUsage }) {
@@ -112,17 +86,18 @@ function Extras({ provider }: { provider: ProviderUsage }) {
   );
 }
 
-function ProviderSection({ id, provider, open, onToggle }: { id: ProviderId; provider: ProviderUsage; open: boolean; onToggle: () => void }) {
+/** The switch is the provider itself: switching it off stops Rust polling that provider. */
+function ProviderSection({ id, provider, enabled, onToggle }: { id: ProviderId; provider: ProviderUsage; enabled: boolean; onToggle: (enabled: boolean) => void }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
   return (
     <div className="provider">
-      <button className="provider-row" aria-expanded={open} onClick={onToggle}>
+      <button className="provider-row" role="switch" aria-checked={enabled} aria-label={name} onClick={() => onToggle(!enabled)}>
         <span className="provider-name">{name}</span>
-        <span className="provider-status">{statusLine(provider)}</span>
+        <span className="provider-status">{statusLine(provider, enabled)}</span>
         <span className="switch-track" aria-hidden="true"><span className="switch-knob" /></span>
       </button>
-      {open && (
+      {enabled && (
         <>
           {degraded && (
             <p className="notice" role="status">{provider.error_message ?? "The last successful reading remains visible."}</p>
@@ -139,7 +114,6 @@ function ProviderSection({ id, provider, open, onToggle }: { id: ProviderId; pro
 function App() {
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [refreshing, setRefreshing] = useState(false);
-  const [open, setOpen] = useState<ProviderId[]>(["codex", "claude"]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -153,12 +127,15 @@ function App() {
     return () => { void unlisten.then((stop) => stop()); };
   }, []);
 
-  const toggle = (id: ProviderId) =>
-    setOpen((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  const setEnabled = async (provider: ProviderId, enabled: boolean) => {
+    setSnapshot(await invoke<UsageSnapshot>("set_provider_enabled", { provider, enabled }));
+  };
 
   const updated = Math.max(
-    snapshot.codex.last_successful_update_epoch ?? 0,
-    snapshot.claude.last_successful_update_epoch ?? 0
+    0,
+    ...providerIds
+      .filter((id) => snapshot.enabled[id])
+      .map((id) => snapshot[id].last_successful_update_epoch ?? 0)
   );
 
   return (
@@ -173,8 +150,14 @@ function App() {
         </button>
       </header>
 
-      {(["codex", "claude"] as const).map((id) => (
-        <ProviderSection key={id} id={id} provider={snapshot[id]} open={open.includes(id)} onToggle={() => toggle(id)} />
+      {providerIds.map((id) => (
+        <ProviderSection
+          key={id}
+          id={id}
+          provider={snapshot[id]}
+          enabled={snapshot.enabled[id]}
+          onToggle={(enabled) => void setEnabled(id, enabled)}
+        />
       ))}
 
       <footer>Auto-refreshes every 5 minutes</footer>

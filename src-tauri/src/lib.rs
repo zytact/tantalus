@@ -1,11 +1,16 @@
 mod api;
 mod auth;
+mod settings;
 mod usage;
 
 use auth::Provider;
-use std::sync::atomic::{AtomicBool, Ordering};
+use settings::ProviderSettings;
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{IsMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State,
 };
@@ -31,6 +36,7 @@ struct AppState {
     snapshot: Mutex<UsageSnapshot>,
     refreshing: AtomicBool,
     client: reqwest::Client,
+    settings_path: PathBuf,
 }
 
 #[tauri::command]
@@ -39,6 +45,33 @@ async fn refresh_usage(
     app: AppHandle,
 ) -> Result<UsageSnapshot, String> {
     Ok(refresh(&state, &app).await)
+}
+
+/// The user's switch for one provider. Turning it off stops the polling and clears the tray line;
+/// turning it on refreshes that provider straight away. The choice is written to disk either way.
+#[tauri::command]
+async fn set_provider_enabled(
+    provider: Provider,
+    enabled: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<UsageSnapshot, String> {
+    {
+        let mut snapshot = state.snapshot.lock().await;
+        snapshot.enabled.set(provider, enabled);
+        if !enabled {
+            *provider_usage(&mut snapshot, provider) = ProviderUsage::default();
+        }
+        if let Err(error) = settings::save(&state.settings_path, &snapshot.enabled) {
+            eprintln!("could not save the provider switches: {error}");
+        }
+        update_tray_menu(&app, &snapshot);
+        let _ = app.emit("usage-snapshot", snapshot.clone());
+    }
+    if enabled {
+        return Ok(refresh(&state, &app).await);
+    }
+    Ok(state.snapshot.lock().await.clone())
 }
 
 #[tauri::command]
@@ -50,17 +83,41 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
     if state.refreshing.swap(true, Ordering::AcqRel) {
         return state.snapshot.lock().await.clone();
     }
+    let enabled = state.snapshot.lock().await.enabled;
     let (codex, claude) = tokio::join!(
-        read_provider(state, Provider::Codex),
-        read_provider(state, Provider::Claude)
+        read_enabled(state, Provider::Codex, enabled),
+        read_enabled(state, Provider::Claude, enabled)
     );
     let mut snapshot = state.snapshot.lock().await;
-    apply(&mut snapshot.codex, codex);
-    apply(&mut snapshot.claude, claude);
+    if let Some(codex) = codex {
+        apply(&mut snapshot.codex, codex);
+    }
+    if let Some(claude) = claude {
+        apply(&mut snapshot.claude, claude);
+    }
     state.refreshing.store(false, Ordering::Release);
     update_tray_menu(app, &snapshot);
     let _ = app.emit("usage-snapshot", snapshot.clone());
     snapshot.clone()
+}
+
+/// A disabled provider is never read, so no credential file is opened and no request is sent.
+async fn read_enabled(
+    state: &AppState,
+    provider: Provider,
+    enabled: ProviderSettings,
+) -> Option<Result<ProviderUsage, RefreshError>> {
+    if !enabled.enabled(provider) {
+        return None;
+    }
+    Some(read_provider(state, provider).await)
+}
+
+fn provider_usage(snapshot: &mut UsageSnapshot, provider: Provider) -> &mut ProviderUsage {
+    match provider {
+        Provider::Codex => &mut snapshot.codex,
+        Provider::Claude => &mut snapshot.claude,
+    }
 }
 
 async fn read_provider(
@@ -102,24 +159,20 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
         return;
     };
-    let Ok(codex_item) = MenuItem::with_id(
-        app,
-        "codex",
-        tray_line("Codex", &snapshot.codex),
-        false,
-        None::<&str>,
-    ) else {
-        return;
-    };
-    let Ok(claude_item) = MenuItem::with_id(
-        app,
-        "claude",
-        tray_line("Claude", &snapshot.claude),
-        false,
-        None::<&str>,
-    ) else {
-        return;
-    };
+    let mut lines = Vec::new();
+    for (provider, id, name, usage) in [
+        (Provider::Codex, "codex", "Codex", &snapshot.codex),
+        (Provider::Claude, "claude", "Claude", &snapshot.claude),
+    ] {
+        if !snapshot.enabled.enabled(provider) {
+            continue;
+        }
+        let Ok(item) = MenuItem::with_id(app, id, tray_line(name, usage), false, None::<&str>)
+        else {
+            return;
+        };
+        lines.push(item);
+    }
     let Ok(show) = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>) else {
         return;
     };
@@ -130,10 +183,16 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Ok(quit) = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) else {
         return;
     };
-    if let Ok(menu) = Menu::with_items(
-        app,
-        &[&codex_item, &claude_item, &show, &refresh_item, &quit],
-    ) {
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = lines
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<_>)
+        .collect();
+    items.extend([
+        &show as &dyn IsMenuItem<_>,
+        &refresh_item as &dyn IsMenuItem<_>,
+        &quit as &dyn IsMenuItem<_>,
+    ]);
+    if let Ok(menu) = Menu::with_items(app, &items) {
         let _ = tray.set_menu(Some(menu));
     }
 }
@@ -180,13 +239,26 @@ fn tray_icon() -> tauri::image::Image<'static> {
 pub fn run() {
     let client = api::client().expect("failed to create HTTP client");
     tauri::Builder::default()
-        .manage(AppState {
-            snapshot: Mutex::new(UsageSnapshot::default()),
-            refreshing: AtomicBool::new(false),
-            client,
-        })
-        .invoke_handler(tauri::generate_handler![refresh_usage, cached_usage])
-        .setup(|app| {
+        .invoke_handler(tauri::generate_handler![
+            refresh_usage,
+            cached_usage,
+            set_provider_enabled
+        ])
+        .setup(move |app| {
+            let settings_path = app
+                .path()
+                .app_config_dir()
+                .expect("no config directory for this platform")
+                .join("providers.json");
+            app.manage(AppState {
+                snapshot: Mutex::new(UsageSnapshot {
+                    enabled: settings::load(&settings_path),
+                    ..UsageSnapshot::default()
+                }),
+                refreshing: AtomicBool::new(false),
+                client,
+                settings_path,
+            });
             let show = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>)?;
             let refresh_item =
                 MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
@@ -243,4 +315,43 @@ pub fn run() {
                 show_window(_app);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state() -> AppState {
+        AppState {
+            snapshot: Mutex::new(UsageSnapshot::default()),
+            refreshing: AtomicBool::new(false),
+            client: api::client().expect("client"),
+            settings_path: std::env::temp_dir().join("tantalus-test-providers.json"),
+        }
+    }
+
+    /// The switch has to gate the read itself: a disabled provider must not reach the credential
+    /// file or the network, so this asserts on the skip rather than on a rendered figure.
+    #[tokio::test]
+    async fn a_disabled_provider_is_never_read() {
+        let state = state();
+        let settings = ProviderSettings {
+            codex: false,
+            claude: false,
+        };
+        assert!(read_enabled(&state, Provider::Codex, settings)
+            .await
+            .is_none());
+        assert!(read_enabled(&state, Provider::Claude, settings)
+            .await
+            .is_none());
+    }
+
+    #[test]
+    fn the_switch_targets_only_its_own_provider() {
+        let mut snapshot = UsageSnapshot::default();
+        snapshot.enabled.set(Provider::Claude, false);
+        assert!(snapshot.enabled.enabled(Provider::Codex));
+        assert!(!snapshot.enabled.enabled(Provider::Claude));
+    }
 }
