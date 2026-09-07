@@ -37,9 +37,7 @@ clears the stored choice.
 
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
    static shell.
-2. In a bare browser tab, `cached_usage` rejects and the app shows `Could not
-load provider settings`. It renders no switches, so do not click or assert
-   a provider switch there.
+2. Confirm the bare browser baseline: `Could not load provider settings` and no switches.
 3. Logic proof without Tauri: `vp test` covers `statusLine(..., false)`
    returning `Off`; `cargo test` covers the `providers.json` round trip
    (`settings::tests`) and that a disabled provider is never read
