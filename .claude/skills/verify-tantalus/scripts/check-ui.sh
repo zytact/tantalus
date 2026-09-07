@@ -25,8 +25,8 @@ else
   echo "OK entry script $bundle_url"
 fi
 
-for needle in "Short window" "Long window" "Reset credits" "Refresh" "Auto-refreshes every 5 minutes" "usage-snapshot" "cached_usage" "refresh_usage"; do
-  if grep -rq "$needle" src/main.tsx src-tauri/src/lib.rs 2>/dev/null; then
+for needle in "Short window" "Long window" "Reset credits" "Extra usage" "Refresh" "Auto-refreshes every 5 minutes" "usage-snapshot" "cached_usage" "refresh_usage" "set_provider_enabled" 'role="switch"'; do
+  if grep -rq -- "$needle" src/main.tsx src/presentation.ts src-tauri/src/lib.rs 2>/dev/null; then
     echo "OK repo contains handle: $needle"
   else
     echo "FAIL repo handle missing: $needle"

@@ -7,7 +7,8 @@ use thiserror::Error;
 
 /// The two logins Tantalus reads. Each one keeps its credentials in its own directory, under its
 /// own override variable, so every lookup is parameterised by the provider rather than duplicated.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Provider {
     Codex,
     Claude,
@@ -206,10 +207,12 @@ mod wsl {
 fn distribution_names(output: &[u8]) -> Vec<String> {
     let text = if output.len() >= 2
         && output.len().is_multiple_of(2)
-        && output.chunks_exact(2).all(|pair| pair[1] == 0)
+        && output.as_chunks::<2>().0.iter().all(|pair| pair[1] == 0)
     {
         let units: Vec<u16> = output
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect();
         String::from_utf16_lossy(&units)

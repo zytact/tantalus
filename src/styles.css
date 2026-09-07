@@ -29,8 +29,8 @@ button:focus-visible { outline: 3px solid #a33418; outline-offset: 2px; }
 .provider-status { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: #8b8371; }
 .switch-track { display: block; width: 34px; height: 18px; padding: 2px; border: 1px solid #191713; border-radius: 999px; }
 .switch-knob { display: block; width: 12px; height: 12px; border-radius: 50%; background: #191713; transition: transform 140ms ease-out; }
-.provider-row[aria-expanded="true"] .switch-track { background: #191713; }
-.provider-row[aria-expanded="true"] .switch-knob { background: #fbf8f1; transform: translateX(16px); }
+.provider-row[aria-checked="true"] .switch-track { background: #191713; }
+.provider-row[aria-checked="true"] .switch-knob { background: #fbf8f1; transform: translateX(16px); }
 
 .entry { padding: 16px 0; border-bottom: 1px solid #ddd6c6; }
 .entry-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }

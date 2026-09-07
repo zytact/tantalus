@@ -1,3 +1,4 @@
+use crate::settings::ProviderSettings;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -43,6 +44,7 @@ pub struct ProviderUsage {
 pub struct UsageSnapshot {
     pub codex: ProviderUsage,
     pub claude: ProviderUsage,
+    pub enabled: ProviderSettings,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
