@@ -2,8 +2,6 @@ use crate::auth::Provider;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
-/// Which providers Tantalus polls. Persisted next to the app config so a provider that was
-/// switched off stays off across restarts.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct ProviderSettings {
     pub codex: bool,
@@ -35,8 +33,6 @@ impl ProviderSettings {
     }
 }
 
-/// A missing or unreadable file means both providers stay on. The file is a preference, so a
-/// corrupt one is worth ignoring rather than failing the launch over.
 pub fn load(path: &Path) -> ProviderSettings {
     fs::read_to_string(path)
         .ok()

@@ -40,7 +40,6 @@ pub struct ProviderUsage {
     pub status: SnapshotStatus,
     pub error_message: Option<String>,
 }
-/// Both readings plus the switches that decide which providers get polled at all.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UsageSnapshot {
     pub codex: ProviderUsage,

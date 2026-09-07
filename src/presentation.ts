@@ -1,6 +1,3 @@
-/** The token-free snapshot Rust emits, plus the formatters for it. Every formatter keeps
- * "unavailable" distinct from a real zero. */
-
 export type WindowUsage = { used_percent: number | null; limit_window_seconds: number | null; reset_at_epoch: number | null };
 export type ResetCredit = { expires_at_epoch: number | null };
 export type ExtraUsage = { enabled: boolean; used_credits: number | null; monthly_limit: number | null; currency: string | null };
@@ -19,7 +16,6 @@ export type ProviderUsage = {
 export type ProviderId = "codex" | "claude";
 export type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage; enabled: Record<ProviderId, boolean> };
 
-/** A switched-off provider is not polled at all, so its status says nothing about it. */
 export function statusLine(provider: ProviderUsage, enabled: boolean): string {
   if (!enabled) return "Off";
   switch (provider.status) {

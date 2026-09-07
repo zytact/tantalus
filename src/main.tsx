@@ -86,7 +86,6 @@ function Extras({ provider }: { provider: ProviderUsage }) {
   );
 }
 
-/** The switch is the provider itself: switching it off stops Rust polling that provider. */
 function ProviderSection({ id, provider, enabled, onToggle }: { id: ProviderId; provider: ProviderUsage; enabled: boolean; onToggle: (enabled: boolean) => void }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
@@ -114,6 +113,7 @@ function ProviderSection({ id, provider, enabled, onToggle }: { id: ProviderId; 
 function App() {
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [refreshing, setRefreshing] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -128,7 +128,12 @@ function App() {
   }, []);
 
   const setEnabled = async (provider: ProviderId, enabled: boolean) => {
-    setSnapshot(await invoke<UsageSnapshot>("set_provider_enabled", { provider, enabled }));
+    try {
+      setSnapshot(await invoke<UsageSnapshot>("set_provider_enabled", { provider, enabled }));
+      setToggleError(null);
+    } catch {
+      setToggleError("Could not save provider setting.");
+    }
   };
 
   const updated = Math.max(
@@ -149,6 +154,8 @@ function App() {
           {refreshing ? "Refreshing" : "Refresh"}
         </button>
       </header>
+
+      {toggleError && <p className="notice" role="alert">{toggleError}</p>}
 
       {providerIds.map((id) => (
         <ProviderSection

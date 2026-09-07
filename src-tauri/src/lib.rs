@@ -48,8 +48,6 @@ async fn refresh_usage(
     Ok(refresh(&state, &app).await)
 }
 
-/// The user's switch for one provider. Turning it off stops the polling and clears the tray line;
-/// turning it on refreshes that provider straight away. The choice is written to disk either way.
 #[tauri::command]
 async fn set_provider_enabled(
     provider: Provider,
@@ -57,16 +55,11 @@ async fn set_provider_enabled(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<UsageSnapshot, String> {
-    let snapshot = if enabled {
-        set_provider_snapshot(&state, provider, true).await
-    } else {
-        disable_provider(&state, provider).await
-    };
-    if let Err(error) = settings::save(&state.settings_path, &snapshot.enabled) {
-        eprintln!("could not save the provider switches: {error}");
-    }
-    update_tray_menu(&app, &snapshot);
-    let _ = app.emit("usage-snapshot", snapshot.clone());
+    let snapshot = apply_provider_toggle(&state, provider, enabled, |snapshot| {
+        update_tray_menu(&app, snapshot);
+        let _ = app.emit("usage-snapshot", snapshot.clone());
+    })
+    .await?;
     if enabled {
         return Ok(refresh(&state, &app).await);
     }
@@ -91,11 +84,17 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
             let mut snapshot = state.snapshot.lock().await;
             apply_enabled(&mut snapshot, Provider::Codex, codex);
             apply_enabled(&mut snapshot, Provider::Claude, claude);
-            snapshot.clone()
+            if repeat_refresh(&state.refreshing) {
+                None
+            } else {
+                let published = publish_snapshot(&snapshot, |snapshot| {
+                    update_tray_menu(app, snapshot);
+                    let _ = app.emit("usage-snapshot", snapshot.clone());
+                });
+                Some(published)
+            }
         };
-        if !repeat_refresh(&state.refreshing) {
-            update_tray_menu(app, &snapshot);
-            let _ = app.emit("usage-snapshot", snapshot.clone());
+        if let Some(snapshot) = snapshot {
             return snapshot;
         }
     }
@@ -119,22 +118,50 @@ async fn read_enabled(
     Some(fetch_provider(state, provider, credentials).await)
 }
 
-async fn set_provider_snapshot(
+async fn apply_provider_toggle<P>(
     state: &AppState,
     provider: Provider,
     enabled: bool,
-) -> UsageSnapshot {
+    publish: P,
+) -> Result<UsageSnapshot, String>
+where
+    P: FnOnce(&UsageSnapshot),
+{
+    let _request = if enabled {
+        None
+    } else {
+        Some(provider_request(state, provider).lock().await)
+    };
     let mut snapshot = state.snapshot.lock().await;
-    snapshot.enabled.set(provider, enabled);
+    let proposed =
+        persist_provider_settings(&state.settings_path, snapshot.enabled, provider, enabled)?;
+    snapshot.enabled = proposed;
     if !enabled {
         *provider_usage(&mut snapshot, provider) = ProviderUsage::default();
     }
+    let published = publish_snapshot(&snapshot, publish);
+    Ok(published)
+}
+
+fn publish_snapshot<P>(snapshot: &UsageSnapshot, publish: P) -> UsageSnapshot
+where
+    P: FnOnce(&UsageSnapshot),
+{
+    publish(snapshot);
     snapshot.clone()
 }
 
-async fn disable_provider(state: &AppState, provider: Provider) -> UsageSnapshot {
-    let _request = provider_request(state, provider).lock().await;
-    set_provider_snapshot(state, provider, false).await
+fn persist_provider_settings(
+    path: &std::path::Path,
+    current: settings::ProviderSettings,
+    provider: Provider,
+    enabled: bool,
+) -> Result<settings::ProviderSettings, String> {
+    let mut proposed = current;
+    proposed.set(provider, enabled);
+    settings::save(path, &proposed)
+        .map_err(|error| format!("Could not save provider setting: {error}"))?;
+    Ok(proposed)
 }
 
 fn provider_usage(snapshot: &mut UsageSnapshot, provider: Provider) -> &mut ProviderUsage {
@@ -224,7 +251,6 @@ fn repeat_refresh(refreshing: &AtomicU8) -> bool {
     }
 }
 
-/// A failed provider keeps whatever it last read, so a signed-out Claude never blanks out Codex.
 fn apply(provider: &mut ProviderUsage, result: Result<ProviderUsage, RefreshError>) {
     match result {
         Ok(fresh) => *provider = fresh,
@@ -409,7 +435,7 @@ pub fn run() {
 mod tests {
     use super::*;
     use settings::ProviderSettings;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex as StdMutex};
     use tokio::sync::oneshot;
 
     fn state() -> AppState {
@@ -476,7 +502,9 @@ mod tests {
             let state = Arc::clone(&state);
             async move {
                 started.send(()).unwrap();
-                disable_provider(&state, Provider::Codex).await;
+                apply_provider_toggle(&state, Provider::Codex, false, |_| {})
+                    .await
+                    .unwrap();
             }
         });
 
@@ -486,5 +514,59 @@ mod tests {
         drop(request);
         disabling.await.unwrap();
         assert!(!provider_enabled(&state, Provider::Codex).await);
+    }
+
+    #[tokio::test]
+    async fn a_failed_persistence_keeps_the_current_snapshot() {
+        let mut state = state();
+        let directory =
+            std::env::temp_dir().join(format!("tantalus-settings-failure-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("not-a-directory");
+        std::fs::write(&path, "file").unwrap();
+        state.settings_path = path.join("providers.json");
+        {
+            let mut snapshot = state.snapshot.lock().await;
+            snapshot.codex.status = SnapshotStatus::Ready;
+            snapshot.codex.five_hour.used_percent = Some(42.0);
+        }
+        assert!(
+            apply_provider_toggle(&state, Provider::Codex, false, |_| {})
+                .await
+                .is_err()
+        );
+        let snapshot = state.snapshot.lock().await;
+        assert!(snapshot.enabled.codex);
+        assert_eq!(snapshot.codex.status, SnapshotStatus::Ready);
+        assert_eq!(snapshot.codex.five_hour.used_percent, Some(42.0));
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[tokio::test]
+    async fn a_refresh_publication_precedes_a_following_toggle_publication() {
+        let state = Arc::new(state());
+        let events = Arc::new(StdMutex::new(Vec::new()));
+        let refresh_snapshot = state.snapshot.lock().await;
+        let toggling = tokio::spawn({
+            let state = Arc::clone(&state);
+            let events = Arc::clone(&events);
+            async move {
+                apply_provider_toggle(&state, Provider::Codex, false, move |snapshot| {
+                    events.lock().unwrap().push(snapshot.enabled.codex);
+                })
+                .await
+                .unwrap();
+            }
+        });
+        tokio::task::yield_now().await;
+        assert!(!toggling.is_finished());
+        publish_snapshot(&refresh_snapshot, {
+            let events = Arc::clone(&events);
+            move |snapshot| events.lock().unwrap().push(snapshot.enabled.codex)
+        });
+        drop(refresh_snapshot);
+        toggling.await.unwrap();
+        assert_eq!(*events.lock().unwrap(), [true, false]);
     }
 }
