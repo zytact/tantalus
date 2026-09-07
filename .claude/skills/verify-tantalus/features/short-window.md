@@ -42,19 +42,19 @@ on to confirm the entry vanishes and returns with its figure.
    region, progressbar, or facts there.
 4. Static proof is `scripts/check-ui.sh 1421`; it checks the served shell,
    not a rendered window entry.
-5. Formatter proof without Tauri: `pnpm test` covers `usagePercent`,
+5. Formatter proof without Tauri: `vp test` covers `usagePercent`,
    `remainingPercent`, and `countdown` buckets used by this entry
 6. Live proof: `.agents/skills/verify-tantalus/scripts/live-check.sh` records the real 18000-second Codex
    window in `live-usage.json` and the Claude `five_hour` object in
    `live-claude-usage.json`. Confirm `used_percent` (Codex) and
    `utilization` (Claude) parse into the figure and `Resets` countdown.
-7. Ready-state proof needs `pnpm tauri dev` with credentials: figure shows
+7. Ready-state proof needs `vp run tauri dev` with credentials: figure shows
    `N%`, `Resets` shows `3h 29m` style coarse countdown, `aria-valuenow`
    matches the figure
 
 ## Gotchas
 
-- Plain `pnpm vite` never delivers a snapshot. After `cached_usage` rejects,
+- Plain `vp dev` never delivers a snapshot. After `cached_usage` rejects,
   it shows `Could not load provider settings` rather than any window entry.
 - Window mapping is exact for Codex: `limit_window_seconds` must equal 18000.
   Fractional `18000.9` and string `"604800.5"` stay unavailable by design

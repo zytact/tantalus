@@ -3,12 +3,12 @@ description: Build dist/, which tauri-build requires before any cargo command.
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@v4
-    - uses: actions/setup-node@v4
+    - uses: voidzero-dev/setup-vp@v1.17.0
       with:
         node-version: 24
-        cache: pnpm
+        cache: true
+        run-install: false
     - shell: bash
       run: |
-        pnpm install --frozen-lockfile
-        pnpm vite build
+        vp install --frozen-lockfile
+        vp build

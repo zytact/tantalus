@@ -1,22 +1,24 @@
-name: typecheck
+name: check
 
 on:
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: typecheck-${{ github.ref }}
+  group: check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  typecheck:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: voidzero-dev/setup-vp@v1.17.0
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm tsc --noEmit
+          cache: true
+          run-install: false
+      - run: vp install --frozen-lockfile
+      - run: vp fmt --check
+      - run: vp lint
+      - run: vp check --no-fmt --no-lint

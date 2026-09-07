@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: voidzero-dev/setup-vp@v1.17.0
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # typecheck runs in its own workflow
-      - run: pnpm vite build
+          cache: true
+          run-install: false
+      - run: vp install --frozen-lockfile
+      # Static checks run in their own workflow.
+      - run: vp build

@@ -6,9 +6,11 @@ Named for Tantalus, who stood in water he could never drink under fruit he could
 
 ## Run
 
+Install [Vite+](https://viteplus.dev/guide/) first, then run:
+
 ```sh
-pnpm install
-pnpm tauri dev
+vp install
+vp run tauri dev
 ```
 
 Each provider has its own header row with a switch. Switching a provider off stops Tantalus polling it: no credential read, no request, no tray line, and its windows and credits leave the window. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
@@ -18,10 +20,11 @@ Launching Tantalus opens the window. Closing it leaves the app running in the tr
 ## Build and check
 
 ```sh
-pnpm build
-pnpm test
+vp check
+vp build
+vp test
 cd src-tauri && cargo test
-pnpm tauri build
+vp run tauri build
 ```
 
 Build each platform's installer on that platform. Tauri does not cross-compile desktop bundles.
