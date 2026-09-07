@@ -52,6 +52,8 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -73,14 +75,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Without tagName, tauri-action builds the bundles and creates no release.
-      - if: env.PUBLISH != 'true'
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         with:
           args: ${{ matrix.args }}
 
-      - if: env.PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.target }}
           if-no-files-found: error
@@ -90,13 +89,27 @@ jobs:
             src-tauri/target/**/*.dmg
             src-tauri/target/**/*setup.exe
 
-      - if: env.PUBLISH == 'true'
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    if: github.event_name == 'push' || inputs.publish
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          tagName: ${{ inputs.tag || github.ref_name }}
-          releaseName: Tantalus ${{ inputs.tag || github.ref_name }}
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          pattern: bundle-*
+          path: bundles
+          merge-multiple: true
+
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          mapfile -t assets < <(find bundles -type f -print)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" --draft --title "Tantalus $TAG" --verify-tag
+          fi
