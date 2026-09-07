@@ -11,7 +11,7 @@ use std::{
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, State,
 };
 use tokio::sync::Mutex;
 use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
@@ -311,12 +311,36 @@ fn percent(value: Option<f64>) -> String {
     }
 }
 
+const MAIN_WINDOW: &str = "main";
+
+/// Closing the window destroys it, so the tray rebuilds it from the same configuration. A window
+/// that is hidden and shown again keeps a stale input region on Wayland, which leaves its titlebar
+/// buttons dead until tao 0.36 reaches a Tauri release (tauri-apps/tao#1218).
 fn show_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.unminimize();
         let _ = window.set_focus();
+        return;
     }
+    let Some(config) = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == MAIN_WINDOW)
+        .cloned()
+    else {
+        return;
+    };
+    // Every caller is an event handler, and building a window from one deadlocks on Windows.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = tauri::WebviewWindowBuilder::from_config(&app, &config)
+            .and_then(|builder| builder.build())
+        {
+            eprintln!("Failed to open the window: {error}");
+        }
+    });
 }
 
 /// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
@@ -329,19 +353,18 @@ fn tray_icon() -> tauri::image::Image<'static> {
 pub fn run() {
     let client = api::client().expect("failed to create HTTP client");
     tauri::Builder::default()
+        // A second launch belongs to the instance already in the tray, so it raises that
+        // window instead of starting a rival process with its own tray icon.
+        .plugin(tauri_plugin_single_instance::init(
+            |app, _arguments, _cwd| {
+                show_window(app);
+            },
+        ))
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
             cached_usage,
             set_provider_enabled
         ])
-        .on_window_event(|window, event| {
-            // The window is the app's only surface, so closing it hides it back into the tray.
-            // Quitting happens through the tray menu.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
         .setup(move |app| {
             let settings_path = app
                 .path()
@@ -408,12 +431,16 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running Tantalus")
-        .run(|_app, _event| {
+        .run(|_app, event| match event {
+            // Closing the window leaves the app in the tray. Only the tray's Quit item, which
+            // exits with a code, ends the process.
+            RunEvent::ExitRequested {
+                api, code: None, ..
+            } => api.prevent_exit(),
             // Clicking the dock icon on macOS reopens the app window.
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = _event {
-                show_window(_app);
-            }
+            RunEvent::Reopen { .. } => show_window(_app),
+            _ => {}
         });
 }
 

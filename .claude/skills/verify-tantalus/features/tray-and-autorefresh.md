@@ -1,7 +1,8 @@
 # Tray and autorefresh
 
-The app lives in the system tray. Closing the window hides it; the tray owns
-the menu, the tooltip, and the 5-minute polling schedule.
+The app lives in the system tray. The window opens on launch and closing it
+destroys the window rather than quitting the app; **Show usage** builds a new
+one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 
 ## Sub-features
 
@@ -12,7 +13,8 @@ the menu, the tooltip, and the 5-minute polling schedule.
 - A provider switched off has no tray line at all (`update_tray_menu`)
 - Tooltip `Tantalus`; left-click Up shows the window (right button belongs to
   the menu); macOS dock Reopen shows it; template icon on macOS
-- Closing the window hides it in the tray; **Quit** exits and stops polling
+- Closing the window destroys it and leaves the app in the tray; **Show usage**
+  builds a new one; **Quit** exits and stops polling
 - Rust owns polling: initial refresh at startup, then every 300 seconds via
   `tokio::time::sleep`, emitting `usage-snapshot` to the webview
 - Credential sources per provider: `CODEX_HOME/auth.json` else
@@ -46,7 +48,8 @@ Real proof is manual on a desktop OS:
 2. Read the tray menu: each provider line matches that provider's window
    figures, and a switched-off provider has no line
 3. Click **Show usage**, close the window, confirm the tray icon persists,
-   then **Quit** and confirm the process exits
+   then **Show usage** again and confirm the new window's minimize, maximize
+   and close buttons all respond, then **Quit** and confirm the process exits
 4. Leave it 5+ minutes and confirm the `updated` time advances without input
 5. Open webview devtools and search for the token: it must be absent
 
@@ -54,8 +57,10 @@ Real proof is manual on a desktop OS:
 
 - Reaching the WSL share starts the distribution, so the Windows lookup only
   scans WSL after the native home turns up nothing.
-- The tray app is a singleton. Never start a second `tauri dev` to verify;
-  drive the running one or ask the user to quit it first.
+- The tray app is a singleton, enforced by `tauri-plugin-single-instance`. A
+  second `tauri dev` exits at once and raises the running window, so a rebuilt
+  binary that seems to have no effect is usually the first instance still up.
+  Quit through the tray before starting a new run.
 - `pnpm tauri info` on this Fedora box reports `rsvg2: not installed`.
   Install system deps through the OS package manager when that blocks a
   desktop run, not through this project.
