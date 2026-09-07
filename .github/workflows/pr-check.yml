@@ -1,18 +1,17 @@
-name: build
+name: check
 
 on:
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-frontend
-      # format, lint and type checks run in their own workflow
-      - run: vp build
+      - run: vp check

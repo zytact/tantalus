@@ -50,9 +50,9 @@ else
   fail=1
 fi
 if [ -d dist ] && [ -f dist/index.html ]; then
-  echo "OK dist/index.html exists (run pnpm build if stale)"
+  echo "OK dist/index.html exists (run vp build if stale)"
 else
-  echo "WARN dist/ missing (run pnpm build before Tauri checks)"
+  echo "WARN dist/ missing (run vp build before Tauri checks)"
 fi
 
 if [ -n "${CODEX_HOME:-}" ]; then

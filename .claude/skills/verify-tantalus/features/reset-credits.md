@@ -35,7 +35,7 @@ USD` row instead. The `auth_missing` scenario renders the empty state:
    static shell.
 2. In a bare browser tab, `cached_usage` rejects. There are no Reset credits or
    Extra usage regions to assert.
-3. Formatter proof: `pnpm test` asserts `creditExpiry(null)` is
+3. Formatter proof: `vp test` asserts `creditExpiry(null)` is
    `No expiry reported` and a 2026 October epoch contains `Oct 4`
 4. Parsing proof: `cargo test parses_credit_container...`,
    `parses_rfc_3339_string_expiry`, and `numeric_string_expiry_is_read...`
@@ -45,7 +45,7 @@ USD` row instead. The `auth_missing` scenario renders the empty state:
    `.agents/skills/verify-tantalus/scripts/live-check.sh` is the real
    credits payload. Confirm its container, `available_count`, and per-credit
    expiries match the headline count and rows.
-6. Ready-state proof needs `pnpm tauri dev` or the mock: count headline plus one row per
+6. Ready-state proof needs `vp run tauri dev` or the mock: count headline plus one row per
    credit, each expiry naming month and day (weekday alone is not enough
    weeks out, per `presentation.ts`). In the Claude block, expect
    `Extra usage` with a `Monthly limit` row instead, matching

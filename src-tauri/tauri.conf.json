@@ -4,8 +4,8 @@
   "version": "0.0.3",
   "identifier": "dev.arnab.tantalus",
   "build": {
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "vp dev",
+    "beforeBuildCommand": "vp build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

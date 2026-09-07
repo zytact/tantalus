@@ -32,12 +32,12 @@ The `auth_missing` scenario flips both to `Window unavailable`.
 2. A bare-browser snapshot must not assert a provider block, region, or
    progressbar. It only shows the provider-settings load error after
    `cached_usage` rejects.
-3. Formatter proof: `pnpm test` countdown case `4d 20h` is the long-window
+3. Formatter proof: `vp test` countdown case `4d 20h` is the long-window
    bucket shape; the mock's Codex seven-day reset lands in the same shape
 4. Live proof: `live-usage.json` carries the Codex 604800-second window and
    `live-claude-usage.json` carries the Claude `seven_day` object. Confirm
    the used figures and reset fields alongside the short window.
-5. Ready-state proof needs `pnpm tauri dev` or the mock: the second region inside each
+5. Ready-state proof needs `vp run tauri dev` or the mock: the second region inside each
    enabled provider has `role=progressbar[name="Long window usage"]`, figure `N%`, `Resets` in
    `Nd Nh` form, `Remaining` at `100 - used`
 

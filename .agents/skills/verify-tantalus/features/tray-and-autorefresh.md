@@ -29,7 +29,7 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 
 ## How to get to it (user POV)
 
-Run `pnpm tauri dev`. Look for the hollow-square tray icon. Right-click
+Run `vp run tauri dev`. Look for the hollow-square tray icon. Right-click
 shows one line per enabled provider plus Show usage, Refresh now, Quit.
 Left-click shows the window. The footer `Auto-refreshes every 5 minutes`
 names the schedule.
@@ -44,7 +44,7 @@ provider sections or controls.
 
 Real proof is manual on a desktop OS:
 
-1. `pnpm tauri dev`, wait for the first refresh
+1. `vp run tauri dev`, wait for the first refresh
 2. Read the tray menu: each provider line matches that provider's window
    figures, and a switched-off provider has no line
 3. Click **Show usage**, close the window, confirm the tray icon persists,
@@ -61,7 +61,7 @@ Real proof is manual on a desktop OS:
   second `tauri dev` exits at once and raises the running window, so a rebuilt
   binary that seems to have no effect is usually the first instance still up.
   Quit through the tray before starting a new run.
-- `pnpm tauri info` on this Fedora box reports `rsvg2: not installed`.
+- `vp run tauri info` on this Fedora box reports `rsvg2: not installed`.
   Install system deps through the OS package manager when that blocks a
   desktop run, not through this project.
 - Display needed: no Xvfb in this container, so tray verification stays

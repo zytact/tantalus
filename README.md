@@ -7,9 +7,11 @@ Named for Tantalus, who stood in water he could never drink under fruit he could
 ## Run
 
 ```sh
-pnpm install
-pnpm tauri dev
+vp install
+vp run tauri dev
 ```
+
+`vp` is the [Vite+](https://viteplus.dev) CLI. Install it with `curl -fsSL https://vite.plus | bash`. It manages Node, pnpm, and the frontend toolchain.
 
 Each provider has its own header row with a switch. Switching a provider off stops Tantalus polling it: no credential read, no request, no tray line, and its windows and credits leave the window. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
 
@@ -18,11 +20,14 @@ Launching Tantalus opens the window. Closing it leaves the app running in the tr
 ## Build and check
 
 ```sh
-pnpm build
-pnpm test
+vp check
+vp test
+vp build
 cd src-tauri && cargo test
-pnpm tauri build
+vp run tauri build
 ```
+
+`vp check` verifies formatting with Oxfmt, lints with Oxlint, and type checks. Add `--fix` to rewrite instead of report. A pre-commit hook runs `vp staged`, which applies `vp check --fix` to the staged files.
 
 Build each platform's installer on that platform. Tauri does not cross-compile desktop bundles.
 

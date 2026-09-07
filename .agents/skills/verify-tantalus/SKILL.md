@@ -27,7 +27,7 @@ Preferred headless launch for verification:
 ```
 
 That helper picks the given port (or scans 1421-1450 when omitted), starts
-`pnpm vite --port <PORT> --strictPort false` in the background, waits up to
+`vp dev --port <PORT> --strictPort false` in the background, waits up to
 30s for `curl http://localhost:<PORT>/` to return 200 with
 `<title>Tantalus</title>`, and writes the pid and port to
 `/tmp/opencode/tantalus-verify/run.pid` and `run.port`. The launch itself
@@ -44,9 +44,9 @@ through the mock in Drive step 3, which installs the same IPC surface the
 app touches and remounts it, so the tab renders both providers, their
 switches, and every entry like a user sees them.
 
-Full desktop launch (`pnpm tauri dev`) is manual-only, on a real Linux, macOS,
+Full desktop launch (`vp run tauri dev`) is manual-only, on a real Linux, macOS,
 or Windows desktop with tray support. It needs the Tauri system deps
-(`webkit2gtk4.1`, GTK, tray implementation; `pnpm tauri info` currently
+(`webkit2gtk4.1`, GTK, tray implementation; `vp run tauri info` currently
 reports `rsvg2: not installed` on this Fedora box) plus a display. Do not run
 it headless in CI and never run a second copy while the user runs one.
 
@@ -73,7 +73,7 @@ It answers "is this instance worth driving?" without changing state:
   reports which process owns the port when the pidfile is missing
 - `curl http://localhost:<PORT>/` returns 200 and `<title>Tantalus</title>`
 - repo version matches `src-tauri/tauri.conf.json` (`productName Tantalus`,
-  `devUrl http://localhost:1420`) and `dist/` exists after `pnpm build`
+  `devUrl http://localhost:1420`) and `dist/` exists after `vp build`
 - auth check is read-only: notes whether `CODEX_HOME` is set and whether
   `$HOME/.codex/auth.json` exists, but never prints the token. It does not
   cover the Claude login;
@@ -89,11 +89,11 @@ live refresh, then manual Tauri only on a real desktop.
 1. Logic suites (no network, no tokens):
 
 ```sh
-pnpm test
+vp test
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-`pnpm test` covers `src/presentation.ts`: null stays `Unavailable`, zero
+`vp test` covers `src/presentation.ts`: null stays `Unavailable`, zero
 stays `0%`, countdown coarse buckets (`3h 29m`, `4d 20h`), credit expiry
 contains the month and day. `cargo test` covers `src-tauri/src/usage.rs`
 (window mapping by exact 18000 and 604800 seconds, millisecond and RFC 3339
@@ -156,7 +156,7 @@ rather than asserting entries.
 The tray menu (one line per enabled provider formatted
 `Codex  5h 42%  7d 8%`, then `Show usage`, `Refresh now`, `Quit`), the
 tooltip, the 5-minute polling cadence, and the real `providers.json`
-write have no browser surface and stay manual-only under `pnpm tauri dev`
+write have no browser surface and stay manual-only under `vp run tauri dev`
 on a real desktop. There, drive with the keyboard and menu, not
 coordinates: Tab to Refresh, Enter, and read each provider's status word
 (`Live`, `Blocked until reset`, `Cached`, `Not signed in`,
@@ -214,7 +214,7 @@ Proof standards: exercise the real user path, not internal setters or
 test-only endpoints. The mock-driven tab is that path for the webview:
 click the actual switches and Refresh and read the resulting state, not
 just the final screen. Verify side effects alongside what is visible: `dist/` from
-`pnpm build`, suite exit codes, the live HTTP statuses and figures, the
+`vp build`, suite exit codes, the live HTTP statuses and figures, the
 mock's localStorage persistence stand-in, and (under Tauri only) the tray
 tooltip and menu labels. Fixture suites prove the parsing edges; the single live refresh proves the real credential files, the
 WHAM-first fallback, and the Ready path against
@@ -222,7 +222,7 @@ WHAM-first fallback, and the Ready path against
 `https://api.anthropic.com/api/oauth/usage`. Reads only: one GET per
 endpoint, no writes, no polling loop. The provider switches write
 `providers.json` for real, so the on-disk write itself is proven under
-`pnpm tauri dev` only; the webview half (hide entries, `Off` word,
+`vp run tauri dev` only; the webview half (hide entries, `Off` word,
 immediate refresh on re-enable) is proven headless through the mock.
 Tantalus has no dry-run flag, so there is nothing to second-guess by name.
 

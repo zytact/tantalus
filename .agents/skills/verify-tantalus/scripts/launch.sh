@@ -35,7 +35,7 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
 fi
 
 echo "Starting vite on port $PORT (log $LOG_FILE)..."
-setsid pnpm vite --port "$PORT" --strictPort false </dev/null >"$LOG_FILE" 2>&1 &
+setsid vp dev --port "$PORT" --strictPort false </dev/null >"$LOG_FILE" 2>&1 &
 PID=$!
 echo "$PID" >"$PID_FILE"
 echo "$PORT" >"$PORT_FILE"
