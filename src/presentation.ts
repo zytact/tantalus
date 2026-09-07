@@ -43,3 +43,9 @@ export function lastUpdate(epoch: number | null): string {
     ? "no successful update yet"
     : `updated ${new Date(epoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
+
+export function creditAmount(value: number | null, currency: string | null): string {
+  if (value === null) return "Unavailable";
+  const amount = value.toFixed(2);
+  return currency ? `${amount} ${currency}` : amount;
+}
