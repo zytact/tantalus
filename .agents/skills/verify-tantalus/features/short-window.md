@@ -17,7 +17,8 @@ provider's 5-hour window consumed, when it resets, and what remains.
 
 ## How to get to it (user POV)
 
-Open the app window via tray **Show usage** or the dock icon on macOS. The
+The window opens on launch. After closing it, reopen via tray **Show usage**,
+the dock icon on macOS, or by launching the app again. The
 Short window is the first entry inside each provider block, below that
 provider's switch row, and only renders while the switch is on. Under Tauri
 or the mock it reads `Short window 5 hours`. A bare browser tab never

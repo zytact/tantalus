@@ -1,7 +1,8 @@
 # Tray and autorefresh
 
-The app lives in the system tray. Closing the window hides it; the tray owns
-the menu, the tooltip, and the 5-minute polling schedule.
+The app lives in the system tray. The window opens on launch and closing it
+hides the window rather than quitting; the tray owns the menu, the tooltip,
+and the 5-minute polling schedule.
 
 ## Sub-features
 
@@ -54,8 +55,10 @@ Real proof is manual on a desktop OS:
 
 - Reaching the WSL share starts the distribution, so the Windows lookup only
   scans WSL after the native home turns up nothing.
-- The tray app is a singleton. Never start a second `tauri dev` to verify;
-  drive the running one or ask the user to quit it first.
+- The tray app is a singleton, enforced by `tauri-plugin-single-instance`. A
+  second `tauri dev` exits at once and raises the running window, so a rebuilt
+  binary that seems to have no effect is usually the first instance still up.
+  Quit through the tray before starting a new run.
 - `pnpm tauri info` on this Fedora box reports `rsvg2: not installed`.
   Install system deps through the OS package manager when that blocks a
   desktop run, not through this project.
