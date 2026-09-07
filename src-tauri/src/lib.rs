@@ -11,7 +11,7 @@ use std::{
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State,
+    AppHandle, Emitter, Manager, State, WindowEvent,
 };
 use tokio::sync::Mutex;
 use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
@@ -334,6 +334,14 @@ pub fn run() {
             cached_usage,
             set_provider_enabled
         ])
+        .on_window_event(|window, event| {
+            // The window is the app's only surface, so closing it hides it back into the tray.
+            // Quitting happens through the tray menu.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(move |app| {
             let settings_path = app
                 .path()
