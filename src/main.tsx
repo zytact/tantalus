@@ -117,12 +117,11 @@ function App() {
     finally { setRefreshing(false); }
   };
 
+  // The listener is attached before the cache is read. The startup refresh publishes while the
+  // webview is still loading, and a snapshot landing between the two reads would otherwise be
+  // lost, leaving the window empty until the next refresh.
   useEffect(() => {
     let mounted = true;
-    void invoke<UsageSnapshot>("cached_usage").then(
-      (cached) => { if (mounted) setSnapshot(cached); },
-      () => { if (mounted) setSnapshotError(true); }
-    );
     let stop: (() => void) | undefined;
     void listen<UsageSnapshot>("usage-snapshot", (event) => {
       if (mounted) {
@@ -132,7 +131,11 @@ function App() {
     }).then((unlisten) => {
       if (mounted) stop = unlisten;
       else unlisten();
-    }).catch(() => {});
+      return invoke<UsageSnapshot>("cached_usage");
+    }).then(
+      (cached) => { if (mounted) setSnapshot((current) => current ?? cached); },
+      () => { if (mounted) setSnapshotError(true); }
+    );
     return () => {
       mounted = false;
       stop?.();
