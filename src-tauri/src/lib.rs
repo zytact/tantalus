@@ -161,20 +161,11 @@ fn show_window(app: &AppHandle) {
     }
 }
 
-/// A hollow square outline. The transparent interior keeps the icon legible on light and dark
-/// trays and lets macOS render it as a template image.
+/// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
+/// the alpha channel alone as a template image.
 fn tray_icon() -> tauri::image::Image<'static> {
-    let mut rgba = vec![0u8; 32 * 32 * 4];
-    for y in 5..27 {
-        for x in 5..27 {
-            let border = !(7..25).contains(&x) || !(7..25).contains(&y);
-            if border {
-                let i = (y * 32 + x) * 4;
-                rgba[i..i + 4].copy_from_slice(&[18, 102, 163, 255]);
-            }
-        }
-    }
-    tauri::image::Image::new_owned(rgba, 32, 32)
+    tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))
+        .expect("tray icon is a valid PNG")
 }
 
 pub fn run() {
