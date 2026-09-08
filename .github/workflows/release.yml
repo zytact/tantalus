@@ -106,5 +106,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
           else
-            gh release create "$TAG" "${assets[@]}" --draft --title "Tantalus $TAG" --verify-tag
+            gh release create "$TAG" "${assets[@]}" --draft --title "Tantalus $TAG" --verify-tag --generate-notes
           fi
