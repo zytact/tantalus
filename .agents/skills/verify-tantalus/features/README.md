@@ -1,7 +1,7 @@
 # Tantalus feature map
 
 Maintained verification source. One file per user-facing feature, from
-`src/main.tsx` handles, `src-tauri/src/lib.rs` tray menu, and the README
+the `src/` UI handles, `src-tauri/src/lib.rs` tray menu, and the README
 behavior list. A proof that drives one convenient entry point is incomplete
 when this index lists others.
 
