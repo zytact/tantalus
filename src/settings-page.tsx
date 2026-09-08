@@ -1,24 +1,16 @@
-import { getVersion } from "@tauri-apps/api/app";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
+import { version } from "../src-tauri/tauri.conf.json";
 
 export function SettingsPage({ onBack }: { onBack: () => void }) {
-  const [version, setVersion] = useState<string | null>(null);
-  const [versionUnavailable, setVersionUnavailable] = useState(false);
   const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [savingStartup, setSavingStartup] = useState(false);
 
+  // The registration lives in the operating system, so it is read on every visit rather than
+  // cached: it can change from outside the app between one visit and the next.
   useEffect(() => {
     let mounted = true;
-    void getVersion().then(
-      (currentVersion) => {
-        if (mounted) setVersion(currentVersion);
-      },
-      () => {
-        if (mounted) setVersionUnavailable(true);
-      },
-    );
     void isEnabled().then(
       (enabled) => {
         if (mounted) setStartupEnabled(enabled);
@@ -58,7 +50,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
         <section className="setting-row">
           <div className="setting-copy">
             <h2>Open at login</h2>
-            <p>Start Tantalus when you sign in to this computer.</p>
+            <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
           </div>
           {startupEnabled === null ? (
             <span className="setting-state">{startupError ? "Unavailable" : "Checking"}</span>
@@ -88,11 +80,8 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
         <section className="setting-row">
           <div className="setting-copy">
             <h2>Version</h2>
-            <p>The version of Tantalus installed on this computer.</p>
           </div>
-          <strong className="version">
-            {versionUnavailable ? "Unavailable" : version ? `v${version}` : "Loading"}
-          </strong>
+          <strong className="version">v{version}</strong>
         </section>
       </div>
     </>

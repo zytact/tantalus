@@ -180,7 +180,6 @@ async function invoke(cmd, args = {}) {
     listeners.set(args.event, list.filter((id) => id !== args.eventId));
     return null;
   }
-  if (cmd === "plugin:app|version") return "0.0.3";
   if (cmd === "plugin:autostart|is_enabled") return autostart;
   if (cmd === "plugin:autostart|enable") {
     autostart = true;
