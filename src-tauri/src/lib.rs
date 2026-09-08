@@ -12,7 +12,8 @@ use std::{
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, RunEvent, State,
+    webview::Color,
+    AppHandle, Emitter, Manager, RunEvent, State, Theme, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
@@ -346,6 +347,19 @@ const MAIN_WINDOW: &str = "main";
 /// so a normal launch is the only one that opens it.
 const HIDDEN_FLAG: &str = "--hidden";
 
+/// The window shell paints before the webview does, so it carries the same canvas color the
+/// stylesheet uses. Without it a dark desktop gets a cream flash on every open.
+const LIGHT_CANVAS: Color = Color(251, 248, 241, 255);
+const DARK_CANVAS: Color = Color(10, 10, 10, 255);
+
+fn paint_canvas(window: &WebviewWindow, theme: Theme) {
+    let color = match theme {
+        Theme::Dark => DARK_CANVAS,
+        _ => LIGHT_CANVAS,
+    };
+    let _ = window.set_background_color(Some(color));
+}
+
 /// Closing the window destroys it, so the tray rebuilds it from the same configuration, and a
 /// normal launch opens the first one the same way. A window that is hidden and shown again keeps a
 /// stale input region on Wayland, which leaves its titlebar buttons dead until tao 0.36 reaches a
@@ -369,10 +383,19 @@ fn show_window(app: &AppHandle) {
     // Every caller is an event handler, and building a window from one deadlocks on Windows.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = tauri::WebviewWindowBuilder::from_config(&app, &config)
+        match tauri::WebviewWindowBuilder::from_config(&app, &config)
             .and_then(|builder| builder.build())
         {
-            eprintln!("Failed to open the window: {error}");
+            Ok(window) => {
+                paint_canvas(&window, window.theme().unwrap_or(Theme::Light));
+                let painted = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::ThemeChanged(theme) = event {
+                        paint_canvas(&painted, *theme);
+                    }
+                });
+            }
+            Err(error) => eprintln!("Failed to open the window: {error}"),
         }
     });
 }
