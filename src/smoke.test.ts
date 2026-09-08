@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
-import { countdown, creditExpiry, remainingPercent, statusLine, usagePercent } from "./presentation";
+import {
+  countdown,
+  creditExpiry,
+  remainingPercent,
+  statusLine,
+  statusTone,
+  usagePercent,
+  usageTier,
+} from "./presentation";
 import type { ProviderUsage } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
@@ -43,5 +51,21 @@ describe("display contract", () => {
   it("dates a credit expiry that sits weeks out", () => {
     expect(creditExpiry(null)).toBe("No expiry reported");
     expect(creditExpiry(Date.UTC(2026, 9, 4, 12) / 1000)).toContain("Oct 4");
+  });
+
+  it("escalates the usage bar only at the thresholds", () => {
+    expect(usageTier(null)).toBe("normal");
+    expect(usageTier(74)).toBe("normal");
+    expect(usageTier(75)).toBe("warn");
+    expect(usageTier(89)).toBe("warn");
+    expect(usageTier(90)).toBe("danger");
+  });
+
+  it("colors a status word by how bad it is", () => {
+    expect(statusTone(provider({ status: "ready" }), false)).toBe("muted");
+    expect(statusTone(provider({ status: "ready" }), true)).toBe("ok");
+    expect(statusTone(provider({ status: "stale" }), true)).toBe("warn");
+    expect(statusTone(provider({ status: "auth_missing" }), true)).toBe("danger");
+    expect(statusTone(provider({ limit_reached: true }), true)).toBe("danger");
   });
 });

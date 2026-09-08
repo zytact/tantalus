@@ -13,7 +13,9 @@ import {
   lastUpdate,
   remainingPercent,
   statusLine,
+  statusTone,
   usagePercent,
+  usageTier,
 } from "./presentation";
 import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { SettingsPage } from "./settings-page";
@@ -48,6 +50,7 @@ function Entry({
       </div>
       <div
         className="rule"
+        data-tier={usageTier(used)}
         role="progressbar"
         aria-label={`${entryLabel} usage`}
         aria-valuemin={0}
@@ -143,7 +146,9 @@ function ProviderSection({
         onClick={() => onToggle(!enabled)}
       >
         <span className="provider-name">{name}</span>
-        <span className="provider-status">{statusLine(provider, enabled)}</span>
+        <span className="provider-status" data-tone={statusTone(provider, enabled)}>
+          {statusLine(provider, enabled)}
+        </span>
         <span className="switch-track" aria-hidden="true">
           <span className="switch-knob" />
         </span>

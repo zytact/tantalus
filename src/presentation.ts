@@ -90,3 +90,24 @@ export function creditAmount(value: number | null, currency: string | null): str
   const amount = value.toFixed(2);
   return currency ? `${amount} ${currency}` : amount;
 }
+
+/** Bar tone thresholds: amber from 75% of the window spent, red from 90%. */
+export function usageTier(value: number | null): "normal" | "warn" | "danger" {
+  if (value === null) return "normal";
+  if (value >= 90) return "danger";
+  return value >= 75 ? "warn" : "normal";
+}
+
+export function statusTone(provider: ProviderUsage, enabled: boolean): "muted" | "ok" | "warn" | "danger" {
+  if (!enabled) return "muted";
+  switch (provider.status) {
+    case "auth_missing":
+    case "error":
+      return "danger";
+    case "stale":
+    case "loading":
+      return "warn";
+    default:
+      return provider.allowed === false || provider.limit_reached ? "danger" : "ok";
+  }
+}
