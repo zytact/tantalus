@@ -104,10 +104,6 @@ button:focus-visible {
   border-bottom: 1px solid #191713;
   text-align: left;
 }
-.provider-row:hover:not(:disabled) {
-  background: transparent;
-  color: #191713;
-}
 .provider-name {
   flex: 1;
   font-family: Newsreader, Georgia, serif;
@@ -136,10 +132,14 @@ button:focus-visible {
   background: #191713;
   transition: transform 140ms ease-out;
 }
-.provider-row[aria-checked="true"] .switch-track {
+[role="switch"]:hover:not(:disabled) {
+  background: transparent;
+  color: #191713;
+}
+[role="switch"][aria-checked="true"] .switch-track {
   background: #191713;
 }
-.provider-row[aria-checked="true"] .switch-knob {
+[role="switch"][aria-checked="true"] .switch-knob {
   background: #fbf8f1;
   transform: translateX(16px);
 }
@@ -152,8 +152,7 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-height: 92px;
-  padding: 18px 0;
+  padding: 20px 0;
   border-bottom: 1px solid #ddd6c6;
 }
 .setting-row:last-child {
@@ -187,19 +186,8 @@ button:focus-visible {
   padding: 8px 0 8px 12px;
   border: 0;
 }
-.setting-toggle:hover:not(:disabled) {
-  background: transparent;
-  color: #191713;
-}
 .setting-toggle .setting-state {
   color: inherit;
-}
-.setting-toggle[aria-checked="true"] .switch-track {
-  background: #191713;
-}
-.setting-toggle[aria-checked="true"] .switch-knob {
-  background: #fbf8f1;
-  transform: translateX(16px);
 }
 .settings-notice {
   margin-top: 0;
