@@ -17,6 +17,10 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
   builds a new one; **Quit** exits and stops polling
 - Rust owns polling: initial refresh at startup, then every 300 seconds via
   `tokio::time::sleep`, emitting `usage-snapshot` to the webview
+- A pass where an enabled provider failed retries after 5 seconds and doubles up
+  to the 300-second interval, then holds there. A launch at login normally beats
+  the network up, so without this the tray sits on `no successful update yet`
+  until the next interval
 - Credential sources per provider: `CODEX_HOME/auth.json` else
   `~/.codex/auth.json`, and `CLAUDE_CONFIG_DIR/.credentials.json` else
   `~/.claude/.credentials.json` (`$HOME` on Linux/macOS, `%USERPROFILE%` on

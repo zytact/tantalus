@@ -16,6 +16,7 @@ import {
   usagePercent,
 } from "./presentation";
 import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
+import { SettingsPage } from "./settings-page";
 import "./styles.css";
 
 const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
@@ -164,6 +165,7 @@ function ProviderSection({
 }
 
 function App() {
+  const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -228,40 +230,49 @@ function App() {
 
   return (
     <main>
-      <header>
-        <div>
-          <h1>Allowance</h1>
-          <p className="status">
-            {snapshot
-              ? lastUpdate(updated || null)
-              : snapshotError
-                ? "Could not load provider settings"
-                : "Loading provider settings"}
-          </p>
-        </div>
-        <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
-          {refreshing ? "Refreshing" : "Refresh"}
-        </button>
-      </header>
+      {page === "settings" ? (
+        <SettingsPage onBack={() => setPage("allowance")} />
+      ) : (
+        <>
+          <header>
+            <div>
+              <h1>Allowance</h1>
+              <p className="status">
+                {snapshot
+                  ? lastUpdate(updated || null)
+                  : snapshotError
+                    ? "Could not load provider settings"
+                    : "Loading provider settings"}
+              </p>
+            </div>
+            <div className="header-actions">
+              <button onClick={() => setPage("settings")}>Settings</button>
+              <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
+                {refreshing ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
+          </header>
 
-      {toggleError && (
-        <p className="notice" role="alert">
-          {toggleError}
-        </p>
+          {toggleError && (
+            <p className="notice" role="alert">
+              {toggleError}
+            </p>
+          )}
+
+          {snapshot &&
+            providerIds.map((id) => (
+              <ProviderSection
+                key={id}
+                id={id}
+                provider={snapshot[id]}
+                enabled={snapshot.enabled[id]}
+                onToggle={(enabled) => void setEnabled(id, enabled)}
+              />
+            ))}
+
+          <footer>Auto-refreshes every 5 minutes</footer>
+        </>
       )}
-
-      {snapshot &&
-        providerIds.map((id) => (
-          <ProviderSection
-            key={id}
-            id={id}
-            provider={snapshot[id]}
-            enabled={snapshot.enabled[id]}
-            onToggle={(enabled) => void setEnabled(id, enabled)}
-          />
-        ))}
-
-      <footer>Auto-refreshes every 5 minutes</footer>
     </main>
   );
 }

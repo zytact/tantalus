@@ -1,7 +1,7 @@
 # Tantalus feature map
 
 Maintained verification source. One file per user-facing feature, from
-`src/main.tsx` handles, `src-tauri/src/lib.rs` tray menu, and the README
+the `src/` UI handles, `src-tauri/src/lib.rs` tray menu, and the README
 behavior list. A proof that drives one convenient entry point is incomplete
 when this index lists others.
 
@@ -11,6 +11,7 @@ when this index lists others.
 - [manual-refresh](manual-refresh.md) - Refresh button, Refresh now, stale and error states
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, status line, token privacy
 - [provider-switch](provider-switch.md) - per-provider on/off switch, persistence
+- [settings](settings.md) - app version and open-at-login preference
 
 Headless static checks prove that Vite serves the app shell and that its
 bundle contains the expected labels. In a plain browser, `cached_usage`

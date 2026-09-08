@@ -7,12 +7,14 @@ use auth::Provider;
 use std::{
     path::PathBuf,
     sync::atomic::{AtomicU8, Ordering},
+    time::Duration,
 };
 use tauri::{
     menu::{IsMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, RunEvent, State,
 };
+use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
 
@@ -254,6 +256,32 @@ fn apply(provider: &mut ProviderUsage, result: Result<ProviderUsage, RefreshErro
     }
 }
 
+const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
+const RETRY_BACKOFF_START: Duration = Duration::from_secs(5);
+
+/// Every enabled provider holds a reading. A launch at login usually beats the network up, so the
+/// first pass fails and the tray would otherwise sit on "no successful update yet" for a full
+/// interval.
+fn settled(snapshot: &UsageSnapshot) -> bool {
+    [
+        (Provider::Codex, &snapshot.codex),
+        (Provider::Claude, &snapshot.claude),
+    ]
+    .into_iter()
+    .filter(|(provider, _)| snapshot.enabled.enabled(*provider))
+    .all(|(_, usage)| usage.status == SnapshotStatus::Ready)
+}
+
+/// The wait before the next reading. `None` is the healthy cadence. A failed pass backs off from
+/// `RETRY_BACKOFF_START`, doubling up to `REFRESH_INTERVAL` and holding there, so a provider that
+/// stays unreachable settles back to the normal polling rate instead of hammering it.
+fn next_backoff(settled: bool, current: Option<Duration>) -> Option<Duration> {
+    if settled {
+        return None;
+    }
+    Some(current.map_or(RETRY_BACKOFF_START, |wait| (wait * 2).min(REFRESH_INTERVAL)))
+}
+
 fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
         return;
@@ -313,9 +341,15 @@ fn percent(value: Option<f64>) -> String {
 
 const MAIN_WINDOW: &str = "main";
 
-/// Closing the window destroys it, so the tray rebuilds it from the same configuration. A window
-/// that is hidden and shown again keeps a stale input region on Wayland, which leaves its titlebar
-/// buttons dead until tao 0.36 reaches a Tauri release (tauri-apps/tao#1218).
+/// The login registration launches with this flag so the app settles into the tray instead of
+/// pushing a window at someone who has just signed in. The window config carries `create: false`,
+/// so a normal launch is the only one that opens it.
+const HIDDEN_FLAG: &str = "--hidden";
+
+/// Closing the window destroys it, so the tray rebuilds it from the same configuration, and a
+/// normal launch opens the first one the same way. A window that is hidden and shown again keeps a
+/// stale input region on Wayland, which leaves its titlebar buttons dead until tao 0.36 reaches a
+/// Tauri release (tauri-apps/tao#1218).
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.unminimize();
@@ -359,6 +393,10 @@ pub fn run() {
             |app, _arguments, _cwd| {
                 show_window(app);
             },
+        ))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![HIDDEN_FLAG]),
         ))
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
@@ -418,13 +456,17 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             let tray = tray.icon_as_template(true);
             tray.build(app)?;
+            if !std::env::args().any(|argument| argument == HIDDEN_FLAG) {
+                show_window(app.handle());
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let state = handle.state::<AppState>();
-                refresh(&state, &handle).await;
+                let mut backoff = None;
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-                    refresh(&state, &handle).await;
+                    let snapshot = refresh(&state, &handle).await;
+                    backoff = next_backoff(settled(&snapshot), backoff);
+                    tokio::time::sleep(backoff.unwrap_or(REFRESH_INTERVAL)).await;
                 }
             });
             Ok(())
@@ -471,6 +513,35 @@ mod tests {
         };
         assert!(read_enabled(&state, Provider::Codex).await.is_none());
         assert!(read_enabled(&state, Provider::Claude).await.is_none());
+    }
+
+    #[test]
+    fn a_failed_reading_retries_before_the_next_interval() {
+        let mut backoff = next_backoff(false, None);
+        assert_eq!(backoff, Some(RETRY_BACKOFF_START));
+
+        let mut waits = vec![backoff.expect("backoff")];
+        for _ in 0..8 {
+            backoff = next_backoff(false, backoff);
+            waits.push(backoff.expect("backoff"));
+        }
+        // Climbs from the first retry and holds at the normal interval rather than hammering a
+        // provider that stays unreachable.
+        assert_eq!(waits.last(), Some(&REFRESH_INTERVAL));
+        assert!(waits.windows(2).all(|pair| pair[0] <= pair[1]));
+
+        assert_eq!(next_backoff(true, backoff), None);
+    }
+
+    #[test]
+    fn a_disabled_provider_does_not_hold_the_refresh_in_backoff() {
+        let mut snapshot = UsageSnapshot::default();
+        snapshot.codex.status = SnapshotStatus::Ready;
+        snapshot.claude.status = SnapshotStatus::Error;
+        assert!(!settled(&snapshot));
+
+        snapshot.enabled.set(Provider::Claude, false);
+        assert!(settled(&snapshot));
     }
 
     #[test]

@@ -32,6 +32,10 @@ header {
   padding-bottom: 16px;
   border-bottom: 2px solid #191713;
 }
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
 h1 {
   margin: 0;
   font-family: Newsreader, Georgia, serif;
@@ -100,10 +104,6 @@ button:focus-visible {
   border-bottom: 1px solid #191713;
   text-align: left;
 }
-.provider-row:hover:not(:disabled) {
-  background: transparent;
-  color: #191713;
-}
 .provider-name {
   flex: 1;
   font-family: Newsreader, Georgia, serif;
@@ -132,12 +132,72 @@ button:focus-visible {
   background: #191713;
   transition: transform 140ms ease-out;
 }
-.provider-row[aria-checked="true"] .switch-track {
+[role="switch"]:hover:not(:disabled) {
+  background: transparent;
+  color: #191713;
+}
+[role="switch"][aria-checked="true"] .switch-track {
   background: #191713;
 }
-.provider-row[aria-checked="true"] .switch-knob {
+[role="switch"][aria-checked="true"] .switch-knob {
   background: #fbf8f1;
   transform: translateX(16px);
+}
+
+.settings-list {
+  border-bottom: 2px solid #191713;
+}
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-bottom: 1px solid #ddd6c6;
+}
+.setting-row:last-child {
+  border-bottom: 0;
+}
+.setting-copy h2 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+.setting-copy p {
+  max-width: 28rem;
+  margin: 5px 0 0;
+  color: #6b6355;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.setting-state {
+  flex: none;
+  color: #8b8371;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 34px;
+  padding: 8px 0 8px 12px;
+  border: 0;
+}
+.setting-toggle .setting-state {
+  color: inherit;
+}
+.settings-notice {
+  margin-top: 0;
+}
+.version {
+  flex: none;
+  font-family: Newsreader, Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .entry {
@@ -237,8 +297,20 @@ footer {
   main {
     padding: 20px;
   }
+  header {
+    gap: 12px;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+  .header-actions button {
+    padding: 0 10px;
+  }
   .facts {
     grid-template-columns: 1fr 1fr;
+  }
+  .setting-row {
+    gap: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

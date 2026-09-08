@@ -60,27 +60,49 @@ function blankProvider() {
   };
 }
 
-function loadEnabled() {
+function loadStored(key, fallback) {
   try {
-    const raw = localStorage.getItem("tantalus-mock-enabled");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.codex === "boolean" && typeof parsed.claude === "boolean") return parsed;
-    }
-  } catch { /* fall through to defaults, mimicking providers.json missing */ }
-  return { codex: true, claude: true };
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    return;
+  }
+}
+
+function loadEnabled() {
+  const stored = loadStored("tantalus-mock-enabled", null);
+  return stored && typeof stored.codex === "boolean" && typeof stored.claude === "boolean"
+    ? stored
+    : { codex: true, claude: true };
 }
 
 function saveEnabled(enabled) {
-  try {
-    localStorage.setItem("tantalus-mock-enabled", JSON.stringify(enabled));
-  } catch { /* storage full or blocked: keep in-memory state only */ }
+  saveStored("tantalus-mock-enabled", enabled);
+}
+
+function loadAutostart() {
+  const stored = loadStored("tantalus-mock-autostart", false);
+  return typeof stored === "boolean" ? stored : false;
+}
+
+function saveAutostart(enabled) {
+  saveStored("tantalus-mock-autostart", enabled);
 }
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 let snapshot = readySnapshot();
 let mode = "ready";
+let autostart = loadAutostart();
+let failingCommand = null;
 const listeners = new Map(); // event name -> handler ids
 const callbacks = new Map(); // handler id -> function
 
@@ -140,6 +162,7 @@ function applyModeToEnabled() {
 }
 
 async function invoke(cmd, args = {}) {
+  if (cmd === failingCommand) throw new Error(`mock: ${cmd} failed`);
   if (cmd === "plugin:event|listen") {
     const list = listeners.get(args.event) ?? [];
     list.push(args.handler);
@@ -155,6 +178,17 @@ async function invoke(cmd, args = {}) {
   if (cmd === "plugin:event|unlisten") {
     const list = listeners.get(args.event) ?? [];
     listeners.set(args.event, list.filter((id) => id !== args.eventId));
+    return null;
+  }
+  if (cmd === "plugin:autostart|is_enabled") return autostart;
+  if (cmd === "plugin:autostart|enable") {
+    autostart = true;
+    saveAutostart(autostart);
+    return null;
+  }
+  if (cmd === "plugin:autostart|disable") {
+    autostart = false;
+    saveAutostart(autostart);
     return null;
   }
   if (cmd === "cached_usage") return clone(snapshot);
@@ -210,6 +244,7 @@ async function remount() {
   fresh.id = "root";
   old.replaceWith(fresh);
   snapshot = readySnapshot();
+  autostart = loadAutostart();
   // Cache-buster forces Vite to re-execute main.tsx so a new App mounts
   // against the mock. The previous error-state tree stays detached.
   await import(`/src/main.tsx?tantalus-mock=${Date.now()}`);
@@ -229,9 +264,16 @@ window.__TANTALUS_MOCK__ = {
   },
   reset() {
     localStorage.removeItem("tantalus-mock-enabled");
+    localStorage.removeItem("tantalus-mock-autostart");
     snapshot = readySnapshot();
+    autostart = false;
+    failingCommand = null;
     mode = "ready";
     publish();
     return true;
+  },
+  fail(command) {
+    failingCommand = command;
+    return failingCommand;
   },
 };
