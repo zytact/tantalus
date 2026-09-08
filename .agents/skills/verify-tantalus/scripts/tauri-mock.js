@@ -60,37 +60,41 @@ function blankProvider() {
   };
 }
 
-function loadEnabled() {
+function loadStored(key, fallback) {
   try {
-    const raw = localStorage.getItem("tantalus-mock-enabled");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.codex === "boolean" && typeof parsed.claude === "boolean") return parsed;
-    }
-  } catch { /* fall through to defaults, mimicking providers.json missing */ }
-  return { codex: true, claude: true };
-}
-
-function saveEnabled(enabled) {
-  try {
-    localStorage.setItem("tantalus-mock-enabled", JSON.stringify(enabled));
-  } catch { /* storage full or blocked: keep in-memory state only */ }
-}
-
-function loadAutostart() {
-  try {
-    return localStorage.getItem("tantalus-mock-autostart") === "true";
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
   } catch {
-    return false;
+    return fallback;
   }
 }
 
-function saveAutostart(enabled) {
+function saveStored(key, value) {
   try {
-    localStorage.setItem("tantalus-mock-autostart", String(enabled));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     return;
   }
+}
+
+function loadEnabled() {
+  const stored = loadStored("tantalus-mock-enabled", null);
+  return stored && typeof stored.codex === "boolean" && typeof stored.claude === "boolean"
+    ? stored
+    : { codex: true, claude: true };
+}
+
+function saveEnabled(enabled) {
+  saveStored("tantalus-mock-enabled", enabled);
+}
+
+function loadAutostart() {
+  const stored = loadStored("tantalus-mock-autostart", false);
+  return typeof stored === "boolean" ? stored : false;
+}
+
+function saveAutostart(enabled) {
+  saveStored("tantalus-mock-autostart", enabled);
 }
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
