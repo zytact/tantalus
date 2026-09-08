@@ -55,11 +55,7 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
+      - uses: ./.github/actions/setup-frontend
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,8 +68,6 @@ jobs:
         with:
           workspaces: src-tauri
           key: ${{ matrix.target }}
-
-      - run: pnpm install --frozen-lockfile
 
       - uses: tauri-apps/tauri-action@v0
         with:

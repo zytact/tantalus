@@ -47,7 +47,7 @@ a live refresh match `live-usage.json`.
 2. In a bare browser tab, wait for `cached_usage` to reject. Snapshot the
    disabled Refresh button and `Could not load provider settings`. Do not
    click Refresh: without a snapshot it is disabled.
-3. Logic proof headless: `pnpm test` plus
+3. Logic proof headless: `vp test` plus
    `cargo test --manifest-path src-tauri/Cargo.toml`
 4. Live proof (necessary, single pass):
    `.agents/skills/verify-tantalus/scripts/live-check.sh "$EVIDENCE"`
@@ -62,7 +62,7 @@ a live refresh match `live-usage.json`.
    `CODEX_HOME` and `CLAUDE_CONFIG_DIR` at
    `/tmp/opencode/tantalus-verify/coverage-home` (empty dir): expect
    `Not signed in` / exit 2.
-5. Real UI proof needs `pnpm tauri dev` on a desktop or the mock in any browser: click Refresh, watch
+5. Real UI proof needs `vp run tauri dev` on a desktop or the mock in any browser: click Refresh, watch
    the button flip to `Refreshing`, then confirm each provider's status word
    and the `updated` time advance. The figures should match the latest
    `live-usage.json` from step 4 (Tauri) or the mock snapshot (headless).

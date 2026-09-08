@@ -40,11 +40,11 @@ clears the stored choice.
 2. In a bare browser tab, `cached_usage` rejects and the app shows `Could not
    load provider settings`. It renders no switches, so do not click or assert
    a provider switch there.
-3. Logic proof without Tauri: `pnpm test` covers `statusLine(..., false)`
+3. Logic proof without Tauri: `vp test` covers `statusLine(..., false)`
    returning `Off`; `cargo test` covers the `providers.json` round trip
    (`settings::tests`) and that a disabled provider is never read
    (`a_disabled_provider_is_never_read`)
-4. Real proof needs `pnpm tauri dev` on a desktop or the mock in any browser: switch Claude off, confirm
+4. Real proof needs `vp run tauri dev` on a desktop or the mock in any browser: switch Claude off, confirm
    its entries vanish, its tray line disappears (Tauri only), `providers.json` reads
    `{"codex":true,"claude":false}`, and Codex keeps refreshing. Switch it
    back on and confirm an immediate refresh.

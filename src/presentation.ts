@@ -1,6 +1,15 @@
-export type WindowUsage = { used_percent: number | null; limit_window_seconds: number | null; reset_at_epoch: number | null };
+export type WindowUsage = {
+  used_percent: number | null;
+  limit_window_seconds: number | null;
+  reset_at_epoch: number | null;
+};
 export type ResetCredit = { expires_at_epoch: number | null };
-export type ExtraUsage = { enabled: boolean; used_credits: number | null; monthly_limit: number | null; currency: string | null };
+export type ExtraUsage = {
+  enabled: boolean;
+  used_credits: number | null;
+  monthly_limit: number | null;
+  currency: string | null;
+};
 export type ProviderUsage = {
   five_hour: WindowUsage;
   seven_day: WindowUsage;
@@ -19,11 +28,16 @@ export type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage; enabl
 export function statusLine(provider: ProviderUsage, enabled: boolean): string {
   if (!enabled) return "Off";
   switch (provider.status) {
-    case "auth_missing": return "Not signed in";
-    case "error": return "Could not refresh";
-    case "stale": return "Cached";
-    case "loading": return "Loading";
-    default: return provider.allowed === false || provider.limit_reached ? "Blocked until reset" : "Live";
+    case "auth_missing":
+      return "Not signed in";
+    case "error":
+      return "Could not refresh";
+    case "stale":
+      return "Cached";
+    case "loading":
+      return "Loading";
+    default:
+      return provider.allowed === false || provider.limit_reached ? "Blocked until reset" : "Live";
   }
 }
 
@@ -60,7 +74,7 @@ export function creditExpiry(epoch: number | null): string {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
   });
   return `Expires ${date}`;
 }
