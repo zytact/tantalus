@@ -1,8 +1,10 @@
 import "@fontsource-variable/inter-tight/wght.css";
 import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -163,7 +165,105 @@ function ProviderSection({
   );
 }
 
+function SettingsPage({ onBack }: { onBack: () => void }) {
+  const [version, setVersion] = useState<string | null>(null);
+  const [versionUnavailable, setVersionUnavailable] = useState(false);
+  const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [savingStartup, setSavingStartup] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void getVersion().then(
+      (currentVersion) => {
+        if (mounted) setVersion(currentVersion);
+      },
+      () => {
+        if (mounted) setVersionUnavailable(true);
+      },
+    );
+    void isEnabled().then(
+      (enabled) => {
+        if (mounted) setStartupEnabled(enabled);
+      },
+      () => {
+        if (mounted) setStartupError("Could not read the startup setting.");
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const toggleStartup = async () => {
+    if (startupEnabled === null || savingStartup) return;
+    const nextEnabled = !startupEnabled;
+    setSavingStartup(true);
+    setStartupError(null);
+    try {
+      await (nextEnabled ? enable() : disable());
+      setStartupEnabled(nextEnabled);
+    } catch {
+      setStartupError(nextEnabled ? "Could not turn on opening at login." : "Could not turn off opening at login.");
+    } finally {
+      setSavingStartup(false);
+    }
+  };
+
+  return (
+    <>
+      <header>
+        <h1>Settings</h1>
+        <button onClick={onBack}>Back</button>
+      </header>
+
+      <div className="settings-list">
+        <section className="setting-row">
+          <div className="setting-copy">
+            <h2>Open at login</h2>
+            <p>Start Tantalus when you sign in to this computer.</p>
+          </div>
+          {startupEnabled === null ? (
+            <span className="setting-state">{startupError ? "Unavailable" : "Checking"}</span>
+          ) : (
+            <button
+              className="setting-toggle"
+              role="switch"
+              aria-checked={startupEnabled}
+              aria-label="Open at login"
+              aria-busy={savingStartup}
+              disabled={savingStartup}
+              onClick={() => void toggleStartup()}
+            >
+              <span className="setting-state">{savingStartup ? "Saving" : startupEnabled ? "On" : "Off"}</span>
+              <span className="switch-track" aria-hidden="true">
+                <span className="switch-knob" />
+              </span>
+            </button>
+          )}
+        </section>
+        {startupError && (
+          <p className="notice settings-notice" role="alert">
+            {startupError}
+          </p>
+        )}
+
+        <section className="setting-row">
+          <div className="setting-copy">
+            <h2>Version</h2>
+            <p>The version of Tantalus installed on this computer.</p>
+          </div>
+          <strong className="version">
+            {versionUnavailable ? "Unavailable" : version ? `v${version}` : "Loading"}
+          </strong>
+        </section>
+      </div>
+    </>
+  );
+}
+
 function App() {
+  const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -228,40 +328,49 @@ function App() {
 
   return (
     <main>
-      <header>
-        <div>
-          <h1>Allowance</h1>
-          <p className="status">
-            {snapshot
-              ? lastUpdate(updated || null)
-              : snapshotError
-                ? "Could not load provider settings"
-                : "Loading provider settings"}
-          </p>
-        </div>
-        <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
-          {refreshing ? "Refreshing" : "Refresh"}
-        </button>
-      </header>
+      {page === "settings" ? (
+        <SettingsPage onBack={() => setPage("allowance")} />
+      ) : (
+        <>
+          <header>
+            <div>
+              <h1>Allowance</h1>
+              <p className="status">
+                {snapshot
+                  ? lastUpdate(updated || null)
+                  : snapshotError
+                    ? "Could not load provider settings"
+                    : "Loading provider settings"}
+              </p>
+            </div>
+            <div className="header-actions">
+              <button onClick={() => setPage("settings")}>Settings</button>
+              <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
+                {refreshing ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
+          </header>
 
-      {toggleError && (
-        <p className="notice" role="alert">
-          {toggleError}
-        </p>
+          {toggleError && (
+            <p className="notice" role="alert">
+              {toggleError}
+            </p>
+          )}
+
+          {snapshot &&
+            providerIds.map((id) => (
+              <ProviderSection
+                key={id}
+                id={id}
+                provider={snapshot[id]}
+                enabled={snapshot.enabled[id]}
+                onToggle={(enabled) => void setEnabled(id, enabled)}
+              />
+            ))}
+
+          <footer>Auto-refreshes every 5 minutes</footer>
+        </>
       )}
-
-      {snapshot &&
-        providerIds.map((id) => (
-          <ProviderSection
-            key={id}
-            id={id}
-            provider={snapshot[id]}
-            enabled={snapshot.enabled[id]}
-            onToggle={(enabled) => void setEnabled(id, enabled)}
-          />
-        ))}
-
-      <footer>Auto-refreshes every 5 minutes</footer>
     </main>
   );
 }

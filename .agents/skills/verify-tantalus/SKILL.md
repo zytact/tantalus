@@ -11,7 +11,8 @@ in `src/main.tsx` receives a token-free `UsageSnapshot` and renders one block
 per provider: an on/off switch row with a status word, then Short window
 (5h), Long window (7d), and Reset credits (Codex) or Extra usage (Claude),
 above a shared Refresh button. A provider whose switch is off is not polled
-at all.
+at all. The Allowance header opens a Settings page that reads the bundle
+version and controls the operating system's open-at-login registration.
 
 ## Launch
 
@@ -113,9 +114,10 @@ client bundle references the real handles: `Short window`, `Long window`,
 
 3. Browser tab, mock-driven. This is the real user path, headless:
 `scripts/tauri-mock.js` answers `cached_usage`, `refresh_usage`, and
-`set_provider_enabled` plus the `plugin:event|listen/emit/unlisten`
-wiring, with synthetic Ready figures in Rust's shapes and no tokens or
-network. Two evaluates install it; both must be promise chains, since
+`set_provider_enabled`, `plugin:app|version`, the three `plugin:autostart`
+commands, and the `plugin:event|listen/emit/unlisten` wiring. It uses synthetic
+Ready figures in Rust's shapes and no tokens or network. Two evaluates install
+it; both must be promise chains, since
 this harness has no top-level await and a dynamic import of the mock
 fails on MIME, so fetch plus indirect eval:
 
@@ -147,6 +149,10 @@ back on refreshes that provider immediately. The Refresh click flips the
 button to `Refreshing` with `aria-busy=true` mid-flight; the mock
 answers after ~350ms, so read that state from the same tick (click, then
 a 100ms `setTimeout` read in one expression).
+
+For the Settings page, follow `features/settings.md`. The mock proves the
+visible version, accessible startup switch, persistence, and failure state. It
+does not register the app with the operating system.
 
 Without the mock the tab stays on the error baseline (`Could not load
 provider settings`, disabled Refresh, no sections). Landing there means
@@ -202,7 +208,7 @@ Write every run to `/tmp/opencode/tantalus-verify/<YYYYMMDD-HHMMSS>/`:
 - `index.html` (`curl http://localhost:<PORT>/` body)
 - `check-ui.log` (static shell assertions)
 - `visible-text.txt` (browser snapshot visible text) and `snapshot.json`
-  (switches, progressbars, Refresh state, status words) from the
+  (navigation, switches, version, progressbars, Refresh state, status words) from the
   mock-driven tab; without the mock the same files capture only the
   `Could not load provider settings` baseline
 - `live-usage.json`, `live-credits.json`, `live-claude-usage.json` (raw API
