@@ -314,9 +314,15 @@ fn percent(value: Option<f64>) -> String {
 
 const MAIN_WINDOW: &str = "main";
 
-/// Closing the window destroys it, so the tray rebuilds it from the same configuration. A window
-/// that is hidden and shown again keeps a stale input region on Wayland, which leaves its titlebar
-/// buttons dead until tao 0.36 reaches a Tauri release (tauri-apps/tao#1218).
+/// The login registration launches with this flag so the app settles into the tray instead of
+/// pushing a window at someone who has just signed in. The window config carries `create: false`,
+/// so a normal launch is the only one that opens it.
+const HIDDEN_FLAG: &str = "--hidden";
+
+/// Closing the window destroys it, so the tray rebuilds it from the same configuration, and a
+/// normal launch opens the first one the same way. A window that is hidden and shown again keeps a
+/// stale input region on Wayland, which leaves its titlebar buttons dead until tao 0.36 reaches a
+/// Tauri release (tauri-apps/tao#1218).
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.unminimize();
@@ -363,7 +369,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None,
+            Some(vec![HIDDEN_FLAG]),
         ))
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
@@ -423,6 +429,9 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             let tray = tray.icon_as_template(true);
             tray.build(app)?;
+            if !std::env::args().any(|argument| argument == HIDDEN_FLAG) {
+                show_window(app.handle());
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let state = handle.state::<AppState>();
