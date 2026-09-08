@@ -1,0 +1,154 @@
+/* PROTOTYPE - throwaway. Three dark-theme variants for the allowance view, on the real route,
+   switched by ?variant= and ?appearance=. Delete with theme-prototype.tsx once one wins. */
+
+/* Forced light: the shipped editorial palette, identical across variants. */
+:root[data-proto-appearance="light"] {
+  color-scheme: light;
+  --canvas: #fbf8f1;
+  --ink: #191713;
+  --on-ink: #fbf8f1;
+  --text-muted: #6b6355;
+  --text-faint: #8b8371;
+  --border-strong: #191713;
+  --border: #191713;
+  --hairline: #ddd6c6;
+  --hairline-soft: #cdc5b2;
+  --track: #e5decd;
+  --fill: #191713;
+  --accent: #a33418;
+  --focus: #a33418;
+  --ok: oklch(0.47 0.1 155);
+  --warn: oklch(0.58 0.13 70);
+  --danger: oklch(0.51 0.19 25);
+  --danger-surface: #f6e7e1;
+  --danger-ink: #6d2412;
+}
+
+/* A - Targaryen faithful: the theme file's values, pure black canvas, bright red accent. */
+:root[data-proto-appearance="dark"][data-proto-variant="a"] {
+  color-scheme: dark;
+  --canvas: #0a0a0a;
+  --ink: oklch(0.898 0.022 42.6);
+  --on-ink: oklch(0.134 0.006 354.5);
+  --text-muted: oklch(0.665 0.025 33);
+  --text-faint: oklch(0.575 0.025 31);
+  --border-strong: oklch(0.365 0.03 15);
+  --border: oklch(0.255 0.026 15);
+  --hairline: oklch(0.205 0.018 15);
+  --hairline-soft: oklch(0.225 0.022 15);
+  --track: oklch(0.175 0.018 15);
+  --fill: oklch(0.898 0.022 42.6);
+  --accent: oklch(0.639 0.222 20.3);
+  --focus: oklch(0.639 0.222 20.3);
+  --ok: oklch(0.714 0.107 166.6);
+  --warn: oklch(0.758 0.119 71);
+  --danger: oklch(0.716 0.181 13.8);
+  --danger-surface: oklch(0.216 0.055 9.8);
+  --danger-ink: oklch(0.82 0.104 9.8);
+}
+
+/* B - Inverted press: the light theme mirrored. Warm charcoal paper, cream ink, full-contrast
+   rules, and a rust accent instead of a bright red. Semantics stay loud, chrome stays quiet. */
+:root[data-proto-appearance="dark"][data-proto-variant="b"] {
+  color-scheme: dark;
+  --canvas: oklch(0.17 0.008 45);
+  --ink: oklch(0.93 0.015 80);
+  --on-ink: oklch(0.17 0.008 45);
+  --text-muted: oklch(0.7 0.014 70);
+  --text-faint: oklch(0.6 0.012 70);
+  --border-strong: oklch(0.93 0.015 80);
+  --border: oklch(0.6 0.012 70);
+  --hairline: oklch(0.3 0.012 55);
+  --hairline-soft: oklch(0.34 0.012 55);
+  --track: oklch(0.28 0.012 55);
+  --fill: oklch(0.93 0.015 80);
+  --accent: oklch(0.62 0.16 32);
+  --focus: oklch(0.62 0.16 32);
+  --ok: oklch(0.72 0.11 160);
+  --warn: oklch(0.78 0.12 75);
+  --danger: oklch(0.66 0.19 27);
+  --danger-surface: oklch(0.26 0.06 25);
+  --danger-ink: oklch(0.87 0.07 30);
+}
+
+/* C - Layered ember: no rules at all. Content sits on raised panels, the usage bar burns red,
+   and separation comes from surface steps instead of borders. */
+:root[data-proto-appearance="dark"][data-proto-variant="c"] {
+  color-scheme: dark;
+  --canvas: oklch(0.105 0.006 15);
+  --ink: oklch(0.898 0.022 42.6);
+  --on-ink: oklch(0.134 0.006 354.5);
+  --text-muted: oklch(0.665 0.025 33);
+  --text-faint: oklch(0.575 0.025 31);
+  --border-strong: transparent;
+  --border: transparent;
+  --hairline: transparent;
+  --hairline-soft: oklch(0.225 0.022 15);
+  --track: oklch(0.19 0.014 15);
+  --fill: oklch(0.639 0.222 20.3);
+  --accent: oklch(0.639 0.222 20.3);
+  --focus: oklch(0.639 0.222 20.3);
+  --ok: oklch(0.714 0.107 166.6);
+  --warn: oklch(0.758 0.119 71);
+  --danger: oklch(0.716 0.181 13.8);
+  --danger-surface: oklch(0.216 0.055 9.8);
+  --danger-ink: oklch(0.82 0.104 9.8);
+}
+:root[data-proto-appearance="dark"][data-proto-variant="c"] .entry,
+:root[data-proto-appearance="dark"][data-proto-variant="c"] .setting-row {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: oklch(0.145 0.012 15);
+}
+:root[data-proto-appearance="dark"][data-proto-variant="c"] .provider-row,
+:root[data-proto-appearance="dark"][data-proto-variant="c"] button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: oklch(0.175 0.018 15);
+}
+:root[data-proto-appearance="dark"][data-proto-variant="c"] .switch-track {
+  background: oklch(0.235 0.02 15);
+}
+:root[data-proto-appearance="dark"][data-proto-variant="c"] .rule {
+  border-radius: 999px;
+  overflow: hidden;
+}
+:root[data-proto-appearance="dark"][data-proto-variant="c"] header {
+  padding-bottom: 8px;
+}
+
+.proto-bar {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: #101010;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 45%);
+  transform: translateX(-50%);
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: #fff;
+}
+.proto-bar button {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #2a2a2a;
+  color: #fff;
+  font: inherit;
+}
+.proto-bar button:hover:not(:disabled) {
+  background: #3d3d3d;
+  color: #fff;
+}
+.proto-bar span {
+  padding: 0 6px;
+  white-space: nowrap;
+}
