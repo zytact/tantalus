@@ -13,6 +13,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, RunEvent, State,
 };
+use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
 use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
 
@@ -359,6 +360,10 @@ pub fn run() {
             |app, _arguments, _cwd| {
                 show_window(app);
             },
+        ))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
         ))
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
