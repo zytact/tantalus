@@ -13,7 +13,7 @@ vp run tauri dev
 
 `vp` is the [Vite+](https://viteplus.dev) CLI. Install it with `curl -fsSL https://vite.plus | bash`. It manages Node, pnpm, and the frontend toolchain.
 
-Each provider has its own header row with a switch. Switching a provider off stops Tantalus polling it: no credential read, no request, no tray line, and its windows and credits leave the window. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
+Settings has a switch per provider. Switching one off stops Tantalus polling it: no credential read, no request, no tray line, and it leaves the allowance view entirely. Switching it back on refreshes that provider straight away. The choice is saved to `providers.json` in the app config directory and survives a restart.
 
 Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Show usage** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
 

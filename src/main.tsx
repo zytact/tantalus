@@ -11,6 +11,8 @@ import {
   creditAmount,
   creditExpiry,
   lastUpdate,
+  providerIds,
+  providerNames,
   remainingPercent,
   statusLine,
   statusTone,
@@ -20,9 +22,6 @@ import {
 import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { SettingsPage } from "./settings-page";
 import "./styles.css";
-
-const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
-const providerNames: Record<ProviderId, string> = { codex: "Codex", claude: "Claude" };
 
 /** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
 function Entry({
@@ -123,48 +122,25 @@ function Extras({ provider }: { provider: ProviderUsage }) {
   );
 }
 
-function ProviderSection({
-  id,
-  provider,
-  enabled,
-  onToggle,
-}: {
-  id: ProviderId;
-  provider: ProviderUsage;
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void;
-}) {
+function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
   return (
     <div className="provider">
-      <button
-        className="provider-row"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={name}
-        onClick={() => onToggle(!enabled)}
-      >
-        <span className="provider-name">{name}</span>
-        <span className="provider-status" data-tone={statusTone(provider, enabled)}>
-          {statusLine(provider, enabled)}
+      <div className="provider-row">
+        <h2 className="provider-name">{name}</h2>
+        <span className="provider-status" data-tone={statusTone(provider)}>
+          {statusLine(provider)}
         </span>
-        <span className="switch-track" aria-hidden="true">
-          <span className="switch-knob" />
-        </span>
-      </button>
-      {enabled && (
-        <>
-          {degraded && (
-            <p className="notice" role="status">
-              {provider.error_message ?? "The last successful reading remains visible."}
-            </p>
-          )}
-          <Entry label="Short window" span="5 hours" duration={18_000} window={provider.five_hour} />
-          <Entry label="Long window" span="7 days" duration={604_800} window={provider.seven_day} />
-          <Extras provider={provider} />
-        </>
+      </div>
+      {degraded && (
+        <p className="notice" role="status">
+          {provider.error_message ?? "The last successful reading remains visible."}
+        </p>
       )}
+      <Entry label="Short window" span="5 hours" duration={18_000} window={provider.five_hour} />
+      <Entry label="Long window" span="7 days" duration={604_800} window={provider.seven_day} />
+      <Extras provider={provider} />
     </div>
   );
 }
@@ -174,7 +150,6 @@ function App() {
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -217,26 +192,17 @@ function App() {
     };
   }, []);
 
-  const setEnabled = async (provider: ProviderId, enabled: boolean) => {
-    try {
-      setSnapshot(await invoke<UsageSnapshot>("set_provider_enabled", { provider, enabled }));
-      setToggleError(null);
-    } catch {
-      setToggleError("Could not save provider setting.");
-    }
-  };
-
-  const updated =
-    snapshot &&
-    Math.max(
-      0,
-      ...providerIds.filter((id) => snapshot.enabled[id]).map((id) => snapshot[id].last_successful_update_epoch ?? 0),
-    );
+  const shown = snapshot ? providerIds.filter((id) => snapshot.enabled[id]) : [];
+  const updated = snapshot && Math.max(0, ...shown.map((id) => snapshot[id].last_successful_update_epoch ?? 0));
 
   return (
     <main>
       {page === "settings" ? (
-        <SettingsPage onBack={() => setPage("allowance")} />
+        <SettingsPage
+          enabled={snapshot?.enabled ?? null}
+          onProviderChange={setSnapshot}
+          onBack={() => setPage("allowance")}
+        />
       ) : (
         <>
           <header>
@@ -258,22 +224,9 @@ function App() {
             </div>
           </header>
 
-          {toggleError && (
-            <p className="notice" role="alert">
-              {toggleError}
-            </p>
-          )}
+          {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
 
-          {snapshot &&
-            providerIds.map((id) => (
-              <ProviderSection
-                key={id}
-                id={id}
-                provider={snapshot[id]}
-                enabled={snapshot.enabled[id]}
-                onToggle={(enabled) => void setEnabled(id, enabled)}
-              />
-            ))}
+          {snapshot && shown.map((id) => <ProviderSection key={id} id={id} provider={snapshot[id]} />)}
 
           <footer>Auto-refreshes every 5 minutes</footer>
         </>

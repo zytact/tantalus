@@ -40,12 +40,11 @@ describe("display contract", () => {
     expect(countdown(now + 86_400 * 4 + 3600 * 20, now)).toBe("4d 20h");
   });
 
-  it("reports a switched-off provider as off, whatever it last read", () => {
-    expect(statusLine(provider({ status: "ready" }), false)).toBe("Off");
-    expect(statusLine(provider({ status: "error" }), false)).toBe("Off");
-    expect(statusLine(provider({ status: "ready" }), true)).toBe("Live");
-    expect(statusLine(provider({ status: "error" }), true)).toBe("Could not refresh");
-    expect(statusLine(provider({ limit_reached: true }), true)).toBe("Blocked until reset");
+  it("names what the last reading was worth", () => {
+    expect(statusLine(provider({ status: "ready" }))).toBe("Live");
+    expect(statusLine(provider({ status: "error" }))).toBe("Could not refresh");
+    expect(statusLine(provider({ status: "stale" }))).toBe("Cached");
+    expect(statusLine(provider({ limit_reached: true }))).toBe("Blocked until reset");
   });
 
   it("dates a credit expiry that sits weeks out", () => {
@@ -62,10 +61,9 @@ describe("display contract", () => {
   });
 
   it("colors a status word by how bad it is", () => {
-    expect(statusTone(provider({ status: "ready" }), false)).toBe("muted");
-    expect(statusTone(provider({ status: "ready" }), true)).toBe("ok");
-    expect(statusTone(provider({ status: "stale" }), true)).toBe("warn");
-    expect(statusTone(provider({ status: "auth_missing" }), true)).toBe("danger");
-    expect(statusTone(provider({ limit_reached: true }), true)).toBe("danger");
+    expect(statusTone(provider({ status: "ready" }))).toBe("ok");
+    expect(statusTone(provider({ status: "stale" }))).toBe("warn");
+    expect(statusTone(provider({ status: "auth_missing" }))).toBe("danger");
+    expect(statusTone(provider({ limit_reached: true }))).toBe("danger");
   });
 });

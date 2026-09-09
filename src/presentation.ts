@@ -25,8 +25,10 @@ export type ProviderUsage = {
 export type ProviderId = "codex" | "claude";
 export type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage; enabled: Record<ProviderId, boolean> };
 
-export function statusLine(provider: ProviderUsage, enabled: boolean): string {
-  if (!enabled) return "Off";
+export const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
+export const providerNames: Record<ProviderId, string> = { codex: "Codex", claude: "Claude" };
+
+export function statusLine(provider: ProviderUsage): string {
   switch (provider.status) {
     case "auth_missing":
       return "Not signed in";
@@ -98,8 +100,7 @@ export function usageTier(value: number | null): "normal" | "warn" | "danger" {
   return value >= 75 ? "warn" : "normal";
 }
 
-export function statusTone(provider: ProviderUsage, enabled: boolean): "muted" | "ok" | "warn" | "danger" {
-  if (!enabled) return "muted";
+export function statusTone(provider: ProviderUsage): "ok" | "warn" | "danger" {
   switch (provider.status) {
     case "auth_missing":
     case "error":

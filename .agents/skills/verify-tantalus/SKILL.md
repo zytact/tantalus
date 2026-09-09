@@ -8,10 +8,11 @@ description: Drive the Tantalus Codex and Claude usage tray app (React webview p
 Tantalus is a Tauri 2 desktop app. Rust reads the Codex and Claude
 credential files and polls the usage APIs every 5 minutes. The React webview
 in `src/main.tsx` receives a token-free `UsageSnapshot` and renders one block
-per provider: an on/off switch row with a status word, then Short window
+per enabled provider: a header row with a status word, then Short window
 (5h), Long window (7d), and Reset credits (Codex) or Extra usage (Claude),
-above a shared Refresh button. A provider whose switch is off is not polled
-at all. The Allowance header opens a Settings page that shows the bundle
+above a shared Refresh button. The per-provider on/off switches live on the
+Settings page in `src/settings-page.tsx`; a provider switched off is not
+polled at all and does not appear in the allowance view. The Allowance header opens a Settings page that shows the bundle
 version and controls the operating system's open-at-login registration.
 
 ## Launch
@@ -43,7 +44,7 @@ IPC, so the app shows `Could not load provider settings` with no provider
 sections and a disabled Refresh. The full webview is driven headless
 through the mock in Drive step 3, which installs the same IPC surface the
 app touches and remounts it, so the tab renders both providers, their
-switches, and every entry like a user sees them.
+entries, and the Settings switches like a user sees them.
 
 Full desktop launch (`vp run tauri dev`) is manual-only, on a real Linux, macOS,
 or Windows desktop with tray support. It needs the Tauri system deps
@@ -132,26 +133,26 @@ window.__TANTALUS_MOCK__.remount().then(() => 'remounted')
 The remount swaps `#root` for a fresh node and re-imports
 `/src/main.tsx` cache-busted, so a new App mounts against the mock
 (the first error-state tree stays detached). Then drive it like a user:
-snapshot shows `Allowance` with an `updated` time, `role=switch[name="Codex"]`
-and `[name="Claude"]` both on, four `role=progressbar` entries, `Reset
-credits` (Codex) and `Extra usage` (Claude) regions, and an enabled
-Refresh. Click the switches and Refresh, not coordinates where a role
-target exists. Status words come from
+snapshot shows `Allowance` with an `updated` time, both provider blocks, four
+`role=progressbar` entries, `Reset credits` (Codex) and `Extra usage` (Claude)
+regions, and an enabled Refresh. Click `Settings`, the switches, and Refresh,
+not coordinates where a role target exists. Status words come from
 `window.__TANTALUS_MOCK__.scenario(...)` followed by a Refresh click:
 `stale` reads `Cached` with the figures intact and a `role=status`
 notice, `blocked` reads `Blocked until reset`, `auth_missing` reads
 `Not signed in` with `Window unavailable` fallbacks and a `no successful
 update yet` header, `error` reads `Could not refresh`, and `ready`
-returns to `Live`. Switching a provider off hides its entries, reads
-`Off`, and persists the `{"codex":true,"claude":false}`-shaped choice to
-localStorage (the mock's stand-in for `providers.json`); switching it
-back on refreshes that provider immediately. The Refresh click flips the
+returns to `Live`. Switching a provider off in Settings drops its block from
+the allowance view and persists the `{"codex":true,"claude":false}`-shaped
+choice to localStorage (the mock's stand-in for `providers.json`); switching
+it back on refreshes that provider immediately. The Refresh click flips the
 button to `Refreshing` with `aria-busy=true` mid-flight; the mock
 answers after ~350ms, so read that state from the same tick (click, then
 a 100ms `setTimeout` read in one expression).
 
 For the Settings page, follow `features/settings.md`. The mock proves the
-visible version, accessible startup switch, persistence, and failure state. It
+provider switches, the visible version, the accessible startup switch,
+persistence, and failure state. It
 does not register the app with the operating system, so it cannot prove the
 `--hidden` launch.
 
@@ -229,8 +230,9 @@ WHAM-first fallback, and the Ready path against
 `https://api.anthropic.com/api/oauth/usage`. Reads only: one GET per
 endpoint, no writes, no polling loop. The provider switches write
 `providers.json` for real, so the on-disk write itself is proven under
-`vp run tauri dev` only; the webview half (hide entries, `Off` word,
-immediate refresh on re-enable) is proven headless through the mock.
+`vp run tauri dev` only; the webview half (block leaves the allowance view,
+`Off` state word, immediate refresh on re-enable) is proven headless through
+the mock.
 Tantalus has no dry-run flag, so there is nothing to second-guess by name.
 
 ## Cleanup
@@ -262,5 +264,5 @@ All helpers live in `scripts/`; the shell ones are executable:
 - `scripts/cleanup.sh` - kill only what launch started, keep evidence
 
 Feature map is in `features/`: `README.md` plus one file per user-facing
-feature, including `provider-switch.md` for the per-provider on/off switch. Drive the map entry named in the task; one mapped feature per proof
+feature, including `provider-switch.md` for the per-provider on/off switch in Settings. Drive the map entry named in the task; one mapped feature per proof
 run is enough because the map lists the rest.
