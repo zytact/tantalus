@@ -1,12 +1,15 @@
 # Settings
 
-The Settings page reports the installed Tantalus version and controls whether
-the operating system opens Tantalus at login.
+The Settings page chooses which providers Tantalus follows, reports the
+installed version, and controls whether the operating system opens Tantalus at
+login.
 
 ## Sub-features
 
 - The Allowance header has a `Settings` button, and Settings has a `Back`
   button. Returning keeps the existing usage snapshot and refresh state.
+- `role=switch[name="Codex"]` and `role=switch[name="Claude"]` pick the
+  providers. See `provider-switch.md` for what each one turns off.
 - The version string is inlined from `src-tauri/tauri.conf.json` at build time,
   the same file Tauri stamps into the bundle, so it needs no command and has no
   loading or failure state.
@@ -26,8 +29,8 @@ Launch the isolated Vite server and install `scripts/tauri-mock.js` as described
 in the parent skill. The mock answers the three autostart commands without
 touching the operating system.
 
-1. Click `Settings`. Confirm the heading, `v0.0.3`, and an off
-   `role=switch[name="Open at login"]`.
+1. Click `Settings`. Confirm the heading, the provider switches, the version,
+   and an off `role=switch[name="Open at login"]`.
 2. Click the switch. Confirm it turns on and
    `localStorage["tantalus-mock-autostart"]` is `"true"`.
 3. Click `Back`, then `Settings`. Confirm the switch remains on.
