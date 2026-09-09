@@ -12,8 +12,9 @@ per enabled provider: a header row with a status word, then Short window
 (5h), Long window (7d), and Reset credits (Codex) or Extra usage (Claude),
 above a shared Refresh button. The per-provider on/off switches live on the
 Settings page in `src/settings-page.tsx`; a provider switched off is not
-polled at all and does not appear in the allowance view. The Allowance header opens a Settings page that shows the bundle
-version and controls the operating system's open-at-login registration.
+polled at all and does not appear in the allowance view. That same Settings
+page shows the bundle version and controls the operating system's
+open-at-login registration.
 
 ## Launch
 

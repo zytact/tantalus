@@ -199,7 +199,7 @@ function App() {
     <main>
       {page === "settings" ? (
         <SettingsPage
-          enabled={snapshot?.enabled ?? null}
+          providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
           onProviderChange={setSnapshot}
           onBack={() => setPage("allowance")}
         />

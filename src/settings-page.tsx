@@ -5,31 +5,59 @@ import { version } from "../src-tauri/tauri.conf.json";
 import { providerIds, providerNames } from "./presentation";
 import type { ProviderId, UsageSnapshot } from "./presentation";
 
+/** The provider choice, or why it cannot be shown yet. */
+export type ProviderChoice = Record<ProviderId, boolean> | "loading" | "unavailable";
+
+/** The switch every settings row uses. */
+function Toggle({
+  label,
+  checked,
+  busy = false,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  busy?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className="setting-toggle"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-busy={busy}
+      disabled={busy}
+      onClick={onToggle}
+    >
+      <span className="setting-state">{busy ? "Saving" : checked ? "On" : "Off"}</span>
+      <span className="switch-track" aria-hidden="true">
+        <span className="switch-knob" />
+      </span>
+    </button>
+  );
+}
+
 /** Switching a provider off stops the polling for it and drops it from the allowance view. */
 function ProviderRow({
   id,
-  enabled,
+  choice,
   onChange,
 }: {
   id: ProviderId;
-  enabled: boolean | null;
+  choice: ProviderChoice;
   onChange: (snapshot: UsageSnapshot) => void;
 }) {
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const name = providerNames[id];
 
-  const toggle = async () => {
-    if (enabled === null || saving) return;
-    setSaving(true);
+  // Rust persists the choice and publishes the new snapshot before it refreshes the provider it
+  // just switched on, so the switch follows that event rather than waiting out the request.
+  const toggle = (enabled: boolean) => {
     setError(null);
-    try {
-      onChange(await invoke<UsageSnapshot>("set_provider_enabled", { provider: id, enabled: !enabled }));
-    } catch {
-      setError(`Could not save the ${name} setting.`);
-    } finally {
-      setSaving(false);
-    }
+    void invoke<UsageSnapshot>("set_provider_enabled", { provider: id, enabled }).then(onChange, () =>
+      setError(`Could not save the ${name} setting.`),
+    );
   };
 
   return (
@@ -39,23 +67,10 @@ function ProviderRow({
           <h2>{name}</h2>
           <p>Show {name} usage in the allowance view and poll it every 5 minutes.</p>
         </div>
-        {enabled === null ? (
-          <span className="setting-state">Unavailable</span>
+        {typeof choice === "string" ? (
+          <span className="setting-state">{choice === "loading" ? "Checking" : "Unavailable"}</span>
         ) : (
-          <button
-            className="setting-toggle"
-            role="switch"
-            aria-checked={enabled}
-            aria-label={name}
-            aria-busy={saving}
-            disabled={saving}
-            onClick={() => void toggle()}
-          >
-            <span className="setting-state">{saving ? "Saving" : enabled ? "On" : "Off"}</span>
-            <span className="switch-track" aria-hidden="true">
-              <span className="switch-knob" />
-            </span>
-          </button>
+          <Toggle label={name} checked={choice[id]} onToggle={() => toggle(!choice[id])} />
         )}
       </section>
       {error && (
@@ -68,11 +83,11 @@ function ProviderRow({
 }
 
 export function SettingsPage({
-  enabled,
+  providers,
   onProviderChange,
   onBack,
 }: {
-  enabled: Record<ProviderId, boolean> | null;
+  providers: ProviderChoice;
   onProviderChange: (snapshot: UsageSnapshot) => void;
   onBack: () => void;
 }) {
@@ -121,7 +136,7 @@ export function SettingsPage({
 
       <div className="settings-list">
         {providerIds.map((id) => (
-          <ProviderRow key={id} id={id} enabled={enabled && enabled[id]} onChange={onProviderChange} />
+          <ProviderRow key={id} id={id} choice={providers} onChange={onProviderChange} />
         ))}
 
         <section className="setting-row">
@@ -132,20 +147,12 @@ export function SettingsPage({
           {startupEnabled === null ? (
             <span className="setting-state">{startupError ? "Unavailable" : "Checking"}</span>
           ) : (
-            <button
-              className="setting-toggle"
-              role="switch"
-              aria-checked={startupEnabled}
-              aria-label="Open at login"
-              aria-busy={savingStartup}
-              disabled={savingStartup}
-              onClick={() => void toggleStartup()}
-            >
-              <span className="setting-state">{savingStartup ? "Saving" : startupEnabled ? "On" : "Off"}</span>
-              <span className="switch-track" aria-hidden="true">
-                <span className="switch-knob" />
-              </span>
-            </button>
+            <Toggle
+              label="Open at login"
+              checked={startupEnabled}
+              busy={savingStartup}
+              onToggle={() => void toggleStartup()}
+            />
           )}
         </section>
         {startupError && (
