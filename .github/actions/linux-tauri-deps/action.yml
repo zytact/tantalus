@@ -5,6 +5,9 @@ runs:
   steps:
     - shell: bash
       run: |
+        # The runner image ships a Google Chrome apt repo that nothing here needs, and its index
+        # keeps failing the hash check, which fails the whole update.
+        sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
         sudo apt-get update
         sudo apt-get install -y \
           libwebkit2gtk-4.1-dev \
