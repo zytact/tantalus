@@ -47,9 +47,9 @@ runs:
             marker,
             '### Preview build',
             '',
-            // actions/checkout builds refs/pull/N/merge, so a bundle is this branch merged into
-            // the base rather than the head commit on its own.
-            `\`${pull.head.sha.slice(0, 7)}\` merged into \`${pull.base.ref}\`, from [this run](${run}).`,
+            // actions/checkout builds refs/pull/N/merge, so a bundle is this branch on top of the
+            // base rather than the head commit on its own.
+            `Built from \`${pull.head.sha.slice(0, 7)}\` on top of \`${pull.base.ref}\`, in [this run](${run}).`,
             '',
             '| Platform | Bundles | |',
             '| --- | --- | --- |',
