@@ -571,7 +571,10 @@ mod tests {
         let mut provider = ProviderUsage::default();
         provider.five_hour.used_percent = Some(12.74);
         provider.seven_day.used_percent = Some(3.0);
-        assert_eq!(tray_line("Opencode", &provider), "Opencode  5h 12.7%  7d 3%");
+        assert_eq!(
+            tray_line("Opencode", &provider),
+            "Opencode  5h 12.7%  7d 3%"
+        );
     }
 
     fn state() -> AppState {
