@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { version } from "../src-tauri/tauri.conf.json";
 import { providerIds, providerNames } from "./presentation";
 import type { ProviderId, UsageSnapshot } from "./presentation";
+import { ProviderIcon } from "./provider-icon";
 
 /** The provider choice, or why it cannot be shown yet. */
 export type ProviderChoice = Record<ProviderId, boolean> | "loading" | "unavailable";
@@ -64,7 +65,10 @@ function ProviderRow({
     <>
       <section className="setting-row">
         <div className="setting-copy">
-          <h2>{name}</h2>
+          <h2>
+            <ProviderIcon id={id} />
+            {name}
+          </h2>
           <p>Show {name} usage in the allowance view and poll it every 5 minutes.</p>
         </div>
         {typeof choice === "string" ? (
