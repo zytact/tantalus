@@ -1,0 +1,103 @@
+name: preview
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+# A pull request from a fork gets a read-only token, so it keeps the artifacts without a comment
+# pointing at them.
+env:
+  COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+
+jobs:
+  announce:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/preview-comment
+
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: --bundles deb,rpm
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: --bundles nsis
+
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-frontend
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - if: startsWith(matrix.platform, 'ubuntu')
+        uses: ./.github/actions/linux-tauri-deps
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: preview-${{ matrix.target }}
+
+      # tauri.preview.conf.json renames the app and moves its bundle identifier, so a preview
+      # installs beside the release build and keeps its own settings, autostart entry and
+      # single-instance lock. The app reads that identifier back to pick its tray icon.
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          tauriScript: vp run tauri
+          args: ${{ matrix.args }} --config src-tauri/tauri.preview.conf.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/**/*.deb
+            src-tauri/target/**/*.rpm
+            src-tauri/target/**/*.dmg
+            src-tauri/target/**/*setup.exe
+
+      # Link this platform's bundle as soon as it exists, rather than making someone wait for the
+      # slowest platform. Two of these landing together can drop one update, which settle corrects.
+      - if: env.COMMENT == 'true'
+        uses: ./.github/actions/preview-comment
+
+  settle:
+    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/preview-comment
+        with:
+          final: "true"

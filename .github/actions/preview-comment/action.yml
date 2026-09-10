@@ -1,0 +1,75 @@
+name: preview comment
+description: Upsert the pull request comment that links this run's preview bundles.
+
+inputs:
+  final:
+    description: Whether the bundle jobs have finished, which decides what a missing bundle means.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@v7
+      with:
+        script: |
+          const final = '${{ inputs.final }}' === 'true';
+          const marker = '<!-- preview-bundles -->';
+          const { owner, repo } = context.repo;
+          const base = `${context.serverUrl}/${owner}/${repo}`;
+          const run = `${base}/actions/runs/${context.runId}`;
+
+          // The matrix builds one artifact per platform, and each row links its own once it lands.
+          const targets = [
+            ['Linux', 'deb, rpm', 'preview-x86_64-unknown-linux-gnu'],
+            ['macOS (Apple silicon)', 'dmg', 'preview-aarch64-apple-darwin'],
+            ['Windows', 'nsis', 'preview-x86_64-pc-windows-msvc'],
+          ];
+
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            owner,
+            repo,
+            run_id: context.runId,
+          });
+          const byName = new Map(artifacts.map((artifact) => [artifact.name, artifact]));
+
+          const rows = targets.map(([platform, bundles, name]) => {
+            const artifact = byName.get(name);
+            const status = artifact
+              ? `[Download](${base}/actions/runs/${context.runId}/artifacts/${artifact.id})`
+              : final
+                ? 'Build failed'
+                : 'Building';
+            return `| ${platform} | ${bundles} | ${status} |`;
+          });
+
+          const pull = context.payload.pull_request;
+          const body = [
+            marker,
+            '### Preview build',
+            '',
+            // actions/checkout builds refs/pull/N/merge, so a bundle is this branch on top of the
+            // base rather than the head commit on its own.
+            `Built from \`${pull.head.sha.slice(0, 7)}\` on top of \`${pull.base.ref}\`, in [this run](${run}).`,
+            '',
+            '| Platform | Bundles | |',
+            '| --- | --- | --- |',
+            ...rows,
+            '',
+            'Each download is a zip of that platform\'s installers. `gh run download ' +
+              `${context.runId}` +
+              '` fetches them all from a terminal.',
+            '',
+            'It installs as **Tantalus Preview** beside a release install, with its own settings, autostart entry and tray icon. Nothing it does touches the release app.',
+          ].join('\n');
+
+          const comments = await github.paginate(github.rest.issues.listComments, {
+            owner,
+            repo,
+            issue_number: pull.number,
+          });
+          const existing = comments.find((comment) => comment.body.startsWith(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number: pull.number, body });
+          }

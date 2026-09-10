@@ -35,6 +35,29 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 - macOS needs Xcode command line tools.
 - Windows needs the MSVC build tools and WebView2, which ships with Windows 11 and current Windows 10.
 
+## Preview builds
+
+Every pull request builds **Tantalus Preview**: deb and rpm, an Apple silicon dmg, and a Windows NSIS installer. A comment on the PR carries a download link per platform, posted when the run starts and updated as each platform finishes, so a slow platform never holds up the others.
+
+A preview is a separate app. `src-tauri/tauri.preview.conf.json` gives it its own product name, bundle identifier and binary name, so it installs beside a release build and keeps its own settings file, autostart entry and single-instance lock. Nothing it does touches the release install. Its mark is blue rather than orange, and the app picks that mark by reading back the identifier it was bundled with, so the icon can never disagree with the identity. macOS draws the preview tray icon in color, since the two marks share a silhouette and a template image would render them identically.
+
+Build one locally the same way CI does:
+
+```sh
+vp run tauri build --config src-tauri/tauri.preview.conf.json
+```
+
+`src-tauri/icons/preview/` holds the blue set. Recolor `icon.png` and `tray.png` from the release pair, then regenerate the platform icons from the recolored source:
+
+```sh
+cd src-tauri/icons
+magick icon.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/icon.png
+magick tray.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/tray.png
+cd ../.. && vp run tauri icon src-tauri/icons/preview/icon.png -o src-tauri/icons/preview
+```
+
+`tauri icon` writes the sizes the bundle needs and a set of extras this project does not commit. It never writes `tray.png`, which the two `magick` lines above cover.
+
 ## Privacy and behavior
 
 - Each refresh re-reads both credential files. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` win when they are set. Otherwise the app reads `.codex/auth.json` and `.claude/.credentials.json` under the home directory, which is `$HOME` on Linux and macOS and `%USERPROFILE%` on Windows.
