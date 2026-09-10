@@ -33,6 +33,12 @@ describe("display contract", () => {
     expect(remainingPercent(100)).toBe("0%");
   });
 
+  it("keeps a fractional reading instead of rounding it away", () => {
+    expect(usagePercent(12.74)).toBe("12.7%");
+    expect(remainingPercent(12.7)).toBe("87.3%");
+    expect(usagePercent(42)).toBe("42%");
+  });
+
   it("keeps an unknown reset distinct from an imminent one", () => {
     const now = 1_000_000;
     expect(countdown(null, now)).toBe("Unavailable");

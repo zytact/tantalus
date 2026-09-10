@@ -347,9 +347,18 @@ fn tray_line(name: &str, provider: &ProviderUsage) -> String {
     line
 }
 
+/// Opencode reports fractional percentages, so one decimal is kept when the reading has one.
+/// The providers that report whole numbers never grow a hollow ".0".
 fn percent(value: Option<f64>) -> String {
     match value {
-        Some(value) => format!("{value:.0}%"),
+        Some(value) => {
+            let rounded = (value * 10.0).round() / 10.0;
+            if rounded.fract() == 0.0 {
+                format!("{rounded:.0}%")
+            } else {
+                format!("{rounded:.1}%")
+            }
+        }
         None => "--".to_owned(),
     }
 }
@@ -555,6 +564,14 @@ mod tests {
         let config: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.preview.conf.json")).expect("valid JSON");
         assert_eq!(config["identifier"], PREVIEW_IDENTIFIER);
+    }
+
+    #[test]
+    fn the_tray_keeps_a_fractional_percentage() {
+        let mut provider = ProviderUsage::default();
+        provider.five_hour.used_percent = Some(12.74);
+        provider.seven_day.used_percent = Some(3.0);
+        assert_eq!(tray_line("Opencode", &provider), "Opencode  5h 12.7%  7d 3%");
     }
 
     fn state() -> AppState {

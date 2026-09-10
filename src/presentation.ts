@@ -61,12 +61,19 @@ export function statusLine(provider: ProviderUsage): string {
   }
 }
 
+/** Opencode reports fractional percentages, so one decimal is kept when the reading has one.
+ * The providers that report whole numbers never grow a hollow ".0". */
+function percent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
+}
+
 export function usagePercent(value: number | null): string {
-  return value === null ? "Unavailable" : `${Math.round(value)}%`;
+  return value === null ? "Unavailable" : percent(value);
 }
 
 export function remainingPercent(value: number | null): string {
-  return value === null ? "Unavailable" : `${Math.round(100 - value)}%`;
+  return value === null ? "Unavailable" : percent(100 - value);
 }
 
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
