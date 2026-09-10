@@ -10,16 +10,20 @@ import {
   countdown,
   creditAmount,
   creditExpiry,
+  fiveHourSeconds,
   lastUpdate,
+  monthlySeconds,
+  providerExtras,
   providerIds,
   providerNames,
   remainingPercent,
+  sevenDaySeconds,
   statusLine,
   statusTone,
   usagePercent,
   usageTier,
 } from "./presentation";
-import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
+import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { SettingsPage } from "./settings-page";
 import "./styles.css";
 
@@ -77,27 +81,28 @@ function Entry({
   );
 }
 
-/** Codex banks reset credits; Claude bills overflow against a monthly allowance. */
-function Extras({ provider }: { provider: ProviderUsage }) {
-  const extra = provider.extra_usage;
-  if (extra) {
-    return (
-      <section className="entry" aria-label="Extra usage">
-        <div className="entry-head">
-          <h3>
-            Extra usage<i>{extra.enabled ? "enabled" : "off"}</i>
-          </h3>
-          <strong className="figure">{creditAmount(extra.used_credits, extra.currency)}</strong>
-        </div>
-        <ol className="credits">
-          <li>
-            <span>Monthly limit</span>
-            <span>{creditAmount(extra.monthly_limit, extra.currency)}</span>
-          </li>
-        </ol>
-      </section>
-    );
-  }
+/** Claude bills overflow against a monthly allowance. */
+function Spend({ extra }: { extra: ExtraUsage }) {
+  return (
+    <section className="entry" aria-label="Extra usage">
+      <div className="entry-head">
+        <h3>
+          Extra usage<i>{extra.enabled ? "enabled" : "off"}</i>
+        </h3>
+        <strong className="figure">{creditAmount(extra.used_credits, extra.currency)}</strong>
+      </div>
+      <ol className="credits">
+        <li>
+          <span>Monthly limit</span>
+          <span>{creditAmount(extra.monthly_limit, extra.currency)}</span>
+        </li>
+      </ol>
+    </section>
+  );
+}
+
+/** Codex banks credits that reset a spent window early. */
+function Credits({ provider }: { provider: ProviderUsage }) {
   return (
     <section className="entry" aria-label="Reset credits">
       <div className="entry-head">
@@ -122,6 +127,18 @@ function Extras({ provider }: { provider: ProviderUsage }) {
   );
 }
 
+/** Which extras a provider has is fixed per provider, not inferred from what the last read held. */
+function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
+  switch (providerExtras[id]) {
+    case "spend":
+      return provider.extra_usage && <Spend extra={provider.extra_usage} />;
+    case "credits":
+      return <Credits provider={provider} />;
+    default:
+      return null;
+  }
+}
+
 function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
@@ -138,9 +155,12 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
-      <Entry label="Short window" span="5 hours" duration={18_000} window={provider.five_hour} />
-      <Entry label="Long window" span="7 days" duration={604_800} window={provider.seven_day} />
-      <Extras provider={provider} />
+      <Entry label="Short window" span="5 hours" duration={fiveHourSeconds} window={provider.five_hour} />
+      <Entry label="Long window" span="7 days" duration={sevenDaySeconds} window={provider.seven_day} />
+      {provider.monthly.limit_window_seconds !== null && (
+        <Entry label="Monthly window" span="30 days" duration={monthlySeconds} window={provider.monthly} />
+      )}
+      <Extras id={id} provider={provider} />
     </div>
   );
 }

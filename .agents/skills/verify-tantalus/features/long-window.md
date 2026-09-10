@@ -2,7 +2,7 @@
 
 The second ledger entry inside each provider block. Same shape as the short
 window. It is available only when Codex reports the recognized 604800-second
-window or Claude supplies `seven_day`.
+window, Claude supplies `seven_day`, or Opencode supplies `usage.weekly`.
 
 ## Sub-features
 
@@ -24,9 +24,10 @@ renders this entry.
 
 Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the second
 region inside each enabled provider has
-`role=progressbar[name="Long window usage"]`, figures `8%` (Codex) and
-`74%` (Claude), `Resets` in `Nd Nh` form, `Remaining` at `100 - used`.
-The `auth_missing` scenario flips both to `Window unavailable`.
+`role=progressbar[name="Long window usage"]`, figures `8%` (Codex),
+`74%` (Claude), and `3%` (Opencode), `Resets` in `Nd Nh` form, `Remaining`
+at `100 - used`.
+The `auth_missing` scenario flips all three to `Window unavailable`.
 
 1. Launch on an isolated port. Static proof is `scripts/check-ui.sh <PORT>`.
 2. A bare-browser snapshot must not assert a provider block, region, or

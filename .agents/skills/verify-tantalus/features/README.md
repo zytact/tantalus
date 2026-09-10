@@ -7,6 +7,7 @@ when this index lists others.
 
 - [short-window](short-window.md) - 5-hour consumption ledger entry
 - [long-window](long-window.md) - 7-day consumption ledger entry
+- [monthly-window](monthly-window.md) - 30-day ledger entry, Opencode only
 - [reset-credits](reset-credits.md) - banked reset credits
 - [manual-refresh](manual-refresh.md) - Refresh button, Refresh now, stale and error states
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, status line, token privacy
@@ -23,8 +24,9 @@ behavior need `vp run tauri dev` on a real desktop with credentials. Fixture sui
 (`vp test`, `cargo test`) prove the parsing edges; one redacted live
 refresh via `.agents/skills/verify-tantalus/scripts/live-check.sh` (WHAM
 first, Codex fallback, credits
-separately, Claude usage from `api.anthropic.com`, 12s timeout, single pass)
-proves both real credential files and the Ready path. It is the only step
+separately, Claude usage from `api.anthropic.com`, Opencode Go usage from
+`opencode.ai/zen/go`, 12s timeout, single pass)
+proves all three real credential files and the Ready path. It is the only step
 that touches the network or the real logins, and it never logs or stores a
 token.
 

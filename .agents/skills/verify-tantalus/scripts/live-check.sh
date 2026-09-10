@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Single live refresh against the real ChatGPT usage APIs.
+# Single live refresh against the real Codex, Claude, and Opencode usage APIs.
 # Mirrors src-tauri/src/api.rs: WHAM usage first, Codex usage fallback,
-# reset credits separately, 12s timeout per request, one pass only (no loop).
+# reset credits separately, then Claude and Opencode Go, 12s timeout per
+# request, one pass only (no loop).
 # The token is read into memory, never printed, never written to disk,
 # and never passed on any command line. Response bodies contain no tokens.
 # Usage: live-check.sh <EVIDENCE_DIR>
@@ -18,6 +19,7 @@ wham = "https://chatgpt.com/backend-api/wham/usage"
 codex = "https://chatgpt.com/backend-api/codex/usage"
 credits_url = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 claude_url = "https://api.anthropic.com/api/oauth/usage"
+opencode_url = "https://opencode.ai/zen/go/v1/usage"
 
 codex_home = os.environ.get("CODEX_HOME", "")
 candidates = []
@@ -191,6 +193,40 @@ else:
         except (json.JSONDecodeError, AttributeError):
             print("LIVE: claude body is not the expected JSON object")
 del claude_token
+
+# Opencode keeps a plain API key under the "opencode-go" entry of its auth.json.
+# XDG_DATA_HOME relocates the whole store, so its own directory sits under it.
+opencode_root = os.environ.get("XDG_DATA_HOME", "") or os.path.join(
+    os.path.expanduser("~"), ".local", "share")
+opencode_path = os.path.join(opencode_root, "opencode", "auth.json")
+opencode_key = read_token(opencode_path, (["opencode-go", "key"],))
+if not opencode_key:
+    print(f"LIVE: opencode auth_missing (no opencode-go key at {opencode_path})")
+else:
+    request = urllib.request.Request(opencode_url, method="GET", headers={
+        "accept": "application/json",
+        "Authorization": f"Bearer {opencode_key}",
+        "User-Agent": "tantalus/0.1",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            opencode_status, opencode_body = response.status, response.read()
+    except Exception as error:
+        opencode_status, opencode_body = getattr(error, "code", None) or "error", None
+    print(f"LIVE: opencode usage -> {opencode_status}")
+    if opencode_body is not None and opencode_status == 200:
+        with open(os.path.join(evidence, "live-opencode-usage.json"), "wb") as handle:
+            handle.write(opencode_body)
+        try:
+            payload = json.loads(opencode_body)
+            usage = payload.get("usage") if isinstance(payload, dict) else None
+            windows = {key: sorted(usage.get(key).keys())
+                       for key in ("rolling", "weekly", "monthly")
+                       if isinstance(usage, dict) and isinstance(usage.get(key), dict)}
+            print(f"LIVE: opencode windows={windows}")
+        except (json.JSONDecodeError, AttributeError):
+            print("LIVE: opencode body is not the expected JSON object")
+del opencode_key
 
 # Token and account id stay in this process only; nothing above prints them.
 if usage_body is None:

@@ -12,8 +12,8 @@ provider's 5-hour window consumed, when it resets, and what remains.
   (`remainingPercent`)
 - `Window unavailable` fallback when the backend reports no 18000-second
   window (`src/main.tsx` Entry). Codex matches the duration exactly in
-  `parse_usage`; Claude keys off the `five_hour` field name and stamps the
-  duration itself in `parse_claude_usage`.
+  `parse_usage`; Claude keys off the `five_hour` field name and Opencode off
+  `usage.rolling`, both stamping the duration themselves.
 
 ## How to get to it (user POV)
 
@@ -30,10 +30,11 @@ Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the first
 entry inside each provider block is the Short window. Codex reads
 `42%` with `role=progressbar[name="Short window usage"]`,
 `aria-valuenow="42"`, `Resets` near `3h 29m`, and `Remaining 58%`;
-Claude reads `65%` the same way. Click each provider switch off and back
+Claude reads `65%` and Opencode `4%` the same way, once Opencode is switched
+on. Click each provider switch off and back
 on to confirm the entry vanishes and returns with its figure.
 `Window unavailable` plus an `Unavailable` figure is the
-`auth_missing`-scenario rendering for this entry.
+`auth_missing`-scenario rendering for this entry, in all three blocks.
 
 1. Launch on an isolated port: `.agents/skills/verify-tantalus/scripts/launch.sh 1421`
 2. Install the mock and remount (see `SKILL.md` Drive step 3), then snapshot

@@ -6,6 +6,9 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub const FIVE_HOUR_SECONDS: i64 = 18_000;
 pub const SEVEN_DAY_SECONDS: i64 = 604_800;
+/// Opencode's third window. It renews a month after the plan started rather than on a calendar
+/// boundary, so 30 days is the duration that identifies it.
+pub const MONTHLY_SECONDS: i64 = 2_592_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WindowUsage {
@@ -31,6 +34,8 @@ pub struct ExtraUsage {
 pub struct ProviderUsage {
     pub five_hour: WindowUsage,
     pub seven_day: WindowUsage,
+    /// Only Opencode reports a third window. The others leave it unreported and the view skips it.
+    pub monthly: WindowUsage,
     pub allowed: Option<bool>,
     pub limit_reached: Option<bool>,
     pub reset_credits: Vec<ResetCredit>,
@@ -44,6 +49,7 @@ pub struct ProviderUsage {
 pub struct UsageSnapshot {
     pub codex: ProviderUsage,
     pub claude: ProviderUsage,
+    pub opencode: ProviderUsage,
     pub enabled: ProviderSettings,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -92,8 +98,10 @@ pub fn parse_usage(
 pub fn parse_claude_usage(
     value: &Value,
 ) -> (WindowUsage, WindowUsage, Option<bool>, Option<ExtraUsage>) {
-    let five_hour = claude_window(value.get("five_hour"), FIVE_HOUR_SECONDS);
-    let seven_day = claude_window(value.get("seven_day"), SEVEN_DAY_SECONDS);
+    let window =
+        |key: &str, seconds| named_window(value.get(key), seconds, "utilization", "resets_at");
+    let five_hour = window("five_hour", FIVE_HOUR_SECONDS);
+    let seven_day = window("seven_day", SEVEN_DAY_SECONDS);
     let locked = ["five_hour", "seven_day"]
         .iter()
         .filter_map(|key| value.get(key))
@@ -110,14 +118,42 @@ pub fn parse_claude_usage(
     )
 }
 
-fn claude_window(value: Option<&Value>, seconds: i64) -> WindowUsage {
+/// Opencode reports three named windows, so the duration is supplied here too. Each window also
+/// carries a `status`, but its vocabulary beyond `ok` is unknown, and reading an unrecognised
+/// value as blocked would tell someone they are cut off while they can still work. A window
+/// counts as spent only when its own percentage says so.
+pub fn parse_opencode_usage(
+    value: &Value,
+) -> (WindowUsage, WindowUsage, WindowUsage, Option<bool>) {
+    let usage = value.get("usage");
+    let window = |key: &str| usage.and_then(|usage| usage.get(key));
+    let spent = ["rolling", "weekly", "monthly"]
+        .iter()
+        .filter_map(|key| window(key))
+        .any(|window| {
+            window
+                .get("percent")
+                .and_then(Value::as_f64)
+                .is_some_and(|percent| percent >= 100.0)
+        });
+    (
+        named_window(window("rolling"), FIVE_HOUR_SECONDS, "percent", "resetsAt"),
+        named_window(window("weekly"), SEVEN_DAY_SECONDS, "percent", "resetsAt"),
+        named_window(window("monthly"), MONTHLY_SECONDS, "percent", "resetsAt"),
+        Some(spent),
+    )
+}
+
+/// A window the provider identifies by name rather than by duration. Only the field names differ
+/// between providers, so the duration and both keys are supplied by the caller.
+fn named_window(value: Option<&Value>, seconds: i64, percent: &str, resets: &str) -> WindowUsage {
     let Some(value) = value.filter(|value| !value.is_null()) else {
         return WindowUsage::default();
     };
     WindowUsage {
-        used_percent: value.get("utilization").and_then(Value::as_f64),
+        used_percent: value.get(percent).and_then(Value::as_f64),
         limit_window_seconds: Some(seconds),
-        reset_at_epoch: epoch(value.get("resets_at")),
+        reset_at_epoch: epoch(value.get(resets)),
     }
 }
 
@@ -414,6 +450,49 @@ mod tests {
             &json!({"seven_day": {"utilization": 100.0, "locked_reason": "usage_limit"}}),
         );
         assert_eq!(locked, Some(true));
+    }
+
+    #[test]
+    fn reads_all_three_opencode_windows() {
+        let (rolling, weekly, monthly, spent) = parse_opencode_usage(&json!({"usage": {
+            "rolling": {"status": "ok", "percent": 4, "resetsAt": "2026-08-13T16:27:38.287Z"},
+            "weekly": {"status": "ok", "percent": 3, "resetsAt": "2026-08-17T00:00:00.287Z"},
+            "monthly": {"status": "ok", "percent": 1, "resetsAt": "2026-09-13T06:06:01.287Z"}
+        }}));
+        assert_eq!(rolling.used_percent, Some(4.0));
+        assert_eq!(rolling.limit_window_seconds, Some(FIVE_HOUR_SECONDS));
+        assert_eq!(rolling.reset_at_epoch, Some(1_786_638_458));
+        assert_eq!(weekly.used_percent, Some(3.0));
+        assert_eq!(weekly.limit_window_seconds, Some(SEVEN_DAY_SECONDS));
+        assert_eq!(monthly.used_percent, Some(1.0));
+        assert_eq!(monthly.limit_window_seconds, Some(MONTHLY_SECONDS));
+        assert_eq!(monthly.reset_at_epoch, Some(1_789_279_561));
+        assert_eq!(spent, Some(false));
+    }
+
+    #[test]
+    fn an_opencode_window_is_spent_only_when_its_percentage_says_so() {
+        let spent = |window| parse_opencode_usage(&json!({"usage": {"weekly": window}})).3;
+        assert_eq!(
+            spent(json!({"status": "exceeded", "percent": 100})),
+            Some(true)
+        );
+        // An unrecognised status must not read as blocked while the window still has room.
+        assert_eq!(
+            spent(json!({"status": "warning", "percent": 80})),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn absent_opencode_windows_stay_unavailable() {
+        let (rolling, weekly, monthly, spent) =
+            parse_opencode_usage(&json!({"usage": {"rolling": null}}));
+        for window in [rolling, weekly, monthly] {
+            assert_eq!(window.used_percent, None);
+            assert_eq!(window.limit_window_seconds, None);
+        }
+        assert_eq!(spent, Some(false));
     }
 
     #[test]

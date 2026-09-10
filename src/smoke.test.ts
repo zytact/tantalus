@@ -13,6 +13,7 @@ import type { ProviderUsage } from "./presentation";
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   seven_day: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
+  monthly: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   allowed: null,
   limit_reached: null,
   reset_credits: [],
@@ -30,6 +31,12 @@ describe("display contract", () => {
     expect(usagePercent(0)).toBe("0%");
     expect(remainingPercent(null)).toBe("Unavailable");
     expect(remainingPercent(100)).toBe("0%");
+  });
+
+  it("keeps a fractional reading instead of rounding it away", () => {
+    expect(usagePercent(12.74)).toBe("12.7%");
+    expect(remainingPercent(12.7)).toBe("87.3%");
+    expect(usagePercent(42)).toBe("42%");
   });
 
   it("keeps an unknown reset distinct from an imminent one", () => {

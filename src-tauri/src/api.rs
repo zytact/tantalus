@@ -1,6 +1,7 @@
 use crate::auth::Credentials;
 use crate::usage::{
-    now_epoch, parse_claude_usage, parse_credits, parse_usage, ProviderUsage, SnapshotStatus,
+    now_epoch, parse_claude_usage, parse_credits, parse_opencode_usage, parse_usage, ProviderUsage,
+    SnapshotStatus, WindowUsage,
 };
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
@@ -10,6 +11,7 @@ const WHAM_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/codex/usage";
 const RESET_CREDITS_URL: &str = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
 const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+const OPENCODE_USAGE_URL: &str = "https://opencode.ai/zen/go/v1/usage";
 const USER_AGENT: &str = "tantalus/0.1";
 
 #[derive(Debug, Error)]
@@ -40,6 +42,7 @@ pub async fn fetch_codex(
     Ok(ProviderUsage {
         five_hour,
         seven_day,
+        monthly: WindowUsage::default(),
         allowed,
         limit_reached,
         reset_credits,
@@ -60,11 +63,39 @@ pub async fn fetch_claude(
     Ok(ProviderUsage {
         five_hour,
         seven_day,
+        monthly: WindowUsage::default(),
         allowed: limit_reached.map(|reached| !reached),
         limit_reached,
         reset_credits: Vec::new(),
         reset_credit_count: None,
         extra_usage,
+        last_successful_update_epoch: Some(now_epoch()),
+        status: SnapshotStatus::Ready,
+        error_message: None,
+    })
+}
+
+pub async fn fetch_opencode(
+    client: &Client,
+    credentials: &Credentials,
+) -> Result<ProviderUsage, ApiError> {
+    let usage = fetch_json(
+        client,
+        OPENCODE_USAGE_URL,
+        credentials,
+        &[("User-Agent", USER_AGENT)],
+    )
+    .await?;
+    let (five_hour, seven_day, monthly, limit_reached) = parse_opencode_usage(&usage);
+    Ok(ProviderUsage {
+        five_hour,
+        seven_day,
+        monthly,
+        allowed: limit_reached.map(|reached| !reached),
+        limit_reached,
+        reset_credits: Vec::new(),
+        reset_credit_count: None,
+        extra_usage: None,
         last_successful_update_epoch: Some(now_epoch()),
         status: SnapshotStatus::Ready,
         error_message: None,

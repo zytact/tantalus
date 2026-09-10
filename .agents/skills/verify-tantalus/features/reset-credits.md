@@ -2,7 +2,7 @@
 
 Banked credits that reset a limit, with per-credit expiry dates. Codex only:
 Claude has no reset credits and renders an `Extra usage` section in the same
-slot.
+slot, and Opencode renders nothing there at all.
 
 ## Sub-features
 
@@ -10,6 +10,10 @@ slot.
 - Credit list `Credit N` plus `Expires Oct 4, ...` via `creditExpiry`
 - Empty state `No credit details available.`
 - Region `aria-label="Reset credits"`
+- Which section a provider gets is fixed by `providerExtras` in
+  `src/presentation.ts`, not inferred from whether the last read happened to
+  carry `extra_usage`. Opencode maps to `null` and ends its block after the
+  Monthly window.
 - Claude alternative in the same slot: region `aria-label="Extra usage"`,
   headline from `creditAmount` (`12.50 USD`), a `Monthly limit` row, and an
   `enabled` / `off` marker (`src/main.tsx` `Extras`,
@@ -28,8 +32,11 @@ Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the Codex
 block ends with `aria-label="Reset credits"`, headline `2`, and one row
 per credit with an `Expires Oct 4, ...` expiry; the Claude block shows
 `aria-label="Extra usage"` with `12.50 USD` and a `Monthly limit 50.00
-USD` row instead. The `auth_missing` scenario renders the empty state:
-`Unavailable` headline plus `No credit details available.`
+USD` row instead; the Opencode block has neither region. Under the
+`auth_missing` scenario only Codex keeps a region, rendering the empty state
+`Unavailable` plus `No credit details available.`; Claude drops its
+`Extra usage` region entirely, because the scenario clears `extra_usage` and
+the section renders only when a payload carries one.
 
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
    static shell.

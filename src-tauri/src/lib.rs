@@ -37,8 +37,9 @@ impl std::fmt::Display for RefreshError {
 struct AppState {
     snapshot: Mutex<UsageSnapshot>,
     refreshing: AtomicU8,
-    codex_request: Mutex<()>,
-    claude_request: Mutex<()>,
+    /// One lock per provider, in `Provider::ALL` order, so a refresh and a switch never read the
+    /// same provider at once.
+    requests: [Mutex<()>; Provider::ALL.len()],
     client: reqwest::Client,
     settings_path: PathBuf,
 }
@@ -79,14 +80,16 @@ async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
         return state.snapshot.lock().await.clone();
     }
     loop {
-        let (codex, claude) = tokio::join!(
+        let (codex, claude, opencode) = tokio::join!(
             read_enabled(state, Provider::Codex),
-            read_enabled(state, Provider::Claude)
+            read_enabled(state, Provider::Claude),
+            read_enabled(state, Provider::Opencode)
         );
         let snapshot = {
             let mut snapshot = state.snapshot.lock().await;
             apply_enabled(&mut snapshot, Provider::Codex, codex);
             apply_enabled(&mut snapshot, Provider::Claude, claude);
+            apply_enabled(&mut snapshot, Provider::Opencode, opencode);
             if repeat_refresh(&state.refreshing) {
                 None
             } else {
@@ -135,7 +138,7 @@ where
         persist_provider_settings(&state.settings_path, snapshot.enabled, provider, enabled)?;
     snapshot.enabled = proposed;
     if !enabled {
-        *provider_usage(&mut snapshot, provider) = ProviderUsage::default();
+        *provider_usage_mut(&mut snapshot, provider) = ProviderUsage::default();
     }
     publish(&snapshot);
     Ok(snapshot.clone())
@@ -154,10 +157,19 @@ fn persist_provider_settings(
     Ok(proposed)
 }
 
-fn provider_usage(snapshot: &mut UsageSnapshot, provider: Provider) -> &mut ProviderUsage {
+fn provider_usage(snapshot: &UsageSnapshot, provider: Provider) -> &ProviderUsage {
+    match provider {
+        Provider::Codex => &snapshot.codex,
+        Provider::Claude => &snapshot.claude,
+        Provider::Opencode => &snapshot.opencode,
+    }
+}
+
+fn provider_usage_mut(snapshot: &mut UsageSnapshot, provider: Provider) -> &mut ProviderUsage {
     match provider {
         Provider::Codex => &mut snapshot.codex,
         Provider::Claude => &mut snapshot.claude,
+        Provider::Opencode => &mut snapshot.opencode,
     }
 }
 
@@ -166,10 +178,7 @@ async fn provider_enabled(state: &AppState, provider: Provider) -> bool {
 }
 
 fn provider_request(state: &AppState, provider: Provider) -> &Mutex<()> {
-    match provider {
-        Provider::Codex => &state.codex_request,
-        Provider::Claude => &state.claude_request,
-    }
+    &state.requests[provider as usize]
 }
 
 async fn fetch_provider(
@@ -181,6 +190,7 @@ async fn fetch_provider(
     match provider {
         Provider::Codex => api::fetch_codex(&state.client, &credentials).await,
         Provider::Claude => api::fetch_claude(&state.client, &credentials).await,
+        Provider::Opencode => api::fetch_opencode(&state.client, &credentials).await,
     }
     .map_err(RefreshError::Api)
 }
@@ -192,7 +202,7 @@ fn apply_enabled(
 ) {
     if snapshot.enabled.enabled(provider) {
         if let Some(result) = result {
-            apply(provider_usage(snapshot, provider), result);
+            apply(provider_usage_mut(snapshot, provider), result);
         }
     }
 }
@@ -247,7 +257,12 @@ fn apply(provider: &mut ProviderUsage, result: Result<ProviderUsage, RefreshErro
         Err(error) => {
             provider.status = if provider.last_successful_update_epoch.is_some() {
                 SnapshotStatus::Stale
-            } else if matches!(error, RefreshError::Auth(auth::AuthError::MissingFile)) {
+            } else if matches!(
+                error,
+                RefreshError::Auth(auth::AuthError::MissingFile | auth::AuthError::MissingToken)
+            ) {
+                // Opencode shares one auth.json across every provider it can log into, so the
+                // file exists without a Go key. That is not signed in, not a failed refresh.
                 SnapshotStatus::AuthMissing
             } else {
                 SnapshotStatus::Error
@@ -264,13 +279,10 @@ const RETRY_BACKOFF_START: Duration = Duration::from_secs(5);
 /// first pass fails and the tray would otherwise sit on "no successful update yet" for a full
 /// interval.
 fn settled(snapshot: &UsageSnapshot) -> bool {
-    [
-        (Provider::Codex, &snapshot.codex),
-        (Provider::Claude, &snapshot.claude),
-    ]
-    .into_iter()
-    .filter(|(provider, _)| snapshot.enabled.enabled(*provider))
-    .all(|(_, usage)| usage.status == SnapshotStatus::Ready)
+    Provider::ALL
+        .into_iter()
+        .filter(|provider| snapshot.enabled.enabled(*provider))
+        .all(|provider| provider_usage(snapshot, provider).status == SnapshotStatus::Ready)
 }
 
 /// The wait before the next reading. `None` is the healthy cadence. A failed pass backs off from
@@ -288,15 +300,12 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
         return;
     };
     let mut lines = Vec::new();
-    for (provider, id, name, usage) in [
-        (Provider::Codex, "codex", "Codex", &snapshot.codex),
-        (Provider::Claude, "claude", "Claude", &snapshot.claude),
-    ] {
+    for provider in Provider::ALL {
         if !snapshot.enabled.enabled(provider) {
             continue;
         }
-        let Ok(item) = MenuItem::with_id(app, id, tray_line(name, usage), false, None::<&str>)
-        else {
+        let line = tray_line(provider.name(), provider_usage(snapshot, provider));
+        let Ok(item) = MenuItem::with_id(app, provider.id(), line, false, None::<&str>) else {
             return;
         };
         lines.push(item);
@@ -325,17 +334,31 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     }
 }
 
+/// Only Opencode reports a monthly window, so that column appears only when it was read.
 fn tray_line(name: &str, provider: &ProviderUsage) -> String {
-    format!(
+    let mut line = format!(
         "{name}  5h {}  7d {}",
         percent(provider.five_hour.used_percent),
         percent(provider.seven_day.used_percent)
-    )
+    );
+    if provider.monthly.limit_window_seconds.is_some() {
+        line.push_str(&format!("  30d {}", percent(provider.monthly.used_percent)));
+    }
+    line
 }
 
+/// Opencode reports fractional percentages, so one decimal is kept when the reading has one.
+/// The providers that report whole numbers never grow a hollow ".0".
 fn percent(value: Option<f64>) -> String {
     match value {
-        Some(value) => format!("{value:.0}%"),
+        Some(value) => {
+            let rounded = (value * 10.0).round() / 10.0;
+            if rounded.fract() == 0.0 {
+                format!("{rounded:.0}%")
+            } else {
+                format!("{rounded:.1}%")
+            }
+        }
         None => "--".to_owned(),
     }
 }
@@ -457,8 +480,7 @@ pub fn run() {
                     ..UsageSnapshot::default()
                 }),
                 refreshing: AtomicU8::new(0),
-                codex_request: Mutex::new(()),
-                claude_request: Mutex::new(()),
+                requests: Default::default(),
                 client,
                 settings_path,
             });
@@ -544,12 +566,22 @@ mod tests {
         assert_eq!(config["identifier"], PREVIEW_IDENTIFIER);
     }
 
+    #[test]
+    fn the_tray_keeps_a_fractional_percentage() {
+        let mut provider = ProviderUsage::default();
+        provider.five_hour.used_percent = Some(12.74);
+        provider.seven_day.used_percent = Some(3.0);
+        assert_eq!(
+            tray_line("Opencode", &provider),
+            "Opencode  5h 12.7%  7d 3%"
+        );
+    }
+
     fn state() -> AppState {
         AppState {
             snapshot: Mutex::new(UsageSnapshot::default()),
             refreshing: AtomicU8::new(0),
-            codex_request: Mutex::new(()),
-            claude_request: Mutex::new(()),
+            requests: Default::default(),
             client: api::client().expect("client"),
             settings_path: std::env::temp_dir().join("tantalus-test-providers.json"),
         }
@@ -558,12 +590,10 @@ mod tests {
     #[tokio::test]
     async fn a_disabled_provider_is_never_read() {
         let state = state();
-        state.snapshot.lock().await.enabled = ProviderSettings {
-            codex: false,
-            claude: false,
-        };
-        assert!(read_enabled(&state, Provider::Codex).await.is_none());
-        assert!(read_enabled(&state, Provider::Claude).await.is_none());
+        state.snapshot.lock().await.enabled = ProviderSettings::NONE;
+        for provider in Provider::ALL {
+            assert!(read_enabled(&state, provider).await.is_none());
+        }
     }
 
     #[test]
@@ -593,6 +623,15 @@ mod tests {
 
         snapshot.enabled.set(Provider::Claude, false);
         assert!(settled(&snapshot));
+    }
+
+    /// `provider_request` indexes by discriminant, so a variant missing from `ALL` or listed out
+    /// of order would hand a provider another one's lock, or panic past the end of the array.
+    #[test]
+    fn every_provider_indexes_its_own_request_lock() {
+        for provider in Provider::ALL {
+            assert_eq!(Provider::ALL[provider as usize], provider);
+        }
     }
 
     #[test]
