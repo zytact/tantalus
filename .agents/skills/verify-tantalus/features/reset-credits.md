@@ -32,8 +32,11 @@ Mock-driven (Drive step 3 in `SKILL.md`): after the remount, the Codex
 block ends with `aria-label="Reset credits"`, headline `2`, and one row
 per credit with an `Expires Oct 4, ...` expiry; the Claude block shows
 `aria-label="Extra usage"` with `12.50 USD` and a `Monthly limit 50.00
-USD` row instead; the Opencode block has neither region. The `auth_missing` scenario renders the empty state:
-`Unavailable` headline plus `No credit details available.`
+USD` row instead; the Opencode block has neither region. Under the
+`auth_missing` scenario only Codex keeps a region, rendering the empty state
+`Unavailable` plus `No credit details available.`; Claude drops its
+`Extra usage` region entirely, because the scenario clears `extra_usage` and
+the section renders only when a payload carries one.
 
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
    static shell.

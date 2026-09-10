@@ -118,8 +118,10 @@ pub fn parse_claude_usage(
     )
 }
 
-/// Opencode reports three named windows, so the duration is supplied here too. A window whose
-/// status is anything but `ok` is the only signal that the plan is spent.
+/// Opencode reports three named windows, so the duration is supplied here too. Each window also
+/// carries a `status`, but its vocabulary beyond `ok` is unknown, and reading an unrecognised
+/// value as blocked would tell someone they are cut off while they can still work. A window
+/// counts as spent only when its own percentage says so.
 pub fn parse_opencode_usage(
     value: &Value,
 ) -> (WindowUsage, WindowUsage, WindowUsage, Option<bool>) {
@@ -130,9 +132,9 @@ pub fn parse_opencode_usage(
         .filter_map(|key| window(key))
         .any(|window| {
             window
-                .get("status")
-                .and_then(Value::as_str)
-                .is_some_and(|status| status != "ok")
+                .get("percent")
+                .and_then(Value::as_f64)
+                .is_some_and(|percent| percent >= 100.0)
         });
     (
         named_window(window("rolling"), FIVE_HOUR_SECONDS, "percent", "resetsAt"),
@@ -469,11 +471,17 @@ mod tests {
     }
 
     #[test]
-    fn an_opencode_window_that_is_not_ok_reports_the_limit_as_reached() {
-        let (_, _, _, spent) = parse_opencode_usage(
-            &json!({"usage": {"weekly": {"status": "exceeded", "percent": 100}}}),
+    fn an_opencode_window_is_spent_only_when_its_percentage_says_so() {
+        let spent = |window| parse_opencode_usage(&json!({"usage": {"weekly": window}})).3;
+        assert_eq!(
+            spent(json!({"status": "exceeded", "percent": 100})),
+            Some(true)
         );
-        assert_eq!(spent, Some(true));
+        // An unrecognised status must not read as blocked while the window still has room.
+        assert_eq!(
+            spent(json!({"status": "warning", "percent": 80})),
+            Some(false)
+        );
     }
 
     #[test]

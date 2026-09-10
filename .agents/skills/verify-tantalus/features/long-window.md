@@ -27,7 +27,7 @@ region inside each enabled provider has
 `role=progressbar[name="Long window usage"]`, figures `8%` (Codex),
 `74%` (Claude), and `3%` (Opencode), `Resets` in `Nd Nh` form, `Remaining`
 at `100 - used`.
-The `auth_missing` scenario flips both to `Window unavailable`.
+The `auth_missing` scenario flips all three to `Window unavailable`.
 
 1. Launch on an isolated port. Static proof is `scripts/check-ui.sh <PORT>`.
 2. A bare-browser snapshot must not assert a provider block, region, or

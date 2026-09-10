@@ -50,4 +50,5 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 - The providers are fetched together and fail independently, so a missing Claude login leaves the Codex reading intact.
 - A switched-off provider is skipped everywhere: the five-minute poll, the Refresh button, and the tray menu. Switching it off also drops the figures it last read.
 - Tokens and account IDs remain in Rust memory only. They are never sent to the webview, written to disk, or logged.
+- A credential file that exists but holds no key for that provider reads as not signed in rather than as a failed refresh. Opencode shares one `auth.json` across every provider it can log into, so the file is usually there before the Go key is.
 - Failed refreshes retain the last successful reading and label it stale.

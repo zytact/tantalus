@@ -257,7 +257,12 @@ fn apply(provider: &mut ProviderUsage, result: Result<ProviderUsage, RefreshErro
         Err(error) => {
             provider.status = if provider.last_successful_update_epoch.is_some() {
                 SnapshotStatus::Stale
-            } else if matches!(error, RefreshError::Auth(auth::AuthError::MissingFile)) {
+            } else if matches!(
+                error,
+                RefreshError::Auth(auth::AuthError::MissingFile | auth::AuthError::MissingToken)
+            ) {
+                // Opencode shares one auth.json across every provider it can log into, so the
+                // file exists without a Go key. That is not signed in, not a failed refresh.
                 SnapshotStatus::AuthMissing
             } else {
                 SnapshotStatus::Error
@@ -570,6 +575,15 @@ mod tests {
 
         snapshot.enabled.set(Provider::Claude, false);
         assert!(settled(&snapshot));
+    }
+
+    /// `provider_request` indexes by discriminant, so a variant missing from `ALL` or listed out
+    /// of order would hand a provider another one's lock, or panic past the end of the array.
+    #[test]
+    fn every_provider_indexes_its_own_request_lock() {
+        for provider in Provider::ALL {
+            assert_eq!(Provider::ALL[provider as usize], provider);
+        }
     }
 
     #[test]

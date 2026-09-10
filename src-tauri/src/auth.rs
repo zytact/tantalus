@@ -84,7 +84,7 @@ pub enum AuthError {
 /// otherwise the native home directory is tried before any WSL distribution home.
 pub fn read_credentials(provider: Provider) -> Result<Credentials, AuthError> {
     let (variable, relative) = provider.override_location();
-    if let Some(directory) = env::var_os(variable) {
+    if let Some(directory) = env::var_os(variable).filter(|value| !value.is_empty()) {
         return read_from(&join(PathBuf::from(directory), relative));
     }
     let native = first_readable(native_auth_path(provider));

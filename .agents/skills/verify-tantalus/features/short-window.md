@@ -34,7 +34,7 @@ Claude reads `65%` and Opencode `4%` the same way, once Opencode is switched
 on. Click each provider switch off and back
 on to confirm the entry vanishes and returns with its figure.
 `Window unavailable` plus an `Unavailable` figure is the
-`auth_missing`-scenario rendering for this entry.
+`auth_missing`-scenario rendering for this entry, in all three blocks.
 
 1. Launch on an isolated port: `.agents/skills/verify-tantalus/scripts/launch.sh 1421`
 2. Install the mock and remount (see `SKILL.md` Drive step 3), then snapshot
