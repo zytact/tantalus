@@ -404,17 +404,26 @@ fn show_window(app: &AppHandle) {
     });
 }
 
+/// The identifier `tauri.preview.conf.json` sets. The tray icon follows the identifier the build
+/// was bundled with rather than a build flag, so a preview can never end up wearing release
+/// identity or the other way round.
+const PREVIEW_IDENTIFIER: &str = "dev.arnab.tantalus.preview";
+
 /// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
 /// the alpha channel alone as a template image.
-#[cfg(not(feature = "preview"))]
 const TRAY_PNG: &[u8] = include_bytes!("../icons/tray.png");
 
-/// The same mark in the preview blue, so a preview build's tray icon is not the release build's.
-#[cfg(feature = "preview")]
-const TRAY_PNG: &[u8] = include_bytes!("../icons/preview/tray.png");
+/// The same mark in the preview blue. Both marks share one silhouette, so macOS has to draw this
+/// one in color to tell it from the release icon sitting beside it.
+const PREVIEW_TRAY_PNG: &[u8] = include_bytes!("../icons/preview/tray.png");
 
-fn tray_icon() -> tauri::image::Image<'static> {
-    tauri::image::Image::from_bytes(TRAY_PNG).expect("tray icon is a valid PNG")
+fn is_preview(app: &AppHandle) -> bool {
+    app.config().identifier == PREVIEW_IDENTIFIER
+}
+
+fn tray_icon(preview: bool) -> tauri::image::Image<'static> {
+    let bytes = if preview { PREVIEW_TRAY_PNG } else { TRAY_PNG };
+    tauri::image::Image::from_bytes(bytes).expect("tray icon is a valid PNG")
 }
 
 pub fn run() {
@@ -458,8 +467,9 @@ pub fn run() {
                 MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &refresh_item, &quit])?;
+            let preview = is_preview(app.handle());
             let tray = TrayIconBuilder::with_id("usage")
-                .icon(tray_icon())
+                .icon(tray_icon(preview))
                 .menu(&menu)
                 .tooltip(&app.package_info().name)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -487,7 +497,7 @@ pub fn run() {
                     }
                 });
             #[cfg(target_os = "macos")]
-            let tray = tray.icon_as_template(true);
+            let tray = tray.icon_as_template(!preview);
             tray.build(app)?;
             if !std::env::args().any(|argument| argument == HIDDEN_FLAG) {
                 show_window(app.handle());
@@ -525,6 +535,14 @@ mod tests {
     use settings::ProviderSettings;
     use std::sync::{Arc, Mutex as StdMutex};
     use tokio::sync::oneshot;
+
+    /// A preview build picks its tray icon by identifier, so the two have to agree.
+    #[test]
+    fn the_preview_identifier_matches_the_preview_config() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.preview.conf.json")).expect("valid JSON");
+        assert_eq!(config["identifier"], PREVIEW_IDENTIFIER);
+    }
 
     fn state() -> AppState {
         AppState {

@@ -25,6 +25,8 @@ jobs:
             args: --bundles nsis
 
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -45,14 +47,11 @@ jobs:
 
       # tauri.preview.conf.json renames the app and moves its bundle identifier, so a preview
       # installs beside the release build and keeps its own settings, autostart entry and
-      # single-instance lock. The cargo feature gives it the matching tray icon.
+      # single-instance lock. The app reads that identifier back to pick its tray icon.
       - uses: tauri-apps/tauri-action@v0
         with:
           tauriScript: vp run tauri
-          args: >-
-            ${{ matrix.args }}
-            --config src-tauri/tauri.preview.conf.json
-            --features preview
+          args: ${{ matrix.args }} --config src-tauri/tauri.preview.conf.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -85,7 +84,9 @@ jobs:
               marker,
               '### Preview build',
               '',
-              `Bundles for ${context.payload.pull_request.head.sha.slice(0, 7)} are attached to [this run](${run}):`,
+              // checkout builds refs/pull/N/merge, so the bundles are this branch merged into
+              // the base, not the head commit on its own.
+              `Bundles for ${context.payload.pull_request.head.sha.slice(0, 7)} merged into \`${context.payload.pull_request.base.ref}\` are attached to [this run](${run}):`,
               '',
               '| Platform | Artifact |',
               '| --- | --- |',

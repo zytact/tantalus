@@ -39,15 +39,24 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 
 Every pull request builds **Tantalus Preview**: deb and rpm, an Apple silicon dmg, and a Windows NSIS installer, attached to the workflow run and linked from a comment on the PR.
 
-A preview is a separate app. `src-tauri/tauri.preview.conf.json` gives it its own product name, bundle identifier and binary name, so it installs beside a release build and keeps its own settings file, autostart entry and single-instance lock. Nothing it does touches the release install. Its mark is blue rather than orange, in the tray and everywhere else, and the `preview` cargo feature swaps in the matching tray icon.
-
-`src-tauri/icons/preview/` holds that blue set, regenerated from `icon.png` with `vp run tauri icon src-tauri/icons/preview/icon.png -o src-tauri/icons/preview`.
+A preview is a separate app. `src-tauri/tauri.preview.conf.json` gives it its own product name, bundle identifier and binary name, so it installs beside a release build and keeps its own settings file, autostart entry and single-instance lock. Nothing it does touches the release install. Its mark is blue rather than orange, and the app picks that mark by reading back the identifier it was bundled with, so the icon can never disagree with the identity. macOS draws the preview tray icon in color, since the two marks share a silhouette and a template image would render them identically.
 
 Build one locally the same way CI does:
 
 ```sh
-vp run tauri build --config src-tauri/tauri.preview.conf.json --features preview
+vp run tauri build --config src-tauri/tauri.preview.conf.json
 ```
+
+`src-tauri/icons/preview/` holds the blue set. Recolor `icon.png` and `tray.png` from the release pair, then regenerate the platform icons from the recolored source:
+
+```sh
+cd src-tauri/icons
+magick icon.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/icon.png
+magick tray.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/tray.png
+cd ../.. && vp run tauri icon src-tauri/icons/preview/icon.png -o src-tauri/icons/preview
+```
+
+`tauri icon` writes the sizes the bundle needs and a set of extras this project does not commit. It never writes `tray.png`, which the two `magick` lines above cover.
 
 ## Privacy and behavior
 
