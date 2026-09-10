@@ -147,6 +147,11 @@ button:focus-visible {
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
+.provider-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
 .provider-name {
   flex: 1;
   margin: 0;
@@ -203,9 +208,16 @@ button:focus-visible {
   border-bottom: 0;
 }
 .setting-copy h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
   font-size: 0.88rem;
   font-weight: 650;
+}
+.setting-copy .provider-icon {
+  width: 15px;
+  height: 15px;
 }
 .setting-copy p {
   max-width: 28rem;

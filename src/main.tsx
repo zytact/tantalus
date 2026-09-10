@@ -24,6 +24,7 @@ import {
   usageTier,
 } from "./presentation";
 import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
+import { ProviderIcon } from "./provider-icon";
 import { SettingsPage } from "./settings-page";
 import "./styles.css";
 
@@ -145,6 +146,7 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
   return (
     <div className="provider">
       <div className="provider-row">
+        <ProviderIcon id={id} />
         <h2 className="provider-name">{name}</h2>
         <span className="provider-status" data-tone={statusTone(provider)}>
           {statusLine(provider)}
