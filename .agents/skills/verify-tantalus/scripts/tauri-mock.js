@@ -4,8 +4,8 @@
 // Load it BEFORE the app mounts its next root (see remount below). It installs
 // the same surface @tauri-apps/api touches: window.__TAURI_INTERNALS__ plus the
 // plugin:event listen/emit/unlisten commands. Figures are synthetic scaffolding
-// with the same shapes Rust sends (18000 / 604800 windows, credits containers,
-// extra_usage); no tokens, no network, no real credential files.
+// with the same shapes Rust sends (18000 / 604800 / 2592000 windows, credits
+// containers, extra_usage); no tokens, no network, no real credential files.
 //
 // Scenarios mirror src/presentation.ts status words:
 //   ready | stale | auth_missing | error | blocked
@@ -13,6 +13,7 @@
 // (promise chain: the driving harness has no top-level await)
 
 const nowEpoch = () => Math.floor(Date.now() / 1000);
+const providerIds = ["codex", "claude", "opencode"];
 
 function readySnapshot() {
   const now = nowEpoch();
@@ -20,6 +21,7 @@ function readySnapshot() {
     codex: {
       five_hour: { used_percent: 42, limit_window_seconds: 18000, reset_at_epoch: now + 3 * 3600 + 29 * 60 },
       seven_day: { used_percent: 8, limit_window_seconds: 604800, reset_at_epoch: now + 4 * 86400 + 20 * 3600 },
+      monthly: blankWindow(),
       allowed: true,
       limit_reached: false,
       reset_credits: [{ expires_at_epoch: 1791076477 }, { expires_at_epoch: 1791080077 }],
@@ -32,6 +34,7 @@ function readySnapshot() {
     claude: {
       five_hour: { used_percent: 65, limit_window_seconds: 18000, reset_at_epoch: now + 3600 },
       seven_day: { used_percent: 74, limit_window_seconds: 604800, reset_at_epoch: now + 86400 },
+      monthly: blankWindow(),
       allowed: true,
       limit_reached: null,
       reset_credits: [],
@@ -41,14 +44,31 @@ function readySnapshot() {
       status: "ready",
       error_message: null,
     },
+    // Opencode is the only provider with a third window and no extras of either kind.
+    opencode: {
+      five_hour: { used_percent: 4, limit_window_seconds: 18000, reset_at_epoch: now + 2 * 3600 },
+      seven_day: { used_percent: 3, limit_window_seconds: 604800, reset_at_epoch: now + 3 * 86400 },
+      monthly: { used_percent: 1, limit_window_seconds: 2592000, reset_at_epoch: now + 21 * 86400 },
+      allowed: true,
+      limit_reached: false,
+      reset_credits: [],
+      reset_credit_count: null,
+      extra_usage: null,
+      last_successful_update_epoch: now - 60,
+      status: "ready",
+      error_message: null,
+    },
     enabled: loadEnabled(),
   };
 }
 
+const blankWindow = () => ({ used_percent: null, limit_window_seconds: null, reset_at_epoch: null });
+
 function blankProvider() {
   return {
-    five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
-    seven_day: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
+    five_hour: blankWindow(),
+    seven_day: blankWindow(),
+    monthly: blankWindow(),
     allowed: null,
     limit_reached: null,
     reset_credits: [],
@@ -77,11 +97,11 @@ function saveStored(key, value) {
   }
 }
 
+// Mirrors Rust's default: Opencode is a separate paid plan, so it starts off.
 function loadEnabled() {
   const stored = loadStored("tantalus-mock-enabled", null);
-  return stored && typeof stored.codex === "boolean" && typeof stored.claude === "boolean"
-    ? stored
-    : { codex: true, claude: true };
+  const complete = stored && providerIds.every((id) => typeof stored[id] === "boolean");
+  return complete ? stored : { codex: true, claude: true, opencode: false };
 }
 
 function saveEnabled(enabled) {
@@ -130,7 +150,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function applyModeToEnabled() {
   const now = nowEpoch();
-  for (const id of ["codex", "claude"]) {
+  for (const id of providerIds) {
     if (!snapshot.enabled[id]) continue; // off stays off with cleared figures
     const provider = snapshot[id];
     if (mode === "ready") {

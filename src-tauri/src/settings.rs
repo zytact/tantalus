@@ -13,6 +13,10 @@ static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct ProviderSettings {
     pub codex: bool,
     pub claude: bool,
+    /// Added after Codex and Claude, so a settings file written by an earlier version leaves it
+    /// out. Opencode is a separate paid plan, so it stays off until someone switches it on.
+    #[serde(default)]
+    pub opencode: bool,
 }
 
 impl Default for ProviderSettings {
@@ -20,15 +24,24 @@ impl Default for ProviderSettings {
         Self {
             codex: true,
             claude: true,
+            opencode: false,
         }
     }
 }
 
 impl ProviderSettings {
+    /// Every provider off, which is what an unreadable settings file falls back to.
+    pub const NONE: Self = Self {
+        codex: false,
+        claude: false,
+        opencode: false,
+    };
+
     pub fn enabled(&self, provider: Provider) -> bool {
         match provider {
             Provider::Codex => self.codex,
             Provider::Claude => self.claude,
+            Provider::Opencode => self.opencode,
         }
     }
 
@@ -36,6 +49,7 @@ impl ProviderSettings {
         match provider {
             Provider::Codex => self.codex = enabled,
             Provider::Claude => self.claude = enabled,
+            Provider::Opencode => self.opencode = enabled,
         }
     }
 }
@@ -49,10 +63,7 @@ pub fn load(path: &Path) -> ProviderSettings {
                     "Failed to parse provider settings at {}: {error}",
                     path.display()
                 );
-                ProviderSettings {
-                    codex: false,
-                    claude: false,
-                }
+                ProviderSettings::NONE
             }
         },
         Err(error) if error.kind() == io::ErrorKind::NotFound => ProviderSettings::default(),
@@ -61,10 +72,7 @@ pub fn load(path: &Path) -> ProviderSettings {
                 "Failed to read provider settings at {}: {error}",
                 path.display()
             );
-            ProviderSettings {
-                codex: false,
-                claude: false,
-            }
+            ProviderSettings::NONE
         }
     }
 }
@@ -156,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_file_leaves_both_providers_on() {
+    fn a_missing_file_leaves_the_default_providers_on() {
         let directory = test_directory("missing");
         let _ = fs::remove_dir_all(&directory);
         let path = directory.join("providers.json");
@@ -166,16 +174,29 @@ mod tests {
     }
 
     #[test]
-    fn a_malformed_file_disables_both_providers() {
+    fn a_malformed_file_disables_every_provider() {
         let directory = test_directory("malformed");
         let path = directory.join("providers.json");
         fs::create_dir_all(&directory).unwrap();
         fs::write(&path, "not json").unwrap();
+        assert_eq!(load(&path), ProviderSettings::NONE);
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    /// A file written before Opencode existed must keep the choice it recorded, not fall back to
+    /// the every-provider-off parse failure.
+    #[test]
+    fn a_settings_file_without_opencode_keeps_the_choice_it_recorded() {
+        let directory = test_directory("upgrade");
+        let path = directory.join("providers.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(&path, r#"{"codex":true,"claude":false}"#).unwrap();
         assert_eq!(
             load(&path),
             ProviderSettings {
-                codex: false,
+                codex: true,
                 claude: false,
+                opencode: false,
             }
         );
         let _ = fs::remove_dir_all(&directory);
@@ -189,6 +210,7 @@ mod tests {
         let settings = ProviderSettings {
             codex: true,
             claude: false,
+            opencode: true,
         };
         save(&path, &settings).unwrap();
         assert_eq!(load(&path), settings);
@@ -203,6 +225,7 @@ mod tests {
         let original = ProviderSettings {
             codex: false,
             claude: true,
+            opencode: false,
         };
         save(&path, &original).unwrap();
 

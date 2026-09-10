@@ -5,12 +5,18 @@ that provider at all and whether the allowance view shows it.
 
 ## Sub-features
 
-- `role=switch[name="Codex"]` and `role=switch[name="Claude"]` with
-  `aria-checked`, on the Settings page (`src/settings-page.tsx` `ProviderRow`)
+- `role=switch[name="Codex"]`, `role=switch[name="Claude"]`, and
+  `role=switch[name="Opencode"]` with `aria-checked`, on the Settings page
+  (`src/settings-page.tsx` `ProviderRow`)
+- Codex and Claude default on, Opencode defaults off
+  (`ProviderSettings::default` in `src-tauri/src/settings.rs`)
+- A `providers.json` written before Opencode existed keeps the choice it
+  recorded and leaves Opencode off, rather than parsing as a failure that
+  turns everything off
 - Off removes that provider from the allowance view entirely: no header row, no
   Short window, Long window, or Extras (`src/main.tsx` `App`)
-- With both off, the allowance view reads `No providers are on. Turn one on in
-  Settings.`
+- With all of them off, the allowance view reads `No providers are on. Turn
+  one on in Settings.`
 - Off means not polled: `read_enabled` returns `None`, so no credential file
   is opened and no request is sent (`src-tauri/src/lib.rs`)
 - Off drops that provider's tray line and clears its stored figures
@@ -22,7 +28,7 @@ that provider at all and whether the allowance view shows it.
 
 ## How to get to it (user POV)
 
-Click `Settings`, then the Codex or Claude switch. The knob slides and the state
+Click `Settings`, then any provider switch. The knob slides and the state
 word becomes `Off`. Click `Back` and that provider is gone from the allowance
 view. Restart the app and it is still off.
 
@@ -32,8 +38,8 @@ Mock-driven (Drive step 3 in `SKILL.md`): after the remount, click `Settings`,
 then a provider switch. The knob slides and the state word becomes `Off`. Click
 `Back` and confirm that provider's block is gone while the other keeps
 refreshing. Read back localStorage `tantalus-mock-enabled`: it holds the
-`{"codex":true,"claude":false}`-shaped choice, the mock's stand-in for
-`providers.json`. Switch back on and the block returns with a fresh fetch.
+`{"codex":true,"claude":false,"opencode":false}`-shaped choice, the mock's
+stand-in for `providers.json`. Switch back on and the block returns with a fresh fetch.
 `window.__TANTALUS_MOCK__.reset()` clears the stored choice.
 
 1. Launch on an isolated port and run `scripts/check-ui.sh <PORT>` for the
@@ -47,8 +53,9 @@ refreshing. Read back localStorage `tantalus-mock-enabled`: it holds the
 4. Real proof needs `vp run tauri dev` on a desktop or the mock in any browser:
    switch Claude off, confirm its block vanishes from the allowance view, its
    tray line disappears (Tauri only), `providers.json` reads
-   `{"codex":true,"claude":false}`, and Codex keeps refreshing. Switch it
-   back on and confirm an immediate refresh.
+   `{"codex":true,"claude":false,"opencode":false}`, and Codex keeps
+   refreshing. Switch it back on and confirm an immediate refresh. Switching
+   Opencode on is the same path in reverse, since it starts off.
 
 ## Gotchas
 

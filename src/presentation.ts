@@ -13,6 +13,8 @@ export type ExtraUsage = {
 export type ProviderUsage = {
   five_hour: WindowUsage;
   seven_day: WindowUsage;
+  /** Only Opencode reports a third window. The others leave it unreported and the view skips it. */
+  monthly: WindowUsage;
   allowed: boolean | null;
   limit_reached: boolean | null;
   reset_credits: ResetCredit[];
@@ -22,11 +24,27 @@ export type ProviderUsage = {
   status: "ready" | "loading" | "stale" | "auth_missing" | "error";
   error_message: string | null;
 };
-export type ProviderId = "codex" | "claude";
-export type UsageSnapshot = { codex: ProviderUsage; claude: ProviderUsage; enabled: Record<ProviderId, boolean> };
+export type ProviderId = "codex" | "claude" | "opencode";
+export type UsageSnapshot = Record<ProviderId, ProviderUsage> & { enabled: Record<ProviderId, boolean> };
 
-export const providerIds = ["codex", "claude"] as const satisfies readonly ProviderId[];
-export const providerNames: Record<ProviderId, string> = { codex: "Codex", claude: "Claude" };
+export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
+export const providerNames: Record<ProviderId, string> = {
+  codex: "Codex",
+  claude: "Claude",
+  opencode: "Opencode",
+};
+
+/** What a provider banks beyond its windows. Opencode reports neither, so it shows no extras. */
+export const providerExtras = {
+  codex: "credits",
+  claude: "spend",
+  opencode: null,
+} as const satisfies Record<ProviderId, "credits" | "spend" | null>;
+
+/** The durations that identify each window. A window reporting another duration is not shown. */
+export const fiveHourSeconds = 18_000;
+export const sevenDaySeconds = 604_800;
+export const monthlySeconds = 2_592_000;
 
 export function statusLine(provider: ProviderUsage): string {
   switch (provider.status) {

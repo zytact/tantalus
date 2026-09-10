@@ -5,36 +5,63 @@ use std::{
 };
 use thiserror::Error;
 
-/// The two logins Tantalus reads. Each one keeps its credentials in its own directory, under its
-/// own override variable, so every lookup is parameterised by the provider rather than duplicated.
+/// The logins Tantalus reads. Each one keeps its credentials in its own place, under its own
+/// override variable, so every lookup is parameterised by the provider rather than duplicated.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     Codex,
     Claude,
+    Opencode,
 }
 
 impl Provider {
-    fn home_variable(self) -> &'static str {
+    /// In discriminant order, so `provider as usize` indexes any per-provider array.
+    pub const ALL: [Self; 3] = [Self::Codex, Self::Claude, Self::Opencode];
+
+    /// The snapshot field and settings key. Serde writes the same string for the enum itself.
+    pub fn id(self) -> &'static str {
         match self {
-            Self::Codex => "CODEX_HOME",
-            Self::Claude => "CLAUDE_CONFIG_DIR",
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Opencode => "opencode",
         }
     }
 
-    fn directory(self) -> &'static str {
+    /// The label the tray menu shows.
+    pub fn name(self) -> &'static str {
         match self {
-            Self::Codex => ".codex",
-            Self::Claude => ".claude",
+            Self::Codex => "Codex",
+            Self::Claude => "Claude",
+            Self::Opencode => "Opencode",
         }
     }
 
-    fn file(self) -> &'static str {
+    /// The variable that relocates this provider's credential store, and where the file sits
+    /// under it. Codex and Claude point their variable straight at the directory holding the
+    /// file; Opencode follows XDG, so its variable names the data root above its own directory.
+    fn override_location(self) -> (&'static str, &'static [&'static str]) {
         match self {
-            Self::Codex => "auth.json",
-            Self::Claude => ".credentials.json",
+            Self::Codex => ("CODEX_HOME", &["auth.json"]),
+            Self::Claude => ("CLAUDE_CONFIG_DIR", &[".credentials.json"]),
+            Self::Opencode => ("XDG_DATA_HOME", &["opencode", "auth.json"]),
         }
     }
+
+    /// Where the credential file sits under a home directory.
+    fn home_relative_file(self) -> &'static [&'static str] {
+        match self {
+            Self::Codex => &[".codex", "auth.json"],
+            Self::Claude => &[".claude", ".credentials.json"],
+            Self::Opencode => &[".local", "share", "opencode", "auth.json"],
+        }
+    }
+}
+
+fn join(base: PathBuf, segments: &[&str]) -> PathBuf {
+    segments
+        .iter()
+        .fold(base, |path, segment| path.join(segment))
 }
 
 #[derive(Debug, Clone)]
@@ -56,8 +83,9 @@ pub enum AuthError {
 /// Reads the first readable credential file for `provider`. Its home variable wins outright;
 /// otherwise the native home directory is tried before any WSL distribution home.
 pub fn read_credentials(provider: Provider) -> Result<Credentials, AuthError> {
-    if let Some(directory) = env::var_os(provider.home_variable()) {
-        return read_from(&PathBuf::from(directory).join(provider.file()));
+    let (variable, relative) = provider.override_location();
+    if let Some(directory) = env::var_os(variable) {
+        return read_from(&join(PathBuf::from(directory), relative));
     }
     let native = first_readable(native_auth_path(provider));
     if !matches!(native, Err(AuthError::MissingFile)) {
@@ -86,7 +114,7 @@ fn read_from(path: &Path) -> Result<Credentials, AuthError> {
 }
 
 fn native_auth_path(provider: Provider) -> Option<PathBuf> {
-    home_directory().map(|home| home.join(provider.directory()).join(provider.file()))
+    home_directory().map(|home| join(home, provider.home_relative_file()))
 }
 
 fn home_directory() -> Option<PathBuf> {
@@ -127,6 +155,7 @@ pub fn parse_credentials(raw: &str) -> Result<Credentials, AuthError> {
         .or_else(|| string_at(&value, &["chatgptAuthTokens", "access_token"]))
         .or_else(|| string_at(&value, &["chatgpt_auth", "access_token"]))
         .or_else(|| string_at(&value, &["claudeAiOauth", "accessToken"]))
+        .or_else(|| string_at(&value, &["opencode-go", "key"]))
         .filter(|value| !value.is_empty())
         .ok_or(AuthError::MissingToken)?;
     let account_id = string_at(&value, &["account_id"])
@@ -193,7 +222,7 @@ mod wsl {
                     .chain(std::iter::once(base.join("root")));
                 Some(
                     homes
-                        .map(|home| home.join(provider.directory()).join(provider.file()))
+                        .map(|home| super::join(home, provider.home_relative_file()))
                         .collect(),
                 )
             })
@@ -256,6 +285,22 @@ mod tests {
                 .unwrap();
         assert_eq!(credentials.access_token, "a");
         assert_eq!(credentials.account_id, None);
+    }
+
+    #[test]
+    fn reads_the_opencode_go_api_key() {
+        let credentials = parse_credentials(
+            r#"{"google":{"type":"api","key":"g"},"opencode-go":{"type":"api","key":"a"}}"#,
+        )
+        .unwrap();
+        assert_eq!(credentials.access_token, "a");
+        assert_eq!(credentials.account_id, None);
+    }
+
+    #[test]
+    fn an_opencode_file_without_the_go_entry_has_no_token() {
+        let error = parse_credentials(r#"{"google":{"type":"api","key":"g"}}"#).unwrap_err();
+        assert!(matches!(error, AuthError::MissingToken));
     }
 
     #[test]
