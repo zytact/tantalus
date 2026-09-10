@@ -334,17 +334,24 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     }
 }
 
-/// Only Opencode reports a monthly window, so that column appears only when it was read.
+/// A column per window the reading actually carries. Which windows an account has depends on its
+/// plan, so none of the three is assumed: a Codex Go or free account has only the monthly one, and
+/// OpenAI has switched the 5-hour one off for a plan before. A reading with no window at all keeps
+/// the provider on the menu with a bare `--`.
 fn tray_line(name: &str, provider: &ProviderUsage) -> String {
-    let mut line = format!(
-        "{name}  5h {}  7d {}",
-        percent(provider.five_hour.used_percent),
-        percent(provider.seven_day.used_percent)
-    );
-    if provider.monthly.limit_window_seconds.is_some() {
-        line.push_str(&format!("  30d {}", percent(provider.monthly.used_percent)));
+    let columns = [
+        ("5h", &provider.five_hour),
+        ("7d", &provider.seven_day),
+        ("30d", &provider.monthly),
+    ]
+    .into_iter()
+    .filter(|(_, window)| window.limit_window_seconds.is_some())
+    .map(|(span, window)| format!("  {span} {}", percent(window.used_percent)))
+    .collect::<String>();
+    if columns.is_empty() {
+        return format!("{name}  --");
     }
-    line
+    format!("{name}{columns}")
 }
 
 /// Opencode reports fractional percentages, so one decimal is kept when the reading has one.
@@ -566,15 +573,52 @@ mod tests {
         assert_eq!(config["identifier"], PREVIEW_IDENTIFIER);
     }
 
+    fn window(seconds: i64, used: f64) -> usage::WindowUsage {
+        usage::WindowUsage {
+            used_percent: Some(used),
+            limit_window_seconds: Some(seconds),
+            reset_at_epoch: None,
+        }
+    }
+
     #[test]
     fn the_tray_keeps_a_fractional_percentage() {
-        let mut provider = ProviderUsage::default();
-        provider.five_hour.used_percent = Some(12.74);
-        provider.seven_day.used_percent = Some(3.0);
+        let provider = ProviderUsage {
+            five_hour: window(usage::FIVE_HOUR_SECONDS, 12.74),
+            seven_day: window(usage::SEVEN_DAY_SECONDS, 3.0),
+            ..Default::default()
+        };
         assert_eq!(
             tray_line("Opencode", &provider),
             "Opencode  5h 12.7%  7d 3%"
         );
+    }
+
+    /// A Codex Go or free account reports only a monthly window, so that is the only column.
+    #[test]
+    fn the_tray_carries_only_the_windows_the_account_has() {
+        let provider = ProviderUsage {
+            monthly: window(usage::MONTHLY_SECONDS, 58.0),
+            ..Default::default()
+        };
+        assert_eq!(tray_line("Codex", &provider), "Codex  30d 58%");
+    }
+
+    /// A plan without the 5-hour window, which is what Pro reports while OpenAI has it switched
+    /// off, keeps its weekly column instead of a hollow 5h one.
+    #[test]
+    fn the_tray_drops_a_window_the_plan_does_not_have() {
+        let provider = ProviderUsage {
+            seven_day: window(usage::SEVEN_DAY_SECONDS, 41.0),
+            ..Default::default()
+        };
+        assert_eq!(tray_line("Codex", &provider), "Codex  7d 41%");
+    }
+
+    /// A reading that came back with no window keeps the provider on the menu.
+    #[test]
+    fn the_tray_says_nothing_was_read_rather_than_inventing_a_column() {
+        assert_eq!(tray_line("Codex", &ProviderUsage::default()), "Codex  --");
     }
 
     fn state() -> AppState {

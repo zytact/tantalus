@@ -13,7 +13,8 @@ export type ExtraUsage = {
 export type ProviderUsage = {
   five_hour: WindowUsage;
   seven_day: WindowUsage;
-  /** Only Opencode reports a third window. The others leave it unreported and the view skips it. */
+  /** Opencode reports this alongside the other two, and it is the only window a Codex Go or free
+   * account has. Claude leaves it unreported and the view skips it. */
   monthly: WindowUsage;
   allowed: boolean | null;
   limit_reached: boolean | null;

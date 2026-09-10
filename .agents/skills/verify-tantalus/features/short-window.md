@@ -1,7 +1,11 @@
 # Short window (5 hours)
 
-The headline ledger entry, rendered once per provider. Shows percent of that
-provider's 5-hour window consumed, when it resets, and what remains.
+The headline ledger entry for a provider that has a 5-hour window. Shows percent
+of that window consumed, when it resets, and what remains. Not every account has
+one: a Codex Go or free account has only the monthly window, and OpenAI switches
+the 5-hour window off for a plan from time to time, so the entry stands down
+rather than showing a placeholder whenever the reading carries another window
+instead.
 
 ## Sub-features
 
@@ -10,10 +14,11 @@ provider's 5-hour window consumed, when it resets, and what remains.
   `aria-valuenow` and `aria-valuetext`
 - Facts row: Resets (`countdown`), At (`absoluteTime`), Remaining
   (`remainingPercent`)
-- `Window unavailable` fallback when the backend reports no 18000-second
-  window (`src/main.tsx` Entry). Codex matches the duration exactly in
-  `parse_usage`; Claude keys off the `five_hour` field name and Opencode off
-  `usage.rolling`, both stamping the duration themselves.
+- `Window unavailable` fallback when the reading carries no recognized window
+  at all, in which case it is the block's single placeholder entry
+  (`windowEntries` and `ProviderSection` in `src/main.tsx`). Codex matches the
+  duration exactly in `parse_usage`; Claude keys off the `five_hour` field name
+  and Opencode off `usage.rolling`, both stamping the duration themselves.
 
 ## How to get to it (user POV)
 
@@ -34,7 +39,10 @@ Claude reads `65%` and Opencode `4%` the same way, once Opencode is switched
 on. Click each provider switch off and back
 on to confirm the entry vanishes and returns with its figure.
 `Window unavailable` plus an `Unavailable` figure is the
-`auth_missing`-scenario rendering for this entry, in all three blocks.
+`auth_missing`-scenario rendering for this entry, and it is then the only
+window entry in each block, since that reading carries no window at all.
+`window.__TANTALUS_MOCK__.codexPlan("monthly")` plus a Refresh click drops the
+entry from the Codex block entirely, which is the Go and free account shape.
 
 1. Launch on an isolated port: `.agents/skills/verify-tantalus/scripts/launch.sh 1421`
 2. Install the mock and remount (see `SKILL.md` Drive step 3), then snapshot
@@ -60,5 +68,8 @@ on to confirm the entry vanishes and returns with its figure.
 - Window mapping is exact for Codex: `limit_window_seconds` must equal 18000.
   Fractional `18000.9` and string `"604800.5"` stay unavailable by design
   (`cargo test` covers this).
+- A missing Short window entry is not a bug on its own. Check whether the block
+  carries another window entry first; only a block with no window entry at all
+  shows the `Window unavailable` placeholder.
 - `reset_after_seconds` may arrive as string `"90"`; epoch and millisecond
   forms are normalized in `parse_window`.
