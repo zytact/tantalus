@@ -35,6 +35,20 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 - macOS needs Xcode command line tools.
 - Windows needs the MSVC build tools and WebView2, which ships with Windows 11 and current Windows 10.
 
+## Preview builds
+
+Every pull request builds **Tantalus Preview**: deb and rpm, an Apple silicon dmg, and a Windows NSIS installer, attached to the workflow run and linked from a comment on the PR.
+
+A preview is a separate app. `src-tauri/tauri.preview.conf.json` gives it its own product name, bundle identifier and binary name, so it installs beside a release build and keeps its own settings file, autostart entry and single-instance lock. Nothing it does touches the release install. Its mark is blue rather than orange, in the tray and everywhere else, and the `preview` cargo feature swaps in the matching tray icon.
+
+`src-tauri/icons/preview/` holds that blue set, regenerated from `icon.png` with `vp run tauri icon src-tauri/icons/preview/icon.png -o src-tauri/icons/preview`.
+
+Build one locally the same way CI does:
+
+```sh
+vp run tauri build --config src-tauri/tauri.preview.conf.json --features preview
+```
+
 ## Privacy and behavior
 
 - Each refresh re-reads both credential files. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` win when they are set. Otherwise the app reads `.codex/auth.json` and `.claude/.credentials.json` under the home directory, which is `$HOME` on Linux and macOS and `%USERPROFILE%` on Windows.

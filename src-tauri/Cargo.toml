@@ -9,6 +9,11 @@ edition = "2021"
 name = "codex_tray_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+# Swaps in the recolored tray mark for preview builds, whose bundle identity comes from
+# tauri.preview.conf.json.
+preview = []
+
 [build-dependencies]
 tauri-build = { version = "2.5.1", features = [] }
 

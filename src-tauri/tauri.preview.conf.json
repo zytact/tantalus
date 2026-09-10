@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tantalus Preview",
+  "identifier": "dev.arnab.tantalus.preview",
+  "mainBinaryName": "tantalus-preview",
+  "bundle": {
+    "icon": ["icons/preview/32x32.png", "icons/preview/128x128.png", "icons/preview/128x128@2x.png", "icons/preview/icon.icns", "icons/preview/icon.ico"]
+  }
+}

@@ -383,7 +383,11 @@ fn show_window(app: &AppHandle) {
     // Every caller is an event handler, and building a window from one deadlocks on Windows.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // The title comes from the product name rather than the window config, so a preview build
+        // titles its window after itself instead of the release app.
+        let title = app.package_info().name.clone();
         match tauri::WebviewWindowBuilder::from_config(&app, &config)
+            .map(|builder| builder.title(title))
             .and_then(|builder| builder.build())
         {
             Ok(window) => {
@@ -402,9 +406,15 @@ fn show_window(app: &AppHandle) {
 
 /// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
 /// the alpha channel alone as a template image.
+#[cfg(not(feature = "preview"))]
+const TRAY_PNG: &[u8] = include_bytes!("../icons/tray.png");
+
+/// The same mark in the preview blue, so a preview build's tray icon is not the release build's.
+#[cfg(feature = "preview")]
+const TRAY_PNG: &[u8] = include_bytes!("../icons/preview/tray.png");
+
 fn tray_icon() -> tauri::image::Image<'static> {
-    tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))
-        .expect("tray icon is a valid PNG")
+    tauri::image::Image::from_bytes(TRAY_PNG).expect("tray icon is a valid PNG")
 }
 
 pub fn run() {
@@ -451,7 +461,7 @@ pub fn run() {
             let tray = TrayIconBuilder::with_id("usage")
                 .icon(tray_icon())
                 .menu(&menu)
-                .tooltip("Tantalus")
+                .tooltip(&app.package_info().name)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "refresh" => {
