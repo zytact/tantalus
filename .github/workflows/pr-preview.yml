@@ -8,7 +8,22 @@ concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
 
+# A pull request from a fork gets a read-only token, so it keeps the artifacts without a comment
+# pointing at them.
+env:
+  COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+
 jobs:
+  announce:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/preview-comment
+
   bundle:
     strategy:
       fail-fast: false
@@ -27,6 +42,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -63,50 +79,20 @@ jobs:
             src-tauri/target/**/*.dmg
             src-tauri/target/**/*setup.exe
 
-  comment:
-    # A pull request from a fork gets a read-only token, so it keeps the artifacts without a
-    # comment pointing at them.
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      # Link this platform's bundle as soon as it exists, rather than making someone wait for the
+      # slowest platform. Two of these landing together can drop one update, which settle corrects.
+      - if: env.COMMENT == 'true'
+        uses: ./.github/actions/preview-comment
+
+  settle:
+    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: bundle
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
 
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/preview-comment
         with:
-          script: |
-            const marker = '<!-- preview-bundles -->';
-            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = [
-              marker,
-              '### Preview build',
-              '',
-              // checkout builds refs/pull/N/merge, so the bundles are this branch merged into
-              // the base, not the head commit on its own.
-              `Bundles for ${context.payload.pull_request.head.sha.slice(0, 7)} merged into \`${context.payload.pull_request.base.ref}\` are attached to [this run](${run}):`,
-              '',
-              '| Platform | Artifact |',
-              '| --- | --- |',
-              '| Linux | `preview-x86_64-unknown-linux-gnu` (deb, rpm) |',
-              '| macOS (Apple silicon) | `preview-aarch64-apple-darwin` (dmg) |',
-              '| Windows | `preview-x86_64-pc-windows-msvc` (nsis) |',
-              '',
-              'It installs as **Tantalus Preview** alongside a release install and keeps its own settings.',
-            ].join('\n');
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-            });
-            const existing = comments.find((comment) => comment.body.startsWith(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+          final: "true"

@@ -37,7 +37,7 @@ Build each platform's installer on that platform. Tauri does not cross-compile d
 
 ## Preview builds
 
-Every pull request builds **Tantalus Preview**: deb and rpm, an Apple silicon dmg, and a Windows NSIS installer, attached to the workflow run and linked from a comment on the PR.
+Every pull request builds **Tantalus Preview**: deb and rpm, an Apple silicon dmg, and a Windows NSIS installer. A comment on the PR carries a download link per platform, posted when the run starts and updated as each platform finishes, so a slow platform never holds up the others.
 
 A preview is a separate app. `src-tauri/tauri.preview.conf.json` gives it its own product name, bundle identifier and binary name, so it installs beside a release build and keeps its own settings file, autostart entry and single-instance lock. Nothing it does touches the release install. Its mark is blue rather than orange, and the app picks that mark by reading back the identifier it was bundled with, so the icon can never disagree with the identity. macOS draws the preview tray icon in color, since the two marks share a silhouette and a template image would render them identically.
 
