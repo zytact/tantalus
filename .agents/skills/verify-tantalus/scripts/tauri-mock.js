@@ -17,11 +17,20 @@ const providerIds = ["codex", "claude", "opencode"];
 
 function readySnapshot() {
   const now = nowEpoch();
+  const weeklyPlan = codexPlan === "weekly";
   return {
+    // Which windows Codex reports depends on the plan: a 5-hour and a weekly one on Plus, a
+    // monthly one alone on Go and free.
     codex: {
-      five_hour: { used_percent: 42, limit_window_seconds: 18000, reset_at_epoch: now + 3 * 3600 + 29 * 60 },
-      seven_day: { used_percent: 8, limit_window_seconds: 604800, reset_at_epoch: now + 4 * 86400 + 20 * 3600 },
-      monthly: blankWindow(),
+      five_hour: weeklyPlan
+        ? { used_percent: 42, limit_window_seconds: 18000, reset_at_epoch: now + 3 * 3600 + 29 * 60 }
+        : blankWindow(),
+      seven_day: weeklyPlan
+        ? { used_percent: 8, limit_window_seconds: 604800, reset_at_epoch: now + 4 * 86400 + 20 * 3600 }
+        : blankWindow(),
+      monthly: weeklyPlan
+        ? blankWindow()
+        : { used_percent: 58, limit_window_seconds: 2592000, reset_at_epoch: now + 12 * 86400 + 5 * 3600 },
       allowed: true,
       limit_reached: false,
       reset_credits: [{ expires_at_epoch: 1791076477 }, { expires_at_epoch: 1791080077 }],
@@ -44,7 +53,7 @@ function readySnapshot() {
       status: "ready",
       error_message: null,
     },
-    // Opencode is the only provider with a third window and no extras of either kind.
+    // Opencode is the only provider reporting all three windows, and it has no extras of either kind.
     opencode: {
       five_hour: { used_percent: 4, limit_window_seconds: 18000, reset_at_epoch: now + 2 * 3600 },
       seven_day: { used_percent: 3, limit_window_seconds: 604800, reset_at_epoch: now + 3 * 86400 },
@@ -119,6 +128,8 @@ function saveAutostart(enabled) {
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
+// "weekly" is a Plus or Pro Codex account, "monthly" a Go or free one.
+let codexPlan = "weekly";
 let snapshot = readySnapshot();
 let mode = "ready";
 let autostart = loadAutostart();
@@ -282,9 +293,19 @@ window.__TANTALUS_MOCK__ = {
     mode = name;
     return mode;
   },
+  // Reshapes the Codex reading for the account plan. Follow it with a Refresh click, the same as
+  // a scenario change.
+  async codexPlan(plan) {
+    if (!["weekly", "monthly"].includes(plan)) {
+      throw new Error(`mock: unknown codex plan ${plan}`);
+    }
+    codexPlan = plan;
+    return codexPlan;
+  },
   reset() {
     localStorage.removeItem("tantalus-mock-enabled");
     localStorage.removeItem("tantalus-mock-autostart");
+    codexPlan = "weekly";
     snapshot = readySnapshot();
     autostart = false;
     failingCommand = null;

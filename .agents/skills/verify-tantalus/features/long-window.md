@@ -2,13 +2,16 @@
 
 The second ledger entry inside each provider block. Same shape as the short
 window. It is available only when Codex reports the recognized 604800-second
-window, Claude supplies `seven_day`, or Opencode supplies `usage.weekly`.
+window, Claude supplies `seven_day`, or Opencode supplies `usage.weekly`. A
+Codex Go or free account reports a monthly window instead and no weekly one, so
+the entry stands down for it rather than showing a placeholder; see
+[monthly-window](monthly-window.md).
 
 ## Sub-features
 
 - Headline figure, progress rule, and Resets / At / Remaining facts
 - `Window unavailable` plus `unrecognized duration` when the backend reports
-  no 7-day window
+  no 7-day window and no monthly one either
 - `aria-label="Long window usage"` on the progressbar once durations arrive
 
 ## How to get to it (user POV)
@@ -27,7 +30,8 @@ region inside each enabled provider has
 `role=progressbar[name="Long window usage"]`, figures `8%` (Codex),
 `74%` (Claude), and `3%` (Opencode), `Resets` in `Nd Nh` form, `Remaining`
 at `100 - used`.
-The `auth_missing` scenario flips all three to `Window unavailable`.
+The `auth_missing` scenario leaves each block with a single
+`Window unavailable` entry instead, since that reading carries no window.
 
 1. Launch on an isolated port. Static proof is `scripts/check-ui.sh <PORT>`.
 2. A bare-browser snapshot must not assert a provider block, region, or

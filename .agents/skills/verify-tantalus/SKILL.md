@@ -8,9 +8,11 @@ description: Drive the Tantalus Codex, Claude and Opencode usage tray app (React
 Tantalus is a Tauri 2 desktop app. Rust reads the Codex, Claude and Opencode
 credential files and polls the usage APIs every 5 minutes. The React webview
 in `src/main.tsx` receives a token-free `UsageSnapshot` and renders one block
-per enabled provider: a header row with a status word, then Short window
-(5h), Long window (7d), a Monthly window (30d, Opencode only), and Reset
-credits (Codex) or Extra usage (Claude), above a shared Refresh button.
+per enabled provider: a header row with a status word, then an entry per window
+the reading carries, from Short window (5h), Long window (7d) and Monthly window
+(30d), and Reset credits (Codex) or Extra usage (Claude), above a shared Refresh
+button. Which windows an account has depends on its plan, so a Codex Go or free
+account shows Monthly window alone.
 Opencode has neither kind of extras. Codex and Claude default on; Opencode
 defaults off, so switch it on in Settings before verifying its block. The per-provider on/off switches live on the
 Settings page in `src/settings-page.tsx`; a provider switched off is not
@@ -149,9 +151,11 @@ not coordinates where a role target exists. Status words come from
 `window.__TANTALUS_MOCK__.scenario(...)` followed by a Refresh click:
 `stale` reads `Cached` with the figures intact and a `role=status`
 notice, `blocked` reads `Blocked until reset`, `auth_missing` reads
-`Not signed in` with `Window unavailable` fallbacks and a `no successful
-update yet` header, `error` reads `Could not refresh`, and `ready`
-returns to `Live`. Switching a provider off in Settings drops its block from
+`Not signed in` with one `Window unavailable` entry per block and a `no
+successful update yet` header, `error` reads `Could not refresh`, and `ready`
+returns to `Live`. `window.__TANTALUS_MOCK__.codexPlan("monthly")` plus a
+Refresh click reshapes the Codex reading into the Go and free account shape, a
+`Monthly window usage` progressbar alone; `codexPlan("weekly")` puts it back. Switching a provider off in Settings drops its block from
 the allowance view and persists the
 `{"codex":true,"claude":false,"opencode":false}`-shaped
 choice to localStorage (the mock's stand-in for `providers.json`); switching
@@ -172,7 +176,8 @@ the mock was not installed before the remount: reinstall and remount
 rather than asserting entries.
 
 The tray menu (one line per enabled provider formatted
-`Codex  5h 42%  7d 8%`, with a third `30d N%` column for Opencode only, then
+`Codex  5h 42%  7d 8%`, one column per window that provider reported, so
+Opencode adds `30d N%` and a Codex Go or free account reads `Codex  30d N%`, then
 `Show usage`, `Refresh now`, `Quit`), the
 tooltip, the 5-minute polling cadence, and the real `providers.json`
 write have no browser surface and stay manual-only under `vp run tauri dev`
@@ -283,5 +288,5 @@ All helpers live in `scripts/`; the shell ones are executable:
 
 Feature map is in `features/`: `README.md` plus one file per user-facing
 feature, including `provider-switch.md` for the per-provider on/off switch in
-Settings and `monthly-window.md` for the Opencode-only third window. Drive the map entry named in the task; one mapped feature per proof
+Settings and `monthly-window.md` for the 30-day window. Drive the map entry named in the task; one mapped feature per proof
 run is enough because the map lists the rest.

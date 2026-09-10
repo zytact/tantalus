@@ -6,8 +6,9 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub const FIVE_HOUR_SECONDS: i64 = 18_000;
 pub const SEVEN_DAY_SECONDS: i64 = 604_800;
-/// Opencode's third window. It renews a month after the plan started rather than on a calendar
-/// boundary, so 30 days is the duration that identifies it.
+/// The monthly window Opencode reports, and the only window a Codex Go or free account has. It
+/// renews a month after the plan started rather than on a calendar boundary, so 30 days is the
+/// duration that identifies it.
 pub const MONTHLY_SECONDS: i64 = 2_592_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -34,7 +35,8 @@ pub struct ExtraUsage {
 pub struct ProviderUsage {
     pub five_hour: WindowUsage,
     pub seven_day: WindowUsage,
-    /// Only Opencode reports a third window. The others leave it unreported and the view skips it.
+    /// Opencode reports this alongside the other two, and it is the only window a Codex Go or free
+    /// account has. Claude leaves it unreported and the view skips it.
     pub monthly: WindowUsage,
     pub allowed: Option<bool>,
     pub limit_reached: Option<bool>,
@@ -63,10 +65,20 @@ pub enum SnapshotStatus {
     Error,
 }
 
+/// Codex identifies its windows by duration rather than by name, and which ones an account has
+/// depends on its plan: a Go or free account has only the monthly window, and OpenAI has switched
+/// the 5-hour window off for a plan before. So no window is assumed. Each duration is looked for
+/// among the reported ones and whichever the account does not have stays unreported.
 pub fn parse_usage(
     value: &Value,
     now: i64,
-) -> (WindowUsage, WindowUsage, Option<bool>, Option<bool>) {
+) -> (
+    WindowUsage,
+    WindowUsage,
+    WindowUsage,
+    Option<bool>,
+    Option<bool>,
+) {
     let rate_limit = value.get("rate_limit");
     let primary = parse_window(rate_limit.and_then(|item| item.get("primary_window")), now);
     let secondary = parse_window(
@@ -80,17 +92,20 @@ pub fn parse_usage(
         .and_then(|item| item.get("limit_reached"))
         .and_then(Value::as_bool);
     let windows = [primary, secondary];
-    let five_hour = windows
-        .iter()
-        .find(|window| window.limit_window_seconds == Some(FIVE_HOUR_SECONDS))
-        .cloned()
-        .unwrap_or_default();
-    let seven_day = windows
-        .iter()
-        .find(|window| window.limit_window_seconds == Some(SEVEN_DAY_SECONDS))
-        .cloned()
-        .unwrap_or_default();
-    (five_hour, seven_day, allowed, limit_reached)
+    let window = |seconds| {
+        windows
+            .iter()
+            .find(|window| window.limit_window_seconds == Some(seconds))
+            .cloned()
+            .unwrap_or_default()
+    };
+    (
+        window(FIVE_HOUR_SECONDS),
+        window(SEVEN_DAY_SECONDS),
+        window(MONTHLY_SECONDS),
+        allowed,
+        limit_reached,
+    )
 }
 
 /// Claude names its windows instead of reporting a duration, so the duration is supplied here.
@@ -289,7 +304,7 @@ mod tests {
     use serde_json::json;
     #[test]
     fn maps_windows_by_duration_and_parses_millisecond_reset_at() {
-        let (five_hour, seven_day, allowed, reached) = parse_usage(
+        let (five_hour, seven_day, _, allowed, reached) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"used_percent":44.0,"reset_at":1700003600000i64,"window_seconds":604800},"secondary_window":{"used_percent":12.5,"reset_after_seconds":90,"limit_window_seconds":18000},"allowed":false,"limit_reached":true}}),
             1_700_000_000,
         );
@@ -302,9 +317,38 @@ mod tests {
         assert_eq!(allowed, Some(false));
         assert_eq!(reached, Some(true));
     }
+    /// What a Go or free account reports: a monthly window and nothing else.
+    #[test]
+    fn a_monthly_window_is_the_only_one_a_go_or_free_account_reports() {
+        let (five_hour, seven_day, monthly, ..) = parse_usage(
+            &json!({"plan_type":"go","rate_limit":{"primary_window":{"used_percent":58.0,"limit_window_seconds":2592000,"reset_at":1700003600},"allowed":true,"limit_reached":false}}),
+            1_700_000_000,
+        );
+        assert_eq!(monthly.used_percent, Some(58.0));
+        assert_eq!(monthly.limit_window_seconds, Some(MONTHLY_SECONDS));
+        assert_eq!(monthly.reset_at_epoch, Some(1_700_003_600));
+        for window in [five_hour, seven_day] {
+            assert_eq!(window.used_percent, None);
+            assert_eq!(window.limit_window_seconds, None);
+        }
+    }
+
+    /// OpenAI switches the 5-hour window off for a plan from time to time. The windows that are
+    /// still reported have to survive that.
+    #[test]
+    fn a_plan_without_the_five_hour_window_keeps_the_rest() {
+        let (five_hour, seven_day, monthly, ..) = parse_usage(
+            &json!({"rate_limit":{"primary_window":{"used_percent":41.0,"limit_window_seconds":604800}}}),
+            1,
+        );
+        assert_eq!(seven_day.used_percent, Some(41.0));
+        assert_eq!(five_hour.limit_window_seconds, None);
+        assert_eq!(monthly.limit_window_seconds, None);
+    }
+
     #[test]
     fn unknown_values_stay_unavailable() {
-        let (primary, _, _, _) = parse_usage(&json!({"rate_limit":{"primary_window":{}}}), 1);
+        let (primary, ..) = parse_usage(&json!({"rate_limit":{"primary_window":{}}}), 1);
         assert_eq!(primary.used_percent, None);
     }
 
@@ -361,7 +405,7 @@ mod tests {
 
     #[test]
     fn string_durations_map_to_windows_but_fractional_ones_do_not() {
-        let (five_hour, seven_day, _, _) = parse_usage(
+        let (five_hour, seven_day, ..) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"used_percent":9.0,"limit_window_seconds":"18000"},"secondary_window":{"used_percent":18.0,"window_seconds":"604800.5"}}}),
             1,
         );
@@ -371,7 +415,7 @@ mod tests {
 
     #[test]
     fn reset_after_seconds_accepts_a_string() {
-        let (five_hour, _, _, _) = parse_usage(
+        let (five_hour, ..) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"reset_after_seconds":"90","limit_window_seconds":18000}}}),
             1_700_000_000,
         );
@@ -386,7 +430,7 @@ mod tests {
 
     #[test]
     fn parses_both_duration_field_alternatives() {
-        let (five_hour, seven_day, _, _) = parse_usage(
+        let (five_hour, seven_day, ..) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"limit_window_seconds":18000},"secondary_window":{"window_seconds":604800}}}),
             1,
         );
@@ -396,7 +440,7 @@ mod tests {
 
     #[test]
     fn missing_or_unfamiliar_duration_is_not_assigned_to_a_known_window() {
-        let (five_hour, seven_day, _, _) = parse_usage(
+        let (five_hour, seven_day, ..) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"used_percent":9.0},"secondary_window":{"used_percent":18.0,"limit_window_seconds":3600}}}),
             1,
         );
@@ -406,7 +450,7 @@ mod tests {
 
     #[test]
     fn fractional_durations_are_not_assigned_to_known_windows() {
-        let (five_hour, seven_day, _, _) = parse_usage(
+        let (five_hour, seven_day, ..) = parse_usage(
             &json!({"rate_limit":{"primary_window":{"used_percent":9.0,"limit_window_seconds":18000.9},"secondary_window":{"used_percent":18.0,"window_seconds":604800.1}}}),
             1,
         );

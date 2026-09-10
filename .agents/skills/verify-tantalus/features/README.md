@@ -7,7 +7,7 @@ when this index lists others.
 
 - [short-window](short-window.md) - 5-hour consumption ledger entry
 - [long-window](long-window.md) - 7-day consumption ledger entry
-- [monthly-window](monthly-window.md) - 30-day ledger entry, Opencode only
+- [monthly-window](monthly-window.md) - 30-day ledger entry, Opencode and Codex Go or free
 - [reset-credits](reset-credits.md) - banked reset credits
 - [manual-refresh](manual-refresh.md) - Refresh button, Refresh now, stale and error states
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, status line, token privacy

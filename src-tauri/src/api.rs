@@ -37,12 +37,12 @@ pub async fn fetch_codex(
     )
     .await?;
     let now = now_epoch();
-    let (five_hour, seven_day, allowed, limit_reached) = parse_usage(&usage, now);
+    let (five_hour, seven_day, monthly, allowed, limit_reached) = parse_usage(&usage, now);
     let (reset_credits, reset_credit_count) = parse_credits(&credits);
     Ok(ProviderUsage {
         five_hour,
         seven_day,
-        monthly: WindowUsage::default(),
+        monthly,
         allowed,
         limit_reached,
         reset_credits,

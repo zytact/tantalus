@@ -139,9 +139,25 @@ function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
   }
 }
 
+/** Every window a provider can report, in the order they are shown. Which of them a reading
+ * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
+ * and OpenAI has switched the 5-hour one off for a plan before, so none of the three is assumed. */
+function windowEntries(provider: ProviderUsage) {
+  return [
+    { label: "Short window", span: "5 hours", duration: fiveHourSeconds, window: provider.five_hour },
+    { label: "Long window", span: "7 days", duration: sevenDaySeconds, window: provider.seven_day },
+    { label: "Monthly window", span: "30 days", duration: monthlySeconds, window: provider.monthly },
+  ];
+}
+
 function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
+  const windows = windowEntries(provider);
+  const reported = windows.filter(({ duration, window }) => window.limit_window_seconds === duration);
+  // A reading that came back with no window at all still has to say so, in one placeholder rather
+  // than one per window the account might have had.
+  const entries = reported.length > 0 ? reported : windows.slice(0, 1);
   return (
     <div className="provider">
       <div className="provider-row">
@@ -155,11 +171,9 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
-      <Entry label="Short window" span="5 hours" duration={fiveHourSeconds} window={provider.five_hour} />
-      <Entry label="Long window" span="7 days" duration={sevenDaySeconds} window={provider.seven_day} />
-      {provider.monthly.limit_window_seconds !== null && (
-        <Entry label="Monthly window" span="30 days" duration={monthlySeconds} window={provider.monthly} />
-      )}
+      {entries.map((entry) => (
+        <Entry key={entry.label} {...entry} />
+      ))}
       <Extras id={id} provider={provider} />
     </div>
   );
