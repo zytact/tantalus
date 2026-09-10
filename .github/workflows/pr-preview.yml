@@ -18,6 +18,8 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
+      contents: read
+      actions: read
       pull-requests: write
 
     steps:
@@ -42,6 +44,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: read
+      actions: read
       pull-requests: write
 
     steps:
@@ -89,6 +92,8 @@ jobs:
     needs: bundle
     runs-on: ubuntu-latest
     permissions:
+      contents: read
+      actions: read
       pull-requests: write
 
     steps:
