@@ -7,6 +7,11 @@ enabled provider at once.
 
 - `role=button[name="Refresh"]`, disabled with `Refreshing` text and
   `aria-busy=true` while in flight (`src/main.tsx`)
+- `Ctrl+R` and `Cmd+R` trigger the same refresh from anywhere in the window,
+  including Settings, where it runs with no visible busy state. The chord is
+  cancelled even when no refresh can start (`isRefreshShortcut` in
+  `src/presentation.ts`). WebView2 handles it above the page and reloads
+  regardless, which repaints from `cached_usage` rather than losing the reading.
 - Tauri commands `cached_usage` (initial paint), `refresh_usage` (button),
   and `set_provider_enabled` (switch), snapshot event `usage-snapshot`
 - A switched-off provider is skipped: no credential read, no request
@@ -22,7 +27,8 @@ enabled provider at once.
 
 ## How to get to it (user POV)
 
-Click **Refresh** in the window header, or tray **Refresh now**. Each
+Click **Refresh** in the window header, press **Ctrl+R** or **Cmd+R**, or use
+tray **Refresh now**. Each
 provider's switch row carries its own status word: `Live`,
 `Blocked until reset`, `Loading`, `Cached`, `Not signed in`,
 `Could not refresh`, or `Off`. Separately, the line under `Allowance` reads
@@ -47,7 +53,7 @@ a live refresh match `live-usage.json`.
 2. In a bare browser tab, wait for `cached_usage` to reject. Snapshot the
    disabled Refresh button and `Could not load provider settings`. Do not
    click Refresh: without a snapshot it is disabled.
-3. Logic proof headless: `vp test` plus
+3. Logic proof headless: `vp test` covers the chord predicate, plus
    `cargo test --manifest-path src-tauri/Cargo.toml`
 4. Live proof (necessary, single pass):
    `.agents/skills/verify-tantalus/scripts/live-check.sh "$EVIDENCE"`

@@ -2,13 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   countdown,
   creditExpiry,
+  isRefreshShortcut,
   remainingPercent,
   statusLine,
   statusTone,
   usagePercent,
   usageTier,
 } from "./presentation";
-import type { ProviderUsage } from "./presentation";
+import type { Chord, ProviderUsage } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
@@ -72,5 +73,29 @@ describe("display contract", () => {
     expect(statusTone(provider({ status: "stale" }))).toBe("warn");
     expect(statusTone(provider({ status: "auth_missing" }))).toBe("danger");
     expect(statusTone(provider({ limit_reached: true }))).toBe("danger");
+  });
+});
+
+describe("refresh shortcut", () => {
+  const chord = (fields: Partial<Chord> = {}): Chord => ({
+    key: "r",
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...fields,
+  });
+
+  it("takes either modifier, on either letter case", () => {
+    expect(isRefreshShortcut(chord({ ctrlKey: true }))).toBe(true);
+    expect(isRefreshShortcut(chord({ metaKey: true }))).toBe(true);
+    expect(isRefreshShortcut(chord({ key: "R", metaKey: true }))).toBe(true);
+  });
+
+  it("leaves every other chord to the webview", () => {
+    expect(isRefreshShortcut(chord())).toBe(false);
+    expect(isRefreshShortcut(chord({ key: "t", ctrlKey: true }))).toBe(false);
+    expect(isRefreshShortcut(chord({ ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(isRefreshShortcut(chord({ metaKey: true, altKey: true }))).toBe(false);
   });
 });
