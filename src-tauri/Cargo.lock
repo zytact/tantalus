@@ -3623,7 +3623,7 @@ dependencies = [
 
 [[package]]
 name = "tantalus"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
