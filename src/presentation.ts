@@ -138,3 +138,12 @@ export function statusTone(provider: ProviderUsage): "ok" | "warn" | "danger" {
       return provider.allowed === false || provider.limit_reached ? "danger" : "ok";
   }
 }
+
+/** The chord fields the refresh shortcut reads, so the check stays testable without a DOM event. */
+export type Chord = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
+
+/** Ctrl+R and Cmd+R both mean refresh. Adding Alt or Shift makes it a different chord, which is
+ * left to the webview. */
+export function isRefreshShortcut(event: Chord): boolean {
+  return event.key.toLowerCase() === "r" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+}

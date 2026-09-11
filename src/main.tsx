@@ -3,7 +3,7 @@ import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   absoluteTime,
@@ -11,6 +11,7 @@ import {
   creditAmount,
   creditExpiry,
   fiveHourSeconds,
+  isRefreshShortcut,
   lastUpdate,
   monthlySeconds,
   providerExtras,
@@ -187,7 +188,7 @@ function App() {
   const [snapshotError, setSnapshotError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       setSnapshot(await invoke<UsageSnapshot>("refresh_usage"));
@@ -195,7 +196,22 @@ function App() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  const canRefresh = snapshot !== null && !refreshing;
+
+  // The chord belongs to the app, so the default reload is cancelled whether or not a refresh can
+  // start. WebView2 handles Ctrl+R above the page and reloads anyway; the remount reads the cache
+  // back, so that costs a repaint rather than the reading.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isRefreshShortcut(event)) return;
+      event.preventDefault();
+      if (canRefresh) void refresh();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canRefresh, refresh]);
 
   // The listener is attached before the cache is read. The startup refresh publishes while the
   // webview is still loading, and a snapshot landing between the two reads would otherwise be
@@ -254,7 +270,12 @@ function App() {
             </div>
             <div className="header-actions">
               <button onClick={() => setPage("settings")}>Settings</button>
-              <button onClick={() => void refresh()} disabled={refreshing || !snapshot} aria-busy={refreshing}>
+              <button
+                onClick={() => void refresh()}
+                disabled={!canRefresh}
+                aria-busy={refreshing}
+                title="Refresh (Ctrl+R or Cmd+R)"
+              >
                 {refreshing ? "Refreshing" : "Refresh"}
               </button>
             </div>
