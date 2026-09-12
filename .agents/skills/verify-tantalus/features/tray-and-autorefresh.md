@@ -55,8 +55,9 @@ provider sections or controls.
 Real proof is manual on a desktop OS:
 
 1. `vp run tauri dev`, wait for the first refresh
-2. Read the tray menu: each provider line matches that provider's window
-   figures, and a switched-off provider has no line
+2. Read the tray menu: each provider's rows match that provider's window
+   figures, the bars read at full contrast rather than dimmed, and a
+   switched-off provider has no rows
 3. Click **Show usage**, close the window, confirm the tray icon persists,
    then **Show usage** again and confirm the new window's minimize, maximize
    and close buttons all respond, then **Quit** and confirm the process exits

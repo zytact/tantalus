@@ -315,7 +315,7 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
         }
         readings.push(MenuItem::with_id(
             app,
-            provider.id(),
+            format!("{READING_PREFIX}{}", provider.id()),
             provider.name(),
             true,
             None::<&str>,
@@ -326,7 +326,7 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
         {
             readings.push(MenuItem::with_id(
                 app,
-                format!("{}-{index}", provider.id()),
+                format!("{READING_PREFIX}{}-{index}", provider.id()),
                 row,
                 true,
                 None::<&str>,
@@ -380,28 +380,34 @@ fn tray_row(span: &str, used_percent: Option<f64>) -> String {
 }
 
 /// Menu rows carry no icon or widget on Linux, so the bar is text. Eighth-blocks put the edge
-/// within 1.25 percent of the reading, and the fixed-width span tag ahead of it lines the bars up
-/// under one another in the menu's proportional font.
+/// within 1.25 percent of the reading, and a reading short of its limit keeps the last eighth
+/// empty, so a solid bar always means the allowance is gone.
 fn bar(used_percent: f64) -> String {
-    let eighths =
-        (used_percent.clamp(0.0, 100.0) / 100.0 * (BAR_CELLS * 8) as f64).round() as usize;
+    let used_percent = used_percent.clamp(0.0, 100.0);
+    let full = BAR_CELLS * 8;
+    let eighths = match (used_percent / 100.0 * full as f64).round() as usize {
+        rounded if rounded == full && used_percent < 100.0 => full - 1,
+        rounded => rounded,
+    };
     let filled = eighths / 8;
-    let mut bar: String = std::iter::repeat_n(BAR_FULL, filled).collect();
+    let mut cells: String = std::iter::repeat_n(BAR_FULL, filled).collect();
     if filled < BAR_CELLS {
-        bar.push(BAR_PARTIALS[eighths % 8]);
-        bar.extend(std::iter::repeat_n(BAR_EMPTY, BAR_CELLS - filled - 1));
+        cells.push(BAR_PARTIALS[eighths % 8]);
+        cells.extend(std::iter::repeat_n(BAR_EMPTY, BAR_CELLS - filled - 1));
     }
-    bar
+    cells
 }
 
 const BAR_CELLS: usize = 10;
 const BAR_FULL: char = '\u{2588}';
 const BAR_EMPTY: char = '\u{2591}';
-/// Indexed by the eighths filling the leading partial cell, so index 0 is an empty cell.
+/// Indexed by the eighths filling the partial cell, so index 0 is an empty cell.
 const BAR_PARTIALS: [char; 8] = [
     BAR_EMPTY, '\u{258f}', '\u{258e}', '\u{258d}', '\u{258c}', '\u{258b}', '\u{258a}', '\u{2589}',
 ];
 const ROW_INDENT: &str = "   ";
+/// Menu ids for the readings, which the menu handler tells apart from the action items.
+const READING_PREFIX: &str = "reading:";
 
 /// Opencode reports fractional percentages, so one decimal is kept when the reading has one.
 /// The providers that report whole numbers never grow a hollow ".0".
@@ -552,8 +558,8 @@ pub fn run() {
                         });
                     }
                     "quit" => app.exit(0),
-                    // Every other id belongs to a reading, which opens the window like Show usage.
-                    _ => show_window(app),
+                    id if id.starts_with(READING_PREFIX) => show_window(app),
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     // Windows and Linux report every button here; only a completed left click
@@ -660,8 +666,10 @@ mod tests {
             seven_day: window(usage::SEVEN_DAY_SECONDS, 41.0),
             ..Default::default()
         };
-        assert_eq!(tray_rows(&provider).len(), 1);
-        assert!(tray_rows(&provider)[0].starts_with("   7d "));
+        assert_eq!(
+            tray_rows(&provider),
+            ["   7d   \u{2588}\u{2588}\u{2588}\u{2588}\u{258f}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  41%"]
+        );
     }
 
     /// A reading that came back with no window keeps the provider on the menu.
@@ -691,6 +699,14 @@ mod tests {
         for percent in [0.0, 0.4, 12.74, 50.0, 99.9, 100.0, 140.0] {
             assert_eq!(bar(percent).chars().count(), BAR_CELLS, "at {percent}");
         }
+    }
+
+    /// A bar that reads as spent when the allowance is not is the one misread that matters, so
+    /// the last eighth belongs to 100 percent alone.
+    #[test]
+    fn only_the_limit_fills_the_bar() {
+        assert_ne!(bar(99.9), bar(100.0));
+        assert!(!bar(99.9).chars().all(|cell| cell == BAR_FULL));
     }
 
     /// A reading over its limit, which Claude reports past 100 percent, fills the bar rather than
