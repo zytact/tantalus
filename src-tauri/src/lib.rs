@@ -452,22 +452,20 @@ fn percent(value: f64) -> String {
 /// Checks for a release every `update::CHECK_INTERVAL` and announces what it finds to the tray and
 /// the window.
 async fn watch_updates(app: AppHandle) {
+    let mut retry = None;
     loop {
-        let wait = match update::check(&app).await {
-            Ok(found) => {
-                if let Some(found) = found {
-                    let state = app.state::<AppState>();
-                    update_tray_menu(&app, &*state.snapshot.lock().await);
-                    let _ = app.emit("update-available", found);
-                }
-                update::CHECK_INTERVAL
+        let result = update::check(&app).await;
+        retry = update::next_retry(result.is_ok(), retry);
+        match result {
+            Ok(Some(found)) => {
+                let state = app.state::<AppState>();
+                update_tray_menu(&app, &*state.snapshot.lock().await);
+                let _ = app.emit("update-available", found);
             }
-            Err(error) => {
-                eprintln!("Update check failed: {error}");
-                update::CHECK_RETRY
-            }
-        };
-        tokio::time::sleep(wait).await;
+            Ok(None) => {}
+            Err(error) => eprintln!("Update check failed: {error}"),
+        }
+        tokio::time::sleep(retry.unwrap_or(update::CHECK_INTERVAL)).await;
     }
 }
 

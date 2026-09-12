@@ -321,7 +321,7 @@ window.__TANTALUS_MOCK__ = {
     publish();
     return true;
   },
-  // Stands in for Rust's background check finding a release: the banner appears without a remount.
+  // Stands in for Rust's background check finding a release. The banner appears without a remount.
   offerUpdate(version = "9.9.9") {
     pendingUpdate = { version };
     for (const id of listeners.get("update-available") ?? []) {
