@@ -2,7 +2,6 @@ import "@fontsource-variable/inter-tight/wght.css";
 import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -26,7 +25,9 @@ import {
 } from "./presentation";
 import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
+import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
+import { UpdateNotice } from "./update-notice";
 import "./styles.css";
 
 /** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
@@ -184,15 +185,13 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
 
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
-  const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null);
-  const [snapshotError, setSnapshotError] = useState(false);
+  const [snapshot, setSnapshot, snapshotError] = usePublishedState<UsageSnapshot>("usage-snapshot", "cached_usage");
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       setSnapshot(await invoke<UsageSnapshot>("refresh_usage"));
-      setSnapshotError(false);
     } finally {
       setRefreshing(false);
     }
@@ -212,37 +211,6 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [canRefresh, refresh]);
-
-  // The listener is attached before the cache is read. The startup refresh publishes while the
-  // webview is still loading, and a snapshot landing between the two reads would otherwise be
-  // lost, leaving the window empty until the next refresh.
-  useEffect(() => {
-    let mounted = true;
-    let stop: (() => void) | undefined;
-    void listen<UsageSnapshot>("usage-snapshot", (event) => {
-      if (mounted) {
-        setSnapshot(event.payload);
-        setSnapshotError(false);
-      }
-    })
-      .then((unlisten) => {
-        if (mounted) stop = unlisten;
-        else unlisten();
-        return invoke<UsageSnapshot>("cached_usage");
-      })
-      .then(
-        (cached) => {
-          if (mounted) setSnapshot((current) => current ?? cached);
-        },
-        () => {
-          if (mounted) setSnapshotError(true);
-        },
-      );
-    return () => {
-      mounted = false;
-      stop?.();
-    };
-  }, []);
 
   const shown = snapshot ? providerIds.filter((id) => snapshot.enabled[id]) : [];
   const updated = snapshot && Math.max(0, ...shown.map((id) => snapshot[id].last_successful_update_epoch ?? 0));
@@ -280,6 +248,8 @@ function App() {
               </button>
             </div>
           </header>
+
+          <UpdateNotice />
 
           {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
 

@@ -64,6 +64,12 @@ cd ../.. && vp run tauri icon src-tauri/icons/preview/icon.png -o src-tauri/icon
 
 `tauri icon` writes the sizes the bundle needs and a set of extras this project does not commit. It never writes `tray.png`, which the two `magick` lines above cover.
 
+## Updates
+
+A release build checks `latest.json` on the latest published GitHub release at launch and every 6 hours. When it finds a newer version, the window shows an **Install update** banner and the tray menu gains an item that opens the window. Installing downloads the update for the bundle the app was installed from (the deb, the rpm, the NSIS installer, or a `.app.tar.gz` on macOS), verifies its signature, installs it, and relaunches. A deb or rpm install asks for an administrator password through polkit. Dev and preview builds never check.
+
+The release workflow signs every bundle with the key in the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets, turned on by `src-tauri/tauri.release.conf.json`, and writes `latest.json` into the draft release. Installed apps see a release only after its draft is published. The matching public key lives in `src-tauri/tauri.conf.json`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub.
+
 ## Privacy and behavior
 
 - Each refresh re-reads every credential file. `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` win when they are set. Otherwise the app reads `.codex/auth.json`, `.claude/.credentials.json`, and `.local/share/opencode/auth.json` under the home directory, which is `$HOME` on Linux and macOS and `%USERPROFILE%` on Windows.

@@ -28,13 +28,14 @@ jobs:
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             args: --bundles deb,rpm
-          # dmg, one per architecture
+          # dmg, one per architecture. The updater archive is built from the app bundle, so dmg alone
+          # would skip it.
           - platform: macos-latest
             target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles dmg
+            args: --target aarch64-apple-darwin --bundles app,dmg
           - platform: macos-latest
             target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --bundles dmg
+            args: --target x86_64-apple-darwin --bundles app,dmg
           # exe (NSIS installer)
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
@@ -55,6 +56,18 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      # latest.json takes its version from the tag, so a tag ahead of the app version would offer an
+      # update that installs the same build again.
+      - if: env.PUBLISH == 'true' && startsWith(matrix.platform, 'ubuntu')
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match the app version $version"
+            exit 1
+          fi
+
       - uses: ./.github/actions/setup-frontend
 
       - uses: dtolnay/rust-toolchain@stable
@@ -69,10 +82,27 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
 
+      # tauri.release.conf.json turns on the updater artifacts: a .sig beside each installer, and an
+      # .app.tar.gz for macOS. Signing them takes the private key, which a preview build never has.
       - uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: vp run tauri
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+
+      # Both macOS targets name their update archive Tantalus.app.tar.gz, and the publish job merges
+      # every bundle into one directory, so each archive takes its architecture.
+      - if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle/macos
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          for file in Tantalus.app.tar.gz Tantalus.app.tar.gz.sig; do
+            mv "$file" "${file/Tantalus/Tantalus_${TARGET%%-*}}"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
@@ -83,6 +113,8 @@ jobs:
             src-tauri/target/**/*.rpm
             src-tauri/target/**/*.dmg
             src-tauri/target/**/*setup.exe
+            src-tauri/target/**/*.app.tar.gz
+            src-tauri/target/**/*.sig
 
   publish:
     if: github.event_name == 'push' || inputs.publish
@@ -102,7 +134,26 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
+        # latest.json is what installed apps read from the latest release. Each platform key names
+        # the bundle that app was installed from, so an rpm install never downloads the deb.
         run: |
+          platforms='{}'
+          while IFS= read -r sig; do
+            name=$(basename "${sig%.sig}")
+            case "$name" in
+              *_amd64.deb) key=linux-x86_64-deb ;;
+              *.x86_64.rpm) key=linux-x86_64-rpm ;;
+              *_aarch64.app.tar.gz) key=darwin-aarch64 ;;
+              *_x86_64.app.tar.gz) key=darwin-x86_64 ;;
+              *-setup.exe) key=windows-x86_64 ;;
+              *) echo "::error::no updater platform for $name"; exit 1 ;;
+            esac
+            platforms=$(jq --arg key "$key" --arg url "https://github.com/$GH_REPO/releases/download/$TAG/$name" \
+              --rawfile signature "$sig" '.[$key] = {url: $url, signature: ($signature | rtrimstr("\n"))}' <<<"$platforms")
+          done < <(find bundles -name '*.sig')
+          jq -n --arg version "${TAG#v}" --argjson platforms "$platforms" \
+            '{version: $version, pub_date: (now | todate), platforms: $platforms}' > bundles/latest.json
+
           mapfile -t assets < <(find bundles -type f -print)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
