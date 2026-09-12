@@ -13,7 +13,7 @@ when this index lists others.
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, status line, token privacy
 - [provider-switch](provider-switch.md) - per-provider on/off switch in Settings, persistence
 - [settings](settings.md) - provider choice, app version, open-at-login preference
-- [updates](updates.md) - update banner, tray update item, install and failure states
+- [updates](updates.md) - update banner, Check for updates in Settings, tray update item, install and failure states
 
 Headless static checks prove that Vite serves the app shell and that its
 bundle contains the expected labels. In a plain browser, `cached_usage`

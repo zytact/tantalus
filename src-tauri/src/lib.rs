@@ -83,6 +83,16 @@ fn available_update(pending: State<'_, PendingUpdate>) -> Option<AvailableUpdate
 }
 
 #[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<AvailableUpdate>, String> {
+    if !updates_enabled(&app) {
+        return Err("Dev and preview builds do not check for updates.".into());
+    }
+    find_update(&app)
+        .await
+        .map_err(|error| format!("Could not check for updates: {error}"))
+}
+
+#[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
     update::install(&app).await
 }
@@ -449,21 +459,31 @@ fn percent(value: f64) -> String {
     }
 }
 
-/// Checks for a release every `update::CHECK_INTERVAL` and announces what it finds to the tray and
-/// the window.
+/// A dev build has no bundle to replace, and a preview installs under its own package name, so a
+/// release would land beside it rather than update it.
+fn updates_enabled(app: &AppHandle) -> bool {
+    !cfg!(debug_assertions) && !is_preview(app)
+}
+
+/// Checks for a release and announces what it finds to the tray and the window.
+async fn find_update(app: &AppHandle) -> tauri_plugin_updater::Result<Option<AvailableUpdate>> {
+    let found = update::check(app).await?;
+    if let Some(found) = &found {
+        let state = app.state::<AppState>();
+        update_tray_menu(app, &*state.snapshot.lock().await);
+        let _ = app.emit("update-available", found.clone());
+    }
+    Ok(found)
+}
+
+/// Checks for a release every `update::CHECK_INTERVAL`, backing off after a failure.
 async fn watch_updates(app: AppHandle) {
     let mut retry = None;
     loop {
-        let result = update::check(&app).await;
+        let result = find_update(&app).await;
         retry = update::next_retry(result.is_ok(), retry);
-        match result {
-            Ok(Some(found)) => {
-                let state = app.state::<AppState>();
-                update_tray_menu(&app, &*state.snapshot.lock().await);
-                let _ = app.emit("update-available", found);
-            }
-            Ok(None) => {}
-            Err(error) => eprintln!("Update check failed: {error}"),
+        if let Err(error) = result {
+            eprintln!("Update check failed: {error}");
         }
         tokio::time::sleep(retry.unwrap_or(update::CHECK_INTERVAL)).await;
     }
@@ -575,6 +595,7 @@ pub fn run() {
             cached_usage,
             set_provider_enabled,
             available_update,
+            check_for_update,
             install_update
         ])
         .setup(move |app| {
@@ -643,9 +664,7 @@ pub fn run() {
                     tokio::time::sleep(backoff.unwrap_or(REFRESH_INTERVAL)).await;
                 }
             });
-            // A dev build has no bundle to replace, and a preview installs under its own package
-            // name, so a release would land beside it rather than update it.
-            if !cfg!(debug_assertions) && !preview {
+            if updates_enabled(app.handle()) {
                 tauri::async_runtime::spawn(watch_updates(app.handle().clone()));
             }
             Ok(())

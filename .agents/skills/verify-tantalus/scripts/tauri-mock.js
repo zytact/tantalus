@@ -134,7 +134,8 @@ let snapshot = readySnapshot();
 let mode = "ready";
 let autostart = loadAutostart();
 let failingCommand = null;
-let pendingUpdate = null; // { version } once offerUpdate() stands in for a background check
+let pendingUpdate = null; // { version } once a check has found a release
+let publishedRelease = null; // { version } a manual check finds, set by publishRelease()
 const listeners = new Map(); // event name -> handler ids
 const callbacks = new Map(); // handler id -> function
 
@@ -150,6 +151,13 @@ function registerCallback(callback, once = false) {
 function runCallback(id, data) {
   const callback = callbacks.get(id);
   if (callback) callback(data);
+}
+
+function announceUpdate(update) {
+  pendingUpdate = clone(update);
+  for (const id of listeners.get("update-available") ?? []) {
+    runCallback(id, { event: "update-available", payload: clone(pendingUpdate) });
+  }
 }
 
 function publish() {
@@ -224,6 +232,11 @@ async function invoke(cmd, args = {}) {
     return null;
   }
   if (cmd === "available_update") return clone(pendingUpdate);
+  if (cmd === "check_for_update") {
+    await delay(350); // keep the Checking state observable
+    if (publishedRelease) announceUpdate(publishedRelease);
+    return clone(publishedRelease);
+  }
   if (cmd === "install_update") {
     await delay(350); // keep the Installing state observable
     // A real install relaunches the app, so success leaves nothing to render.
@@ -317,17 +330,20 @@ window.__TANTALUS_MOCK__ = {
     autostart = false;
     failingCommand = null;
     pendingUpdate = null;
+    publishedRelease = null;
     mode = "ready";
     publish();
     return true;
   },
   // Stands in for Rust's background check finding a release. The banner appears without a remount.
   offerUpdate(version = "9.9.9") {
-    pendingUpdate = { version };
-    for (const id of listeners.get("update-available") ?? []) {
-      runCallback(id, { event: "update-available", payload: clone(pendingUpdate) });
-    }
+    announceUpdate({ version });
     return pendingUpdate;
+  },
+  // Publishes a release that only the next Check for updates click finds.
+  publishRelease(version = "9.9.9") {
+    publishedRelease = { version };
+    return publishedRelease;
   },
   fail(command) {
     failingCommand = command;

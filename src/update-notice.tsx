@@ -3,7 +3,7 @@ import { useState } from "react";
 import { usePublishedState } from "./published-state";
 
 /** Mirrors `update::AvailableUpdate` in Rust. */
-type AvailableUpdate = { version: string };
+export type AvailableUpdate = { version: string };
 
 /** Offers the release Rust found in the background. Installing relaunches into the new version, so
  * a success never comes back here; only a failure, such as a cancelled password prompt, does. */

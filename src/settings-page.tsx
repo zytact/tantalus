@@ -5,6 +5,8 @@ import { version } from "../src-tauri/tauri.conf.json";
 import { providerIds, providerNames } from "./presentation";
 import type { ProviderId, UsageSnapshot } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
+import { UpdateNotice } from "./update-notice";
+import type { AvailableUpdate } from "./update-notice";
 
 /** The provider choice, or why it cannot be shown yet. */
 export type ProviderChoice = Record<ProviderId, boolean> | "loading" | "unavailable";
@@ -82,6 +84,47 @@ function ProviderRow({
           {error}
         </p>
       )}
+    </>
+  );
+}
+
+/** The running version and a manual check. A found release is offered by the update notice,
+ * which Rust's announcement reaches the same way as a background check. */
+function VersionRow() {
+  const [check, setCheck] = useState<"idle" | "checking" | "latest">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const checkForUpdate = async () => {
+    setCheck("checking");
+    setError(null);
+    try {
+      const update = await invoke<AvailableUpdate | null>("check_for_update");
+      setCheck(update ? "idle" : "latest");
+    } catch (reason) {
+      setCheck("idle");
+      setError(typeof reason === "string" ? reason : "Could not check for updates.");
+    }
+  };
+
+  return (
+    <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>
+            Version <strong className="version">v{version}</strong>
+          </h2>
+          {check === "latest" && <p>You have the latest version.</p>}
+        </div>
+        <button onClick={() => void checkForUpdate()} disabled={check === "checking"} aria-busy={check === "checking"}>
+          {check === "checking" ? "Checking" : "Check for updates"}
+        </button>
+      </section>
+      {error && (
+        <p className="notice settings-notice" role="alert">
+          {error}
+        </p>
+      )}
+      <UpdateNotice />
     </>
   );
 }
@@ -165,12 +208,7 @@ export function SettingsPage({
           </p>
         )}
 
-        <section className="setting-row">
-          <div className="setting-copy">
-            <h2>Version</h2>
-          </div>
-          <strong className="version">v{version}</strong>
-        </section>
+        <VersionRow />
       </div>
     </>
   );
