@@ -6,10 +6,15 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 
 ## Sub-features
 
-- Tray menu ids from `src-tauri/src/lib.rs`: one disabled line per enabled
-  provider, `codex` and `claude`, each formatted
-  `Codex  5h 42%  7d 8%` with `--` for an unavailable figure, then `show`
-  (Show usage), `refresh` (Refresh now), `quit` (Quit)
+- Tray menu ids from `src-tauri/src/lib.rs`: per enabled provider a heading
+  carrying the provider id, `codex`, then one row per window it reports,
+  `codex-0` upward, formatted `   5h   ███▎░░░░░░  42%` with `--` in place of the bar
+  and figure when the reading has none. Every row is enabled, not dimmed, and
+  opens the window when clicked. A separator then `show` (Show usage),
+  `refresh` (Refresh now), `quit` (Quit)
+- Bars are ten eighth-block cells, so the edge lands within 1.25 percent of the
+  reading, and a figure over 100 fills the bar rather than overrunning it
+  (`bar` in `src-tauri/src/lib.rs`)
 - A provider switched off has no tray line at all (`update_tray_menu`)
 - Tooltip `Tantalus`; left-click Up shows the window (right button belongs to
   the menu); macOS dock Reopen shows it; template icon on macOS
@@ -30,7 +35,8 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
 ## How to get to it (user POV)
 
 Run `vp run tauri dev`. Look for the hollow-square tray icon. Right-click
-shows one line per enabled provider plus Show usage, Refresh now, Quit.
+shows a heading and a bar row per window for each enabled provider, then
+Show usage, Refresh now, Quit.
 Left-click shows the window. The footer `Auto-refreshes every 5 minutes`
 names the schedule.
 
@@ -45,8 +51,9 @@ provider sections or controls.
 Real proof is manual on a desktop OS:
 
 1. `vp run tauri dev`, wait for the first refresh
-2. Read the tray menu: each provider line matches that provider's window
-   figures, and a switched-off provider has no line
+2. Read the tray menu: each provider's rows match that provider's window
+   figures, the bars read at full contrast rather than dimmed, and a
+   switched-off provider has no rows
 3. Click **Show usage**, close the window, confirm the tray icon persists,
    then **Show usage** again and confirm the new window's minimize, maximize
    and close buttons all respond, then **Quit** and confirm the process exits

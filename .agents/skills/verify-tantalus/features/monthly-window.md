@@ -15,8 +15,8 @@ entirely rather than showing a `Window unavailable` placeholder.
 - Duration identity is 2592000 seconds: supplied by `parse_opencode_usage` for
   Opencode, matched against the reported `limit_window_seconds` by
   `parse_usage` for Codex (`src-tauri/src/usage.rs`)
-- Tray line gains a `30d N%` column. For Codex on a Go or free account it is
-  the only column (`tray_line` in `src-tauri/src/lib.rs`)
+- The tray gains a `30d` row. For Codex on a Go or free account it is the only
+  row (`tray_rows` in `src-tauri/src/lib.rs`)
 
 ## How to get to it (user POV)
 

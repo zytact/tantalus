@@ -175,10 +175,10 @@ provider settings`, disabled Refresh, no sections). Landing there means
 the mock was not installed before the remount: reinstall and remount
 rather than asserting entries.
 
-The tray menu (one line per enabled provider formatted
-`Codex  5h 42%  7d 8%`, one column per window that provider reported, so
-Opencode adds `30d N%` and a Codex Go or free account reads `Codex  30d N%`, then
-`Show usage`, `Refresh now`, `Quit`), the
+The tray menu (a heading per enabled provider and a bar row per window it
+reported, `   5h   ███▎░░░░░░  42%`, so a Codex Go or free account shows
+only a `30d` row, then a separator and `Show usage`, `Refresh now`,
+`Quit`), the
 tooltip, the 5-minute polling cadence, and the real `providers.json`
 write have no browser surface and stay manual-only under `vp run tauri dev`
 on a real desktop. There, drive with the keyboard and menu, not

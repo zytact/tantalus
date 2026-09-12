@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 use tauri::{
-    menu::{IsMenuItem, Menu, MenuItem},
+    menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     webview::Color,
     AppHandle, Emitter, Manager, RunEvent, State, Theme, WebviewWindow, WindowEvent,
@@ -299,74 +299,124 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
         return;
     };
-    let mut lines = Vec::new();
+    if let Ok(menu) = tray_menu(app, snapshot) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// A heading and one row per window for every enabled provider, then a separator and the actions.
+/// The readings stay enabled so the menu renders them at full contrast rather than dimming the
+/// numbers the app exists to show; clicking one opens the window, like Show usage.
+fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<tauri::Wry>> {
+    let mut readings = Vec::new();
     for provider in Provider::ALL {
         if !snapshot.enabled.enabled(provider) {
             continue;
         }
-        let line = tray_line(provider.name(), provider_usage(snapshot, provider));
-        let Ok(item) = MenuItem::with_id(app, provider.id(), line, false, None::<&str>) else {
-            return;
-        };
-        lines.push(item);
+        readings.push(MenuItem::with_id(
+            app,
+            format!("{READING_PREFIX}{}", provider.id()),
+            provider.name(),
+            true,
+            None::<&str>,
+        )?);
+        for (index, row) in tray_rows(provider_usage(snapshot, provider))
+            .into_iter()
+            .enumerate()
+        {
+            readings.push(MenuItem::with_id(
+                app,
+                format!("{READING_PREFIX}{}-{index}", provider.id()),
+                row,
+                true,
+                None::<&str>,
+            )?);
+        }
     }
-    let Ok(show) = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>) else {
-        return;
-    };
-    let Ok(refresh_item) = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)
-    else {
-        return;
-    };
-    let Ok(quit) = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>) else {
-        return;
-    };
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = lines
+    let separator = PredefinedMenuItem::separator(app)?;
+    let show = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>)?;
+    let refresh_item = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = readings
         .iter()
         .map(|item| item as &dyn IsMenuItem<_>)
         .collect();
+    if !items.is_empty() {
+        items.push(&separator as &dyn IsMenuItem<_>);
+    }
     items.extend([
         &show as &dyn IsMenuItem<_>,
         &refresh_item as &dyn IsMenuItem<_>,
         &quit as &dyn IsMenuItem<_>,
     ]);
-    if let Ok(menu) = Menu::with_items(app, &items) {
-        let _ = tray.set_menu(Some(menu));
-    }
+    Menu::with_items(app, &items)
 }
 
-/// A column per window the reading actually carries. Which windows an account has depends on its
+/// A row per window the reading actually carries. Which windows an account has depends on its
 /// plan, so none of the three is assumed: a Codex Go or free account has only the monthly one, and
 /// OpenAI has switched the 5-hour one off for a plan before. A reading with no window at all keeps
 /// the provider on the menu with a bare `--`.
-fn tray_line(name: &str, provider: &ProviderUsage) -> String {
-    let columns = [
+fn tray_rows(provider: &ProviderUsage) -> Vec<String> {
+    let rows: Vec<String> = [
         ("5h", &provider.five_hour),
         ("7d", &provider.seven_day),
         ("30d", &provider.monthly),
     ]
     .into_iter()
     .filter(|(_, window)| window.limit_window_seconds.is_some())
-    .map(|(span, window)| format!("  {span} {}", percent(window.used_percent)))
-    .collect::<String>();
-    if columns.is_empty() {
-        return format!("{name}  --");
+    .map(|(span, window)| tray_row(span, window.used_percent))
+    .collect();
+    if rows.is_empty() {
+        return vec![format!("{ROW_INDENT}--")];
     }
-    format!("{name}{columns}")
+    rows
 }
+
+fn tray_row(span: &str, used_percent: Option<f64>) -> String {
+    match used_percent {
+        Some(value) => format!("{ROW_INDENT}{span:<3}  {}  {}", bar(value), percent(value)),
+        None => format!("{ROW_INDENT}{span:<3}  --"),
+    }
+}
+
+/// Menu rows carry no icon or widget on Linux, so the bar is text. Eighth-blocks put the edge
+/// within 1.25 percent of the reading, and a reading short of its limit keeps the last eighth
+/// empty, so a solid bar always means the allowance is gone.
+fn bar(used_percent: f64) -> String {
+    let used_percent = used_percent.clamp(0.0, 100.0);
+    let full = BAR_CELLS * 8;
+    let eighths = match (used_percent / 100.0 * full as f64).round() as usize {
+        rounded if rounded == full && used_percent < 100.0 => full - 1,
+        rounded => rounded,
+    };
+    let filled = eighths / 8;
+    let mut cells: String = std::iter::repeat_n(BAR_FULL, filled).collect();
+    if filled < BAR_CELLS {
+        cells.push(BAR_PARTIALS[eighths % 8]);
+        cells.extend(std::iter::repeat_n(BAR_EMPTY, BAR_CELLS - filled - 1));
+    }
+    cells
+}
+
+const BAR_CELLS: usize = 10;
+const BAR_FULL: char = '\u{2588}';
+const BAR_EMPTY: char = '\u{2591}';
+/// Indexed by the eighths filling the partial cell, so index 0 is an empty cell.
+const BAR_PARTIALS: [char; 8] = [
+    BAR_EMPTY, '\u{258f}', '\u{258e}', '\u{258d}', '\u{258c}', '\u{258b}', '\u{258a}', '\u{2589}',
+];
+const ROW_INDENT: &str = "   ";
+/// Menu ids for the readings, which the menu handler tells apart from the action items.
+const READING_PREFIX: &str = "reading:";
 
 /// Opencode reports fractional percentages, so one decimal is kept when the reading has one.
 /// The providers that report whole numbers never grow a hollow ".0".
-fn percent(value: Option<f64>) -> String {
-    match value {
-        Some(value) => {
-            let rounded = (value * 10.0).round() / 10.0;
-            if rounded.fract() == 0.0 {
-                format!("{rounded:.0}%")
-            } else {
-                format!("{rounded:.1}%")
-            }
-        }
-        None => "--".to_owned(),
+fn percent(value: f64) -> String {
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded.fract() == 0.0 {
+        format!("{rounded:.0}%")
+    } else {
+        format!("{rounded:.1}%")
     }
 }
 
@@ -481,21 +531,18 @@ pub fn run() {
                 .app_config_dir()
                 .expect("no config directory for this platform")
                 .join("providers.json");
+            let settings_snapshot = UsageSnapshot {
+                enabled: settings::load(&settings_path),
+                ..UsageSnapshot::default()
+            };
+            let menu = tray_menu(app.handle(), &settings_snapshot)?;
             app.manage(AppState {
-                snapshot: Mutex::new(UsageSnapshot {
-                    enabled: settings::load(&settings_path),
-                    ..UsageSnapshot::default()
-                }),
+                snapshot: Mutex::new(settings_snapshot),
                 refreshing: AtomicU8::new(0),
                 requests: Default::default(),
                 client,
                 settings_path,
             });
-            let show = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>)?;
-            let refresh_item =
-                MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &refresh_item, &quit])?;
             let preview = is_preview(app.handle());
             let tray = TrayIconBuilder::with_id("usage")
                 .icon(tray_icon(preview))
@@ -511,6 +558,7 @@ pub fn run() {
                         });
                     }
                     "quit" => app.exit(0),
+                    id if id.starts_with(READING_PREFIX) => show_window(app),
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -589,36 +637,85 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_line("Opencode", &provider),
-            "Opencode  5h 12.7%  7d 3%"
+            tray_rows(&provider),
+            [
+                "   5h   \u{2588}\u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  12.7%",
+                "   7d   \u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  3%"
+            ]
         );
     }
 
-    /// A Codex Go or free account reports only a monthly window, so that is the only column.
+    /// A Codex Go or free account reports only a monthly window, so that is the only row.
     #[test]
     fn the_tray_carries_only_the_windows_the_account_has() {
         let provider = ProviderUsage {
-            monthly: window(usage::MONTHLY_SECONDS, 58.0),
+            monthly: window(usage::MONTHLY_SECONDS, 50.0),
             ..Default::default()
         };
-        assert_eq!(tray_line("Codex", &provider), "Codex  30d 58%");
+        assert_eq!(
+            tray_rows(&provider),
+            ["   30d  \u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  50%"]
+        );
     }
 
     /// A plan without the 5-hour window, which is what Pro reports while OpenAI has it switched
-    /// off, keeps its weekly column instead of a hollow 5h one.
+    /// off, keeps its weekly row instead of a hollow 5h one.
     #[test]
     fn the_tray_drops_a_window_the_plan_does_not_have() {
         let provider = ProviderUsage {
             seven_day: window(usage::SEVEN_DAY_SECONDS, 41.0),
             ..Default::default()
         };
-        assert_eq!(tray_line("Codex", &provider), "Codex  7d 41%");
+        assert_eq!(
+            tray_rows(&provider),
+            ["   7d   \u{2588}\u{2588}\u{2588}\u{2588}\u{258f}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  41%"]
+        );
     }
 
     /// A reading that came back with no window keeps the provider on the menu.
     #[test]
-    fn the_tray_says_nothing_was_read_rather_than_inventing_a_column() {
-        assert_eq!(tray_line("Codex", &ProviderUsage::default()), "Codex  --");
+    fn the_tray_says_nothing_was_read_rather_than_inventing_a_row() {
+        assert_eq!(tray_rows(&ProviderUsage::default()), ["   --"]);
+    }
+
+    /// A window the account has but the reading left empty keeps its row without a bar, since a
+    /// bar drawn from a missing figure would read as zero usage.
+    #[test]
+    fn a_window_without_a_figure_keeps_its_row_without_a_bar() {
+        let provider = ProviderUsage {
+            five_hour: usage::WindowUsage {
+                used_percent: None,
+                limit_window_seconds: Some(usage::FIVE_HOUR_SECONDS),
+                reset_at_epoch: None,
+            },
+            ..Default::default()
+        };
+        assert_eq!(tray_rows(&provider), ["   5h   --"]);
+    }
+
+    /// Every bar is the same width whatever the reading, so the rows stack into a column.
+    #[test]
+    fn every_bar_is_the_same_width() {
+        for percent in [0.0, 0.4, 12.74, 50.0, 99.9, 100.0, 140.0] {
+            assert_eq!(bar(percent).chars().count(), BAR_CELLS, "at {percent}");
+        }
+    }
+
+    /// A bar that reads as spent when the allowance is not is the one misread that matters, so
+    /// the last eighth belongs to 100 percent alone.
+    #[test]
+    fn only_the_limit_fills_the_bar() {
+        assert_ne!(bar(99.9), bar(100.0));
+        assert!(!bar(99.9).chars().all(|cell| cell == BAR_FULL));
+    }
+
+    /// A reading over its limit, which Claude reports past 100 percent, fills the bar rather than
+    /// running past its end.
+    #[test]
+    fn a_bar_clamps_to_its_ends() {
+        assert_eq!(bar(140.0), bar(100.0));
+        assert_eq!(bar(-5.0), bar(0.0));
+        assert!(bar(100.0).chars().all(|cell| cell == BAR_FULL));
     }
 
     fn state() -> AppState {
