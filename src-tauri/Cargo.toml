@@ -1,6 +1,6 @@
 [package]
 name = "tantalus"
-version = "0.0.7"
+version = "0.0.8"
 description = "Private Codex usage tray app"
 authors = ["Arnab"]
 edition = "2021"
