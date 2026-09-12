@@ -133,6 +133,21 @@ button:focus-visible {
   line-height: 1.4;
 }
 
+.update {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--accent);
+  background: var(--track);
+  font-size: 0.78rem;
+}
+.update p {
+  margin: 0;
+}
+
 .provider {
   border-bottom: 2px solid var(--border-strong);
 }

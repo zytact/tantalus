@@ -1,6 +1,7 @@
 mod api;
 mod auth;
 mod settings;
+mod update;
 mod usage;
 
 use auth::Provider;
@@ -17,6 +18,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 use tokio::sync::Mutex;
+use update::{AvailableUpdate, PendingUpdate};
 use usage::{ProviderUsage, SnapshotStatus, UsageSnapshot};
 
 #[derive(Debug)]
@@ -73,6 +75,16 @@ async fn set_provider_enabled(
 #[tauri::command]
 async fn cached_usage(state: State<'_, AppState>) -> Result<UsageSnapshot, String> {
     Ok(state.snapshot.lock().await.clone())
+}
+
+#[tauri::command]
+fn available_update(pending: State<'_, PendingUpdate>) -> Option<AvailableUpdate> {
+    pending.available()
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    update::install(&app).await
 }
 
 async fn refresh(state: &AppState, app: &AppHandle) -> UsageSnapshot {
@@ -304,7 +316,8 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     }
 }
 
-/// A heading and one row per window for every enabled provider, then a separator and the actions.
+/// A heading and one row per window for every enabled provider, then a separator and the actions,
+/// led by the pending update when there is one.
 /// The readings stay enabled so the menu renders them at full contrast rather than dimming the
 /// numbers the app exists to show; clicking one opens the window, like Show usage.
 fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<tauri::Wry>> {
@@ -334,6 +347,19 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
         }
     }
     let separator = PredefinedMenuItem::separator(app)?;
+    let update = app
+        .state::<PendingUpdate>()
+        .available()
+        .map(|update| {
+            MenuItem::with_id(
+                app,
+                "update",
+                format!("Update to v{}", update.version),
+                true,
+                None::<&str>,
+            )
+        })
+        .transpose()?;
     let show = MenuItem::with_id(app, "show", "Show usage", true, None::<&str>)?;
     let refresh_item = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -343,6 +369,9 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
         .collect();
     if !items.is_empty() {
         items.push(&separator as &dyn IsMenuItem<_>);
+    }
+    if let Some(update) = &update {
+        items.push(update as &dyn IsMenuItem<_>);
     }
     items.extend([
         &show as &dyn IsMenuItem<_>,
@@ -417,6 +446,28 @@ fn percent(value: f64) -> String {
         format!("{rounded:.0}%")
     } else {
         format!("{rounded:.1}%")
+    }
+}
+
+/// Checks for a release every `update::CHECK_INTERVAL` and announces what it finds to the tray and
+/// the window.
+async fn watch_updates(app: AppHandle) {
+    loop {
+        let wait = match update::check(&app).await {
+            Ok(found) => {
+                if let Some(found) = found {
+                    let state = app.state::<AppState>();
+                    update_tray_menu(&app, &*state.snapshot.lock().await);
+                    let _ = app.emit("update-available", found);
+                }
+                update::CHECK_INTERVAL
+            }
+            Err(error) => {
+                eprintln!("Update check failed: {error}");
+                update::CHECK_RETRY
+            }
+        };
+        tokio::time::sleep(wait).await;
     }
 }
 
@@ -520,10 +571,13 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_FLAG]),
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             refresh_usage,
             cached_usage,
-            set_provider_enabled
+            set_provider_enabled,
+            available_update,
+            install_update
         ])
         .setup(move |app| {
             let settings_path = app
@@ -535,6 +589,7 @@ pub fn run() {
                 enabled: settings::load(&settings_path),
                 ..UsageSnapshot::default()
             };
+            app.manage(PendingUpdate::default());
             let menu = tray_menu(app.handle(), &settings_snapshot)?;
             app.manage(AppState {
                 snapshot: Mutex::new(settings_snapshot),
@@ -549,7 +604,8 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip(&app.package_info().name)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => show_window(app),
+                    // The window carries the install button, so the update item opens it.
+                    "show" | "update" => show_window(app),
                     "refresh" => {
                         let handle = app.clone();
                         tauri::async_runtime::spawn(async move {
@@ -589,6 +645,11 @@ pub fn run() {
                     tokio::time::sleep(backoff.unwrap_or(REFRESH_INTERVAL)).await;
                 }
             });
+            // A dev build has no bundle to replace, and a preview installs under its own package
+            // name, so a release would land beside it rather than update it.
+            if !cfg!(debug_assertions) && !preview {
+                tauri::async_runtime::spawn(watch_updates(app.handle().clone()));
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

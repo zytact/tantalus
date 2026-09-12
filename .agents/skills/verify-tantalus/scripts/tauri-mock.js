@@ -134,6 +134,7 @@ let snapshot = readySnapshot();
 let mode = "ready";
 let autostart = loadAutostart();
 let failingCommand = null;
+let pendingUpdate = null; // { version } once offerUpdate() stands in for a background check
 const listeners = new Map(); // event name -> handler ids
 const callbacks = new Map(); // handler id -> function
 
@@ -220,6 +221,12 @@ async function invoke(cmd, args = {}) {
   if (cmd === "plugin:autostart|disable") {
     autostart = false;
     saveAutostart(autostart);
+    return null;
+  }
+  if (cmd === "available_update") return clone(pendingUpdate);
+  if (cmd === "install_update") {
+    await delay(350); // keep the Installing state observable
+    // A real install relaunches the app, so success leaves nothing to render.
     return null;
   }
   if (cmd === "cached_usage") return clone(snapshot);
@@ -309,9 +316,18 @@ window.__TANTALUS_MOCK__ = {
     snapshot = readySnapshot();
     autostart = false;
     failingCommand = null;
+    pendingUpdate = null;
     mode = "ready";
     publish();
     return true;
+  },
+  // Stands in for Rust's background check finding a release: the banner appears without a remount.
+  offerUpdate(version = "9.9.9") {
+    pendingUpdate = { version };
+    for (const id of listeners.get("update-available") ?? []) {
+      runCallback(id, { event: "update-available", payload: clone(pendingUpdate) });
+    }
+    return pendingUpdate;
   },
   fail(command) {
     failingCommand = command;

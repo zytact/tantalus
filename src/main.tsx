@@ -27,6 +27,7 @@ import {
 import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { SettingsPage } from "./settings-page";
+import { UpdateNotice } from "./update-notice";
 import "./styles.css";
 
 /** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
@@ -280,6 +281,8 @@ function App() {
               </button>
             </div>
           </header>
+
+          <UpdateNotice />
 
           {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
 
