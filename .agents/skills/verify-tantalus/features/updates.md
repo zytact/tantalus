@@ -7,6 +7,10 @@ after 5 minutes when a check fails. Dev builds (`debug_assertions`) and preview 
 
 - A found release shows a `role=region[name="Update available"]` banner under the Allowance header
   reading `Version <x> is available.` with an `Install update` button.
+- Settings shows the running version beside a `Check for updates` button. It reads `Checking` with
+  `aria-busy=true` while Rust fetches `latest.json`, then either shows `You have the latest version.`
+  or puts the same `Update available` banner under the Version row. A dev or preview build answers
+  with a `role=alert` notice, since it never updates.
 - The tray menu gains `Update to v<x>` above `Show usage`. Clicking it opens the window.
 - `Install update` reads `Installing` with `aria-busy=true` while Rust downloads, verifies the
   signature and installs. A deb or rpm install asks for a password through polkit. Success relaunches
@@ -15,7 +19,9 @@ after 5 minutes when a check fails. Dev builds (`debug_assertions`) and preview 
 ## Browser proof
 
 After the mock is installed and remounted, `window.__TANTALUS_MOCK__.offerUpdate("0.0.9")` stands in
-for a finished check and emits `update-available`. Click `Install update` and read the busy state in
+for a finished background check and emits `update-available`.
+`window.__TANTALUS_MOCK__.publishRelease("0.0.9")` publishes a release that only the next
+`Check for updates` click finds; without it the click reads `You have the latest version.` Click `Install update` and read the busy state in
 the same tick. `window.__TANTALUS_MOCK__.fail("install_update")` drives the failure notice.
 
 ## Manual only
