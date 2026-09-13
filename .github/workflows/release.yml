@@ -28,14 +28,10 @@ jobs:
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             args: --bundles deb,rpm
-          # dmg, one per architecture. The updater archive is built from the app bundle, so dmg alone
-          # would skip it.
+          # dmg. The updater archive is built from the app bundle, so dmg alone would skip it.
           - platform: macos-latest
             target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin --bundles app,dmg
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --bundles app,dmg
           # exe (NSIS installer)
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
@@ -92,18 +88,6 @@ jobs:
           tauriScript: vp run tauri
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
-      # Both macOS targets name their update archive Tantalus.app.tar.gz, and the publish job merges
-      # every bundle into one directory, so each archive takes its architecture.
-      - if: startsWith(matrix.platform, 'macos')
-        shell: bash
-        working-directory: src-tauri/target/${{ matrix.target }}/release/bundle/macos
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          for file in Tantalus.app.tar.gz Tantalus.app.tar.gz.sig; do
-            mv "$file" "${file/Tantalus/Tantalus_${TARGET%%-*}}"
-          done
-
       - uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.target }}
@@ -144,8 +128,7 @@ jobs:
             case "$name" in
               *_amd64.deb) key=linux-x86_64-deb ;;
               *.x86_64.rpm) key=linux-x86_64-rpm ;;
-              *_aarch64.app.tar.gz) key=darwin-aarch64 ;;
-              *_x86_64.app.tar.gz) key=darwin-x86_64 ;;
+              *.app.tar.gz) key=darwin-aarch64 ;;
               *-setup.exe) key=windows-x86_64 ;;
               *) echo "::error::no updater platform for $name"; exit 1 ;;
             esac
