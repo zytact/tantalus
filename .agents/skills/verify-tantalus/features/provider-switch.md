@@ -24,7 +24,7 @@ that provider at all and whether the allowance view shows it.
 - On refreshes that provider immediately
 - The choice persists to `providers.json` in the app config directory and is
   read back at startup (`src-tauri/src/settings.rs`)
-- The header `updated HH:MM` only counts enabled providers
+- The header `Refreshed X minutes ago` and the tray row only count enabled providers
 
 ## How to get to it (user POV)
 
