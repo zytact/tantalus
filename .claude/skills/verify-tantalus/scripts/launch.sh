@@ -1,59 +1,66 @@
 #!/usr/bin/env bash
-# Isolated Vite start for verification. Never steals port 1420.
-# Usage: launch.sh [PORT]
-set -u
+# Launch the built preview on an isolated virtual display.
+set -euo pipefail
 RUN_DIR="/tmp/opencode/tantalus-verify"
-PID_FILE="$RUN_DIR/run.pid"
-PORT_FILE="$RUN_DIR/run.port"
-LOG_FILE="$RUN_DIR/vite.log"
+BIN="src-tauri/target/release/tantalus-preview"
+XVFB="${TANTALUS_XVFB:-$(command -v Xvfb || true)}"
 mkdir -p "$RUN_DIR"
 
-wanted="${1:-}"
-pick_port() {
-  for p in $(seq 1421 1450); do
-    if ! curl -s -o /dev/null --max-time 1 "http://localhost:$p/" 2>/dev/null; then
-      echo "$p"
-      return 0
-    fi
-  done
-  return 1
-}
+[ -x "$BIN" ] || { echo "Preview binary missing. Run scripts/build-preview.sh first." >&2; exit 1; }
+[ -x "$XVFB" ] || { echo "Xvfb is required. Install it or set TANTALUS_XVFB." >&2; exit 1; }
 
-if [ -n "$wanted" ]; then
-  if curl -s -o /dev/null --max-time 1 "http://localhost:$wanted/" 2>/dev/null; then
-    echo "Refusing: port $wanted already answers (not stealing a shared instance)." >&2
+if [ -f "$RUN_DIR/run.pid" ]; then
+  recorded_pid="$(cat "$RUN_DIR/run.pid")"
+  if kill -0 "$recorded_pid" 2>/dev/null &&
+    [ "$(readlink -f "/proc/$recorded_pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]; then
+    echo "Refusing: a preview from this harness is still running. Run cleanup.sh first." >&2
     exit 1
   fi
-  PORT="$wanted"
-else
-  PORT="$(pick_port)" || { echo "No free port in 1421-1450." >&2; exit 1; }
+  rm -f "$RUN_DIR/run.pid"
 fi
 
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "Refusing: an instance from a previous launch is still running (pid $(cat "$PID_FILE")). Run cleanup.sh first." >&2
-  exit 1
-fi
+display_number=""
+for candidate in $(seq 90 110); do
+  if [ ! -e "/tmp/.X11-unix/X$candidate" ]; then
+    display_number="$candidate"
+    break
+  fi
+done
+[ -n "$display_number" ] || { echo "No free virtual display from :90 to :110." >&2; exit 1; }
+display=":$display_number"
 
-echo "Starting vite on port $PORT (log $LOG_FILE)..."
-setsid vp dev --port "$PORT" --strictPort false </dev/null >"$LOG_FILE" 2>&1 &
-PID=$!
-echo "$PID" >"$PID_FILE"
-echo "$PORT" >"$PORT_FILE"
+setsid "$XVFB" "$display" -screen 0 800x800x24 -nolisten tcp >"$RUN_DIR/xvfb.log" 2>&1 &
+xvfb_pid=$!
+echo "$xvfb_pid" >"$RUN_DIR/xvfb.pid"
+readlink -f "$XVFB" >"$RUN_DIR/xvfb.exe"
+echo "$display" >"$RUN_DIR/run.display"
 
-for i in $(seq 1 30); do
-  if curl -s --max-time 2 "http://localhost:$PORT/" 2>/dev/null | grep -q "<title>Tantalus</title>"; then
-    echo "Ready on http://localhost:$PORT/ (pid $PID)"
+for _ in $(seq 1 30); do
+  DISPLAY="$display" xprop -root >/dev/null 2>&1 && break
+  kill -0 "$xvfb_pid" 2>/dev/null || { echo "Xvfb exited early." >&2; exit 1; }
+  sleep 1
+done
+
+DISPLAY="$display" GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 setsid "$BIN" </dev/null >"$RUN_DIR/preview.log" 2>&1 &
+preview_pid=$!
+echo "$preview_pid" >"$RUN_DIR/run.pid"
+
+for _ in $(seq 1 30); do
+  kill -0 "$preview_pid" 2>/dev/null || {
+    echo "Preview exited early. Log tail:" >&2
+    tail -n 20 "$RUN_DIR/preview.log" >&2
+    exit 1
+  }
+  DISPLAY="$display" import -window root "$RUN_DIR/readiness.png" 2>/dev/null || true
+  if [ -s "$RUN_DIR/readiness.png" ] &&
+    magick "$RUN_DIR/readiness.png" -trim -format '%w %h' info: 2>/dev/null |
+      awk '$1 >= 360 && $2 >= 500 { found=1 } END { exit !found }'; then
+    rm -f "$RUN_DIR/readiness.png"
+    echo "Ready: Tantalus Preview on isolated display $display (pid $preview_pid)"
     exit 0
-  fi
-  if ! kill -0 "$PID" 2>/dev/null; then
-    echo "Vite exited early. Log tail:" >&2
-    tail -n 20 "$LOG_FILE" >&2
-    rm -f "$PID_FILE" "$PORT_FILE"
-    exit 1
   fi
   sleep 1
 done
 
-echo "Timed out waiting for http://localhost:$PORT/ . Log tail:" >&2
-tail -n 20 "$LOG_FILE" >&2
+echo "Timed out waiting for the preview window." >&2
 exit 1
