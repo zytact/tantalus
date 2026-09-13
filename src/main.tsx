@@ -22,6 +22,7 @@ import {
   statusLine,
   statusTone,
   usagePercent,
+  usagePace,
   usageTier,
 } from "./presentation";
 import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
@@ -36,23 +37,33 @@ function Entry({
   label,
   span,
   duration,
+  now,
   window: usage,
 }: {
   label: string;
   span: string;
   duration: number;
+  now: number;
   window: WindowUsage;
 }) {
   const reported = usage.limit_window_seconds === duration;
   const used = reported ? usage.used_percent : null;
+  const pace = reported ? usagePace(usage, now) : null;
   const entryLabel = reported ? label : "Window unavailable";
   return (
     <section className="entry" aria-label={entryLabel}>
       <div className="entry-head">
-        <h3>
-          {entryLabel}
-          <i>{reported ? span : "unrecognized duration"}</i>
-        </h3>
+        <div className="entry-title">
+          <h3>
+            {entryLabel}
+            <i>{reported ? span : "unrecognized duration"}</i>
+          </h3>
+          {pace && (
+            <span className="pace" data-pace={pace.label === "Under pace" ? "under" : "ahead"}>
+              {pace.label}
+            </span>
+          )}
+        </div>
         <strong className="figure">{usagePercent(used)}</strong>
       </div>
       <div
@@ -63,9 +74,10 @@ function Entry({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={used ?? undefined}
-        aria-valuetext={usagePercent(used)}
+        aria-valuetext={`${usagePercent(used)} used${pace ? `, ${pace.label.toLowerCase()}` : ""}`}
       >
-        <span style={{ width: `${Math.min(100, Math.max(0, used ?? 0))}%` }} />
+        <span className="rule-fill" style={{ width: `${Math.min(100, Math.max(0, used ?? 0))}%` }} />
+        {pace && <span className="pace-marker" style={{ left: `${pace.expectedPercent}%` }} aria-hidden="true" />}
       </div>
       <dl className="facts">
         <div>
@@ -154,7 +166,7 @@ function windowEntries(provider: ProviderUsage) {
   ];
 }
 
-function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
+function ProviderSection({ id, provider, now }: { id: ProviderId; provider: ProviderUsage; now: number }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
   const windows = windowEntries(provider);
@@ -177,7 +189,7 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
         </p>
       )}
       {entries.map((entry) => (
-        <Entry key={entry.label} {...entry} />
+        <Entry key={entry.label} {...entry} now={now} />
       ))}
       <Extras id={id} provider={provider} />
     </div>
@@ -265,7 +277,7 @@ function App() {
 
           {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
 
-          {snapshot && shown.map((id) => <ProviderSection key={id} id={id} provider={snapshot[id]} />)}
+          {snapshot && shown.map((id) => <ProviderSection key={id} id={id} provider={snapshot[id]} now={now} />)}
 
           <footer>Auto-refreshes every 5 minutes</footer>
         </>

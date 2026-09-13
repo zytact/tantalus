@@ -77,6 +77,21 @@ export function remainingPercent(value: number | null): string {
   return value === null ? "Unavailable" : percent(100 - value);
 }
 
+export type UsagePace = {
+  expectedPercent: number;
+  label: "Under pace" | "Ahead of pace";
+};
+
+export function usagePace(window: WindowUsage, now: number): UsagePace | null {
+  const { used_percent: used, limit_window_seconds: duration, reset_at_epoch: reset } = window;
+  if (used === null || duration === null || reset === null || duration <= 0) return null;
+  const expectedPercent = Math.min(100, Math.max(0, ((now - (reset - duration)) / duration) * 100));
+  return {
+    expectedPercent,
+    label: used <= expectedPercent ? "Under pace" : "Ahead of pace",
+  };
+}
+
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
 export function countdown(epoch: number | null, now = Date.now() / 1000): string {
   if (epoch === null) return "Unavailable";

@@ -383,6 +383,7 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
 /// numbers the app exists to show; clicking one opens the window, like Show usage.
 fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<tauri::Wry>> {
     let mut readings = Vec::new();
+    let now = usage::now_epoch();
     for provider in Provider::ALL {
         if !snapshot.enabled.enabled(provider) {
             continue;
@@ -394,7 +395,7 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
             true,
             None::<&str>,
         )?);
-        for (index, row) in tray_rows(provider_usage(snapshot, provider))
+        for (index, row) in tray_rows(provider_usage(snapshot, provider), now)
             .into_iter()
             .enumerate()
         {
@@ -464,7 +465,7 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
 /// plan, so none of the three is assumed: a Codex Go or free account has only the monthly one, and
 /// OpenAI has switched the 5-hour one off for a plan before. A reading with no window at all keeps
 /// the provider on the menu with a bare `--`.
-fn tray_rows(provider: &ProviderUsage) -> Vec<String> {
+fn tray_rows(provider: &ProviderUsage, now: i64) -> Vec<String> {
     let rows: Vec<String> = [
         ("5h", &provider.five_hour),
         ("7d", &provider.seven_day),
@@ -472,7 +473,7 @@ fn tray_rows(provider: &ProviderUsage) -> Vec<String> {
     ]
     .into_iter()
     .filter(|(_, window)| window.limit_window_seconds.is_some())
-    .map(|(span, window)| tray_row(span, window.used_percent))
+    .map(|(span, window)| tray_row(span, window, now))
     .collect();
     if rows.is_empty() {
         return vec![format!("{ROW_INDENT}--")];
@@ -480,11 +481,37 @@ fn tray_rows(provider: &ProviderUsage) -> Vec<String> {
     rows
 }
 
-fn tray_row(span: &str, used_percent: Option<f64>) -> String {
-    match used_percent {
-        Some(value) => format!("{ROW_INDENT}{span:<3}  {}  {}", bar(value), percent(value)),
+fn tray_row(span: &str, window: &usage::WindowUsage, now: i64) -> String {
+    match window.used_percent {
+        Some(value) => {
+            let pace = pace_label(window, now)
+                .map(|label| format!("  {label}"))
+                .unwrap_or_default();
+            format!(
+                "{ROW_INDENT}{span:<3}  {}  {}{pace}",
+                bar(value),
+                percent(value)
+            )
+        }
         None => format!("{ROW_INDENT}{span:<3}  --"),
     }
+}
+
+fn pace_label(window: &usage::WindowUsage, now: i64) -> Option<&'static str> {
+    let used = window.used_percent?;
+    let duration = window.limit_window_seconds?;
+    let reset = window.reset_at_epoch?;
+    if duration <= 0 {
+        return None;
+    }
+    let started = reset.saturating_sub(duration);
+    let elapsed = now.saturating_sub(started);
+    let expected = (elapsed as f64 / duration as f64 * 100.0).clamp(0.0, 100.0);
+    Some(if used <= expected {
+        "Under pace"
+    } else {
+        "Ahead of pace"
+    })
 }
 
 /// Menu rows carry no icon or widget on Linux, so the bar is text. Eighth-blocks put the edge
@@ -786,7 +813,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             [
                 "   5h   \u{2588}\u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  12.7%",
                 "   7d   \u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  3%"
@@ -802,7 +829,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             ["   30d  \u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  50%"]
         );
     }
@@ -816,7 +843,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             ["   7d   \u{2588}\u{2588}\u{2588}\u{2588}\u{258f}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  41%"]
         );
     }
@@ -824,7 +851,7 @@ mod tests {
     /// A reading that came back with no window keeps the provider on the menu.
     #[test]
     fn the_tray_says_nothing_was_read_rather_than_inventing_a_row() {
-        assert_eq!(tray_rows(&ProviderUsage::default()), ["   --"]);
+        assert_eq!(tray_rows(&ProviderUsage::default(), 0), ["   --"]);
     }
 
     /// A window the account has but the reading left empty keeps its row without a bar, since a
@@ -839,7 +866,19 @@ mod tests {
             },
             ..Default::default()
         };
-        assert_eq!(tray_rows(&provider), ["   5h   --"]);
+        assert_eq!(tray_rows(&provider, 0), ["   5h   --"]);
+    }
+
+    #[test]
+    fn the_tray_compares_usage_with_elapsed_time() {
+        let mut under = window(usage::SEVEN_DAY_SECONDS, 14.0);
+        under.reset_at_epoch = Some(1_000_000 + usage::SEVEN_DAY_SECONDS * 6 / 7);
+        let mut ahead = under.clone();
+        ahead.used_percent = Some(15.0);
+
+        assert_eq!(pace_label(&under, 1_000_000), Some("Under pace"));
+        assert_eq!(pace_label(&ahead, 1_000_000), Some("Ahead of pace"));
+        assert!(tray_row("7d", &under, 1_000_000).ends_with("14%  Under pace"));
     }
 
     /// Every bar is the same width whatever the reading, so the rows stack into a column.
