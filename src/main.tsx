@@ -59,7 +59,7 @@ function Entry({
             <i>{reported ? span : "unrecognized duration"}</i>
           </h3>
           {pace && (
-            <span className="pace" data-pace={pace.label === "Under pace" ? "under" : "ahead"}>
+            <span className="pace" data-pace={pace.status}>
               {pace.label}
             </span>
           )}

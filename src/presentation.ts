@@ -79,6 +79,7 @@ export function remainingPercent(value: number | null): string {
 
 export type UsagePace = {
   expectedPercent: number;
+  status: "under" | "ahead";
   label: "Under pace" | "Ahead of pace";
 };
 
@@ -86,9 +87,11 @@ export function usagePace(window: WindowUsage, now: number): UsagePace | null {
   const { used_percent: used, limit_window_seconds: duration, reset_at_epoch: reset } = window;
   if (used === null || duration === null || reset === null || duration <= 0) return null;
   const expectedPercent = Math.min(100, Math.max(0, ((now - (reset - duration)) / duration) * 100));
+  const status = used <= expectedPercent ? "under" : "ahead";
   return {
     expectedPercent,
-    label: used <= expectedPercent ? "Under pace" : "Ahead of pace",
+    status,
+    label: status === "under" ? "Under pace" : "Ahead of pace",
   };
 }
 
