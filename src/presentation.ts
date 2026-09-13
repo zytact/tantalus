@@ -107,10 +107,29 @@ export function creditExpiry(epoch: number | null): string {
   return `Expires ${date}`;
 }
 
-export function lastUpdate(epoch: number | null): string {
-  return epoch === null
-    ? "no successful update yet"
-    : `updated ${new Date(epoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+/** The newest successful reading among the enabled providers. `refreshed_epoch` in `lib.rs` is the
+ * tray's copy. */
+export function refreshedEpoch(snapshot: UsageSnapshot): number | null {
+  const epochs = providerIds
+    .filter((id) => snapshot.enabled[id])
+    .map((id) => snapshot[id].last_successful_update_epoch)
+    .filter((epoch) => epoch !== null);
+  return epochs.length > 0 ? Math.max(...epochs) : null;
+}
+
+/** Whole units, floored, so the label only moves forward. `refreshed_label` in `lib.rs` is the
+ * tray's copy. */
+export function refreshedAgo(epoch: number | null, now = Date.now() / 1000): string {
+  if (epoch === null) return "Not refreshed yet";
+  const minutes = Math.floor(Math.max(0, now - epoch) / 60);
+  if (minutes < 1) return "Refreshed just now";
+  if (minutes < 60) return ago(minutes, "minute");
+  if (minutes < 1440) return ago(Math.floor(minutes / 60), "hour");
+  return ago(Math.floor(minutes / 1440), "day");
+}
+
+function ago(count: number, unit: "minute" | "hour" | "day"): string {
+  return `Refreshed ${count} ${unit}${count === 1 ? "" : "s"} ago`;
 }
 
 export function creditAmount(value: number | null, currency: string | null): string {

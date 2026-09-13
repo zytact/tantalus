@@ -10,7 +10,9 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
   carrying the provider id, `codex`, then one row per window it reports,
   `codex-0` upward, formatted `   5h   ███▎░░░░░░  42%` with `--` in place of the bar
   and figure when the reading has none. Every row is enabled, not dimmed, and
-  opens the window when clicked. A separator then `show` (Show usage),
+  opens the window when clicked. After the readings a dimmed `refreshed` row,
+  `Refreshed 3 minutes ago`, which `tick_refreshed_row` relabels in place each
+  minute without rebuilding the menu. A separator then `show` (Show usage),
   `refresh` (Refresh now), `quit` (Quit)
 - Bars are ten eighth-block cells, so the edge lands within 1.25 percent of the
   reading, and a figure over 100 fills the bar rather than overrunning it
@@ -24,7 +26,7 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
   `tokio::time::sleep`, emitting `usage-snapshot` to the webview
 - A pass where an enabled provider failed retries after 5 seconds and doubles up
   to the 300-second interval, then holds there. A launch at login normally beats
-  the network up, so without this the tray sits on `no successful update yet`
+  the network up, so without this the tray sits on `Not refreshed yet`
   until the next interval
 - Credential sources per provider: `CODEX_HOME/auth.json` else
   `~/.codex/auth.json`, and `CLAUDE_CONFIG_DIR/.credentials.json` else
@@ -61,7 +63,8 @@ Real proof is manual on a desktop OS:
 3. Click **Show usage**, close the window, confirm the tray icon persists,
    then **Show usage** again and confirm the new window's minimize, maximize
    and close buttons all respond, then **Quit** and confirm the process exits
-4. Leave it 5+ minutes and confirm the `updated` time advances without input
+4. Leave it 5+ minutes and confirm the `Refreshed` line in the window and the tray counts up each
+   minute, then drops back to `Refreshed just now` without input
 5. Open webview devtools and search for the token: it must be absent
 
 ## Gotchas

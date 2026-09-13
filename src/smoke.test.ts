@@ -3,13 +3,15 @@ import {
   countdown,
   creditExpiry,
   isRefreshShortcut,
+  refreshedAgo,
+  refreshedEpoch,
   remainingPercent,
   statusLine,
   statusTone,
   usagePercent,
   usageTier,
 } from "./presentation";
-import type { Chord, ProviderUsage } from "./presentation";
+import type { Chord, ProviderUsage, UsageSnapshot } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
@@ -53,6 +55,26 @@ describe("display contract", () => {
     expect(statusLine(provider({ status: "error" }))).toBe("Could not refresh");
     expect(statusLine(provider({ status: "stale" }))).toBe("Cached");
     expect(statusLine(provider({ limit_reached: true }))).toBe("Blocked until reset");
+  });
+
+  it("says how long ago the newest enabled reading landed", () => {
+    const now = 1_000_000;
+    const snapshot: UsageSnapshot = {
+      codex: provider({ last_successful_update_epoch: now - 600 }),
+      claude: provider({ last_successful_update_epoch: now - 60 }),
+      opencode: provider(),
+      enabled: { codex: true, claude: false, opencode: true },
+    };
+    expect(refreshedEpoch(snapshot)).toBe(now - 600);
+    expect(refreshedEpoch({ ...snapshot, enabled: { codex: false, claude: false, opencode: true } })).toBeNull();
+
+    expect(refreshedAgo(null, now)).toBe("Not refreshed yet");
+    expect(refreshedAgo(now + 5, now)).toBe("Refreshed just now");
+    expect(refreshedAgo(now - 59, now)).toBe("Refreshed just now");
+    expect(refreshedAgo(now - 60, now)).toBe("Refreshed 1 minute ago");
+    expect(refreshedAgo(now - 60 * 59 - 59, now)).toBe("Refreshed 59 minutes ago");
+    expect(refreshedAgo(now - 3600 * 2, now)).toBe("Refreshed 2 hours ago");
+    expect(refreshedAgo(now - 86_400, now)).toBe("Refreshed 1 day ago");
   });
 
   it("dates a credit expiry that sits weeks out", () => {

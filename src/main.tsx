@@ -11,11 +11,12 @@ import {
   creditExpiry,
   fiveHourSeconds,
   isRefreshShortcut,
-  lastUpdate,
   monthlySeconds,
   providerExtras,
   providerIds,
   providerNames,
+  refreshedAgo,
+  refreshedEpoch,
   remainingPercent,
   sevenDaySeconds,
   statusLine,
@@ -183,10 +184,22 @@ function ProviderSection({ id, provider }: { id: ProviderId; provider: ProviderU
   );
 }
 
+/** The current epoch in seconds, re-read often enough that a minute-grained label is never more
+ * than a few seconds behind. */
+function useNow() {
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now() / 1000), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot, snapshotError] = usePublishedState<UsageSnapshot>("usage-snapshot", "cached_usage");
   const [refreshing, setRefreshing] = useState(false);
+  const now = useNow();
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -213,7 +226,6 @@ function App() {
   }, [canRefresh, refresh]);
 
   const shown = snapshot ? providerIds.filter((id) => snapshot.enabled[id]) : [];
-  const updated = snapshot && Math.max(0, ...shown.map((id) => snapshot[id].last_successful_update_epoch ?? 0));
 
   return (
     <main>
@@ -230,7 +242,7 @@ function App() {
               <h1>Allowance</h1>
               <p className="status">
                 {snapshot
-                  ? lastUpdate(updated || null)
+                  ? refreshedAgo(refreshedEpoch(snapshot), now)
                   : snapshotError
                     ? "Could not load provider settings"
                     : "Loading provider settings"}

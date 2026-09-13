@@ -32,7 +32,7 @@ tray **Refresh now**. Each
 provider's switch row carries its own status word: `Live`,
 `Blocked until reset`, `Loading`, `Cached`, `Not signed in`,
 `Could not refresh`, or `Off`. Separately, the line under `Allowance` reads
-`updated HH:MM` or `no successful update yet`, computed from enabled
+`Refreshed X minutes ago` or `Not refreshed yet`, ticking each minute and computed from enabled
 providers only.
 
 ## Driving it with browser tab
@@ -41,10 +41,10 @@ Mock-driven (Drive step 3 in `SKILL.md`): after the remount, click
 **Refresh** and read the button flipping to `Refreshing` with
 `aria-busy=true` (the mock answers after ~350ms, so click and read from
 the same tick). Each status word is one scenario plus a Refresh click
-away: `ready` gives `Live` with an advancing `updated` time, `stale`
+away: `ready` gives `Live` with `Refreshed just now`, `stale`
 gives `Cached` with old figures and the `role=status` notice, `blocked`
 gives `Blocked until reset`, `auth_missing` gives `Not signed in` with
-`no successful update yet`, `error` gives `Could not refresh`. The
+`Not refreshed yet`, `error` gives `Could not refresh`. The
 figures after a mock refresh match the mock snapshot; the figures after
 a live refresh match `live-usage.json`.
 
@@ -70,7 +70,7 @@ a live refresh match `live-usage.json`.
    `Not signed in` / exit 2.
 5. Real UI proof needs `vp run tauri dev` on a desktop or the mock in any browser: click Refresh, watch
    the button flip to `Refreshing`, then confirm each provider's status word
-   and the `updated` time advance. The figures should match the latest
+   and the `Refreshed` line drop back to `Refreshed just now`. The figures should match the latest
    `live-usage.json` from step 4 (Tauri) or the mock snapshot (headless).
 6. Optional stale proof: disconnect network after one success under Tauri
    and refresh: expect `Cached` with the old figures intact.

@@ -142,7 +142,7 @@ window.__TANTALUS_MOCK__.remount().then(() => 'remounted')
 The remount swaps `#root` for a fresh node and re-imports
 `/src/main.tsx` cache-busted, so a new App mounts against the mock
 (the first error-state tree stays detached). Then drive it like a user:
-snapshot shows `Allowance` with an `updated` time, the Codex and Claude
+snapshot shows `Allowance` with a `Refreshed just now` line, the Codex and Claude
 blocks, four `role=progressbar` entries, `Reset credits` (Codex) and
 `Extra usage` (Claude) regions, and an enabled Refresh. Switch Opencode on in
 Settings to add a third block with three progressbars, the extra one named

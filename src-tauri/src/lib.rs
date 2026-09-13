@@ -298,7 +298,7 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 const RETRY_BACKOFF_START: Duration = Duration::from_secs(5);
 
 /// Every enabled provider holds a reading. A launch at login usually beats the network up, so the
-/// first pass fails and the tray would otherwise sit on "no successful update yet" for a full
+/// first pass fails and the tray would otherwise sit on "Not refreshed yet" for a full
 /// interval.
 fn settled(snapshot: &UsageSnapshot) -> bool {
     Provider::ALL
@@ -317,6 +317,62 @@ fn next_backoff(settled: bool, current: Option<Duration>) -> Option<Duration> {
     Some(current.map_or(RETRY_BACKOFF_START, |wait| (wait * 2).min(REFRESH_INTERVAL)))
 }
 
+/// The newest successful reading among the enabled providers. `refreshedEpoch` in
+/// `src/presentation.ts` is the window's copy.
+fn refreshed_epoch(snapshot: &UsageSnapshot) -> Option<i64> {
+    Provider::ALL
+        .into_iter()
+        .filter(|provider| snapshot.enabled.enabled(*provider))
+        .filter_map(|provider| provider_usage(snapshot, provider).last_successful_update_epoch)
+        .max()
+}
+
+/// Whole units, floored, so the label only moves forward. `refreshedAgo` in
+/// `src/presentation.ts` is the window's copy.
+fn refreshed_label(epoch: Option<i64>, now: i64) -> String {
+    let Some(epoch) = epoch else {
+        return "Not refreshed yet".into();
+    };
+    let minutes = (now - epoch).max(0) / 60;
+    let (count, unit) = match minutes {
+        0 => return "Refreshed just now".into(),
+        1..60 => (minutes, "minute"),
+        60..1440 => (minutes / 60, "hour"),
+        _ => (minutes / 1440, "day"),
+    };
+    let plural = if count == 1 { "" } else { "s" };
+    format!("Refreshed {count} {unit}{plural} ago")
+}
+
+/// The wait until the label next rolls over, one whole minute after the reading.
+fn until_next_minute(epoch: Option<i64>, now: i64) -> Duration {
+    let elapsed = epoch.map_or(0, |epoch| (now - epoch).max(0));
+    Duration::from_secs((60 - elapsed % 60) as u64)
+}
+
+/// The tray's "Refreshed" row, kept so `tick_refreshed_row` can relabel it in place. Rebuilding
+/// the menu each minute would close it on anyone who has it open.
+#[derive(Default)]
+struct RefreshedRow(std::sync::Mutex<Option<MenuItem<tauri::Wry>>>);
+
+/// Keeps the tray's "Refreshed" row current between readings.
+async fn tick_refreshed_row(app: AppHandle) {
+    loop {
+        let state = app.state::<AppState>();
+        let wait = {
+            let snapshot = state.snapshot.lock().await;
+            let epoch = refreshed_epoch(&snapshot);
+            let now = usage::now_epoch();
+            let row = app.state::<RefreshedRow>();
+            if let Some(row) = &*row.0.lock().expect("refreshed row lock poisoned") {
+                let _ = row.set_text(refreshed_label(epoch, now));
+            }
+            until_next_minute(epoch, now)
+        };
+        tokio::time::sleep(wait).await;
+    }
+}
+
 fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
         return;
@@ -326,8 +382,8 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     }
 }
 
-/// A heading and one row per window for every enabled provider, then a separator and the actions,
-/// led by the pending update when there is one.
+/// A heading and one row per window for every enabled provider, a dimmed row saying when they
+/// were refreshed, then a separator and the actions, led by the pending update when there is one.
 /// The readings stay enabled so the menu renders them at full contrast rather than dimming the
 /// numbers the app exists to show; clicking one opens the window, like Show usage.
 fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<tauri::Wry>> {
@@ -356,6 +412,21 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
             )?);
         }
     }
+    let refreshed = (!readings.is_empty())
+        .then(|| {
+            MenuItem::with_id(
+                app,
+                "refreshed",
+                refreshed_label(refreshed_epoch(snapshot), usage::now_epoch()),
+                false,
+                None::<&str>,
+            )
+        })
+        .transpose()?;
+    *app.state::<RefreshedRow>()
+        .0
+        .lock()
+        .expect("refreshed row lock poisoned") = refreshed.clone();
     let separator = PredefinedMenuItem::separator(app)?;
     let update = app
         .state::<PendingUpdate>()
@@ -377,8 +448,11 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
         .iter()
         .map(|item| item as &dyn IsMenuItem<_>)
         .collect();
-    if !items.is_empty() {
-        items.push(&separator as &dyn IsMenuItem<_>);
+    if let Some(refreshed) = &refreshed {
+        items.extend([
+            refreshed as &dyn IsMenuItem<_>,
+            &separator as &dyn IsMenuItem<_>,
+        ]);
     }
     if let Some(update) = &update {
         items.push(update as &dyn IsMenuItem<_>);
@@ -609,6 +683,7 @@ pub fn run() {
                 ..UsageSnapshot::default()
             };
             app.manage(PendingUpdate::default());
+            app.manage(RefreshedRow::default());
             let menu = tray_menu(app.handle(), &settings_snapshot)?;
             app.manage(AppState {
                 snapshot: Mutex::new(settings_snapshot),
@@ -664,6 +739,7 @@ pub fn run() {
                     tokio::time::sleep(backoff.unwrap_or(REFRESH_INTERVAL)).await;
                 }
             });
+            tauri::async_runtime::spawn(tick_refreshed_row(app.handle().clone()));
             if updates_enabled(app.handle()) {
                 tauri::async_runtime::spawn(watch_updates(app.handle().clone()));
             }
@@ -794,6 +870,53 @@ mod tests {
         assert_eq!(bar(140.0), bar(100.0));
         assert_eq!(bar(-5.0), bar(0.0));
         assert!(bar(100.0).chars().all(|cell| cell == BAR_FULL));
+    }
+
+    #[test]
+    fn the_refreshed_row_counts_whole_units_since_the_newest_enabled_reading() {
+        let now = 1_000_000;
+        let mut snapshot = UsageSnapshot::default();
+        snapshot.codex.last_successful_update_epoch = Some(now - 600);
+        snapshot.claude.last_successful_update_epoch = Some(now - 60);
+        snapshot.enabled.set(Provider::Claude, false);
+        assert_eq!(refreshed_epoch(&snapshot), Some(now - 600));
+        snapshot.enabled.set(Provider::Codex, false);
+        assert_eq!(refreshed_epoch(&snapshot), None);
+
+        assert_eq!(refreshed_label(None, now), "Not refreshed yet");
+        assert_eq!(refreshed_label(Some(now + 5), now), "Refreshed just now");
+        assert_eq!(refreshed_label(Some(now - 59), now), "Refreshed just now");
+        assert_eq!(
+            refreshed_label(Some(now - 60), now),
+            "Refreshed 1 minute ago"
+        );
+        assert_eq!(
+            refreshed_label(Some(now - 3599), now),
+            "Refreshed 59 minutes ago"
+        );
+        assert_eq!(
+            refreshed_label(Some(now - 7200), now),
+            "Refreshed 2 hours ago"
+        );
+        assert_eq!(
+            refreshed_label(Some(now - 86_400), now),
+            "Refreshed 1 day ago"
+        );
+    }
+
+    #[test]
+    fn the_refreshed_row_wakes_as_the_label_rolls_over() {
+        let now = 1_000_000;
+        assert_eq!(until_next_minute(Some(now), now), Duration::from_secs(60));
+        assert_eq!(
+            until_next_minute(Some(now - 45), now),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            until_next_minute(Some(now - 120), now),
+            Duration::from_secs(60)
+        );
+        assert_eq!(until_next_minute(None, now), Duration::from_secs(60));
     }
 
     fn state() -> AppState {
