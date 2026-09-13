@@ -281,10 +281,29 @@ button:focus-visible {
   align-items: baseline;
   gap: 12px;
 }
+.entry-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
 .entry-head h3 {
   margin: 0;
   font-size: 0.82rem;
   font-weight: 600;
+}
+.pace {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.pace[data-pace="under"] {
+  color: var(--ok);
+}
+.pace[data-pace="ahead"] {
+  color: var(--danger);
 }
 .entry-head i {
   margin-left: 8px;
@@ -304,22 +323,31 @@ button:focus-visible {
 }
 
 .rule {
+  position: relative;
   height: 3px;
   margin: 10px 0 12px;
   background: var(--track);
 }
-.rule span {
+.rule-fill {
   display: block;
   height: 100%;
   background: var(--fill);
   transition: width 400ms ease-out;
 }
 /* The bar carries the warning: neutral while there is room, amber near the cap, red at it. */
-.rule[data-tier="warn"] span {
+.rule[data-tier="warn"] .rule-fill {
   background: var(--warn);
 }
-.rule[data-tier="danger"] span {
+.rule[data-tier="danger"] .rule-fill {
   background: var(--danger);
+}
+.rule .pace-marker {
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 9px;
+  background: var(--accent);
+  transform: translateX(-0.5px);
 }
 
 .provider-status[data-tone="ok"] {

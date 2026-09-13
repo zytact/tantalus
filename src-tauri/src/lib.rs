@@ -344,22 +344,35 @@ fn refreshed_label(epoch: Option<i64>, now: i64) -> String {
     format!("Refreshed {count} {unit}{plural} ago")
 }
 
-/// The tray's "Refreshed" row, kept so `tick_refreshed_row` can relabel it in place. Rebuilding
-/// the menu each minute would close it on anyone who has it open.
-#[derive(Default)]
-struct RefreshedRow(std::sync::Mutex<Option<MenuItem<tauri::Wry>>>);
+struct PaceRow {
+    item: MenuItem<tauri::Wry>,
+    span: &'static str,
+    window: usage::WindowUsage,
+}
 
-/// Keeps the tray's "Refreshed" row current between readings. A short fixed tick, rather than a
-/// sleep to the next minute, also catches up soon after a suspend, which tokio's clock skips.
-async fn tick_refreshed_row(app: AppHandle) {
+#[derive(Default)]
+struct TrayRows {
+    refreshed: Option<MenuItem<tauri::Wry>>,
+    pace: Vec<PaceRow>,
+}
+
+#[derive(Default)]
+struct LiveTrayRows(std::sync::Mutex<TrayRows>);
+
+/// Keeps time-derived tray labels current without rebuilding and closing an open menu.
+async fn tick_tray_rows(app: AppHandle) {
     let state = app.state::<AppState>();
-    let row = app.state::<RefreshedRow>();
+    let rows = app.state::<LiveTrayRows>();
     loop {
         {
             let snapshot = state.snapshot.lock().await;
-            let label = refreshed_label(refreshed_epoch(&snapshot), usage::now_epoch());
-            if let Some(row) = &*row.0.lock().expect("refreshed row lock poisoned") {
-                let _ = row.set_text(label);
+            let now = usage::now_epoch();
+            let rows = rows.0.lock().expect("tray rows lock poisoned");
+            if let Some(row) = &rows.refreshed {
+                let _ = row.set_text(refreshed_label(refreshed_epoch(&snapshot), now));
+            }
+            for row in &rows.pace {
+                let _ = row.item.set_text(tray_row(row.span, &row.window, now));
             }
         }
         tokio::time::sleep(REFRESHED_TICK).await;
@@ -383,6 +396,8 @@ fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
 /// numbers the app exists to show; clicking one opens the window, like Show usage.
 fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<tauri::Wry>> {
     let mut readings = Vec::new();
+    let mut pace_rows = Vec::new();
+    let now = usage::now_epoch();
     for provider in Provider::ALL {
         if !snapshot.enabled.enabled(provider) {
             continue;
@@ -394,17 +409,24 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
             true,
             None::<&str>,
         )?);
-        for (index, row) in tray_rows(provider_usage(snapshot, provider))
-            .into_iter()
-            .enumerate()
-        {
-            readings.push(MenuItem::with_id(
+        let usage = provider_usage(snapshot, provider);
+        let windows: Vec<_> = reported_windows(usage).collect();
+        for (index, row) in tray_rows(usage, now).into_iter().enumerate() {
+            let item = MenuItem::with_id(
                 app,
                 format!("{READING_PREFIX}{}-{index}", provider.id()),
                 row,
                 true,
                 None::<&str>,
-            )?);
+            )?;
+            if let Some((span, window)) = windows.get(index) {
+                pace_rows.push(PaceRow {
+                    item: item.clone(),
+                    span,
+                    window: (*window).clone(),
+                });
+            }
+            readings.push(item);
         }
     }
     let refreshed = (!readings.is_empty())
@@ -418,10 +440,13 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
             )
         })
         .transpose()?;
-    *app.state::<RefreshedRow>()
+    *app.state::<LiveTrayRows>()
         .0
         .lock()
-        .expect("refreshed row lock poisoned") = refreshed.clone();
+        .expect("tray rows lock poisoned") = TrayRows {
+        refreshed: refreshed.clone(),
+        pace: pace_rows,
+    };
     let separator = PredefinedMenuItem::separator(app)?;
     let update = app
         .state::<PendingUpdate>()
@@ -464,27 +489,59 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
 /// plan, so none of the three is assumed: a Codex Go or free account has only the monthly one, and
 /// OpenAI has switched the 5-hour one off for a plan before. A reading with no window at all keeps
 /// the provider on the menu with a bare `--`.
-fn tray_rows(provider: &ProviderUsage) -> Vec<String> {
-    let rows: Vec<String> = [
-        ("5h", &provider.five_hour),
-        ("7d", &provider.seven_day),
-        ("30d", &provider.monthly),
-    ]
-    .into_iter()
-    .filter(|(_, window)| window.limit_window_seconds.is_some())
-    .map(|(span, window)| tray_row(span, window.used_percent))
-    .collect();
+fn tray_rows(provider: &ProviderUsage, now: i64) -> Vec<String> {
+    let rows: Vec<String> = reported_windows(provider)
+        .map(|(span, window)| tray_row(span, window, now))
+        .collect();
     if rows.is_empty() {
         return vec![format!("{ROW_INDENT}--")];
     }
     rows
 }
 
-fn tray_row(span: &str, used_percent: Option<f64>) -> String {
-    match used_percent {
-        Some(value) => format!("{ROW_INDENT}{span:<3}  {}  {}", bar(value), percent(value)),
+fn reported_windows(
+    provider: &ProviderUsage,
+) -> impl Iterator<Item = (&'static str, &usage::WindowUsage)> {
+    [
+        ("5h", &provider.five_hour),
+        ("7d", &provider.seven_day),
+        ("30d", &provider.monthly),
+    ]
+    .into_iter()
+    .filter(|(_, window)| window.limit_window_seconds.is_some())
+}
+
+fn tray_row(span: &str, window: &usage::WindowUsage, now: i64) -> String {
+    match window.used_percent {
+        Some(value) => {
+            let pace = pace_label(window, now)
+                .map(|label| format!("  {label}"))
+                .unwrap_or_default();
+            format!(
+                "{ROW_INDENT}{span:<3}  {}  {}{pace}",
+                bar(value),
+                percent(value)
+            )
+        }
         None => format!("{ROW_INDENT}{span:<3}  --"),
     }
+}
+
+fn pace_label(window: &usage::WindowUsage, now: i64) -> Option<&'static str> {
+    let used = window.used_percent?;
+    let duration = window.limit_window_seconds?;
+    let reset = window.reset_at_epoch?;
+    if duration <= 0 {
+        return None;
+    }
+    let started = reset.saturating_sub(duration);
+    let elapsed = now.saturating_sub(started);
+    let expected = (elapsed as f64 / duration as f64 * 100.0).clamp(0.0, 100.0);
+    Some(if used <= expected {
+        "Under pace"
+    } else {
+        "Ahead of pace"
+    })
 }
 
 /// Menu rows carry no icon or widget on Linux, so the bar is text. Eighth-blocks put the edge
@@ -678,7 +735,7 @@ pub fn run() {
                 ..UsageSnapshot::default()
             };
             app.manage(PendingUpdate::default());
-            app.manage(RefreshedRow::default());
+            app.manage(LiveTrayRows::default());
             let menu = tray_menu(app.handle(), &settings_snapshot)?;
             app.manage(AppState {
                 snapshot: Mutex::new(settings_snapshot),
@@ -734,7 +791,7 @@ pub fn run() {
                     tokio::time::sleep(backoff.unwrap_or(REFRESH_INTERVAL)).await;
                 }
             });
-            tauri::async_runtime::spawn(tick_refreshed_row(app.handle().clone()));
+            tauri::async_runtime::spawn(tick_tray_rows(app.handle().clone()));
             if updates_enabled(app.handle()) {
                 tauri::async_runtime::spawn(watch_updates(app.handle().clone()));
             }
@@ -786,7 +843,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             [
                 "   5h   \u{2588}\u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  12.7%",
                 "   7d   \u{258e}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  3%"
@@ -802,7 +859,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             ["   30d  \u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  50%"]
         );
     }
@@ -816,7 +873,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            tray_rows(&provider),
+            tray_rows(&provider, 0),
             ["   7d   \u{2588}\u{2588}\u{2588}\u{2588}\u{258f}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}  41%"]
         );
     }
@@ -824,7 +881,7 @@ mod tests {
     /// A reading that came back with no window keeps the provider on the menu.
     #[test]
     fn the_tray_says_nothing_was_read_rather_than_inventing_a_row() {
-        assert_eq!(tray_rows(&ProviderUsage::default()), ["   --"]);
+        assert_eq!(tray_rows(&ProviderUsage::default(), 0), ["   --"]);
     }
 
     /// A window the account has but the reading left empty keeps its row without a bar, since a
@@ -839,7 +896,19 @@ mod tests {
             },
             ..Default::default()
         };
-        assert_eq!(tray_rows(&provider), ["   5h   --"]);
+        assert_eq!(tray_rows(&provider, 0), ["   5h   --"]);
+    }
+
+    #[test]
+    fn the_tray_compares_usage_with_elapsed_time() {
+        let mut under = window(usage::SEVEN_DAY_SECONDS, 14.0);
+        under.reset_at_epoch = Some(1_000_000 + usage::SEVEN_DAY_SECONDS * 6 / 7);
+        let mut ahead = under.clone();
+        ahead.used_percent = Some(15.0);
+
+        assert_eq!(pace_label(&under, 1_000_000), Some("Under pace"));
+        assert_eq!(pace_label(&ahead, 1_000_000), Some("Ahead of pace"));
+        assert!(tray_row("7d", &under, 1_000_000).ends_with("14%  Under pace"));
     }
 
     /// Every bar is the same width whatever the reading, so the rows stack into a column.

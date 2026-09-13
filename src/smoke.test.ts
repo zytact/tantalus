@@ -9,6 +9,7 @@ import {
   statusLine,
   statusTone,
   usagePercent,
+  usagePace,
   usageTier,
 } from "./presentation";
 import type { Chord, ProviderUsage, UsageSnapshot } from "./presentation";
@@ -48,6 +49,19 @@ describe("display contract", () => {
     expect(countdown(now, now)).toBe("Resetting now");
     expect(countdown(now + 3600 * 3 + 60 * 29, now)).toBe("3h 29m");
     expect(countdown(now + 86_400 * 4 + 3600 * 20, now)).toBe("4d 20h");
+  });
+
+  it("compares usage with elapsed time in its reset window", () => {
+    const now = 1_000_000;
+    const window = {
+      used_percent: 14,
+      limit_window_seconds: 700,
+      reset_at_epoch: now + 600,
+    };
+    expect(usagePace(window, now)?.expectedPercent).toBeCloseTo(100 / 7);
+    expect(usagePace(window, now)?.label).toBe("Under pace");
+    expect(usagePace({ ...window, used_percent: 15 }, now)?.label).toBe("Ahead of pace");
+    expect(usagePace({ ...window, reset_at_epoch: null }, now)).toBeNull();
   });
 
   it("names what the last reading was worth", () => {
