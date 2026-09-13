@@ -344,10 +344,10 @@ button:focus-visible {
 .rule .pace-marker {
   position: absolute;
   top: -3px;
-  width: 1px;
+  width: 2px;
   height: 9px;
   background: var(--accent);
-  transform: translateX(-0.5px);
+  transform: translateX(-50%);
 }
 
 .provider-status[data-tone="ok"] {
