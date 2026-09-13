@@ -344,34 +344,29 @@ fn refreshed_label(epoch: Option<i64>, now: i64) -> String {
     format!("Refreshed {count} {unit}{plural} ago")
 }
 
-/// The wait until the label next rolls over, one whole minute after the reading.
-fn until_next_minute(epoch: Option<i64>, now: i64) -> Duration {
-    let elapsed = epoch.map_or(0, |epoch| (now - epoch).max(0));
-    Duration::from_secs((60 - elapsed % 60) as u64)
-}
-
 /// The tray's "Refreshed" row, kept so `tick_refreshed_row` can relabel it in place. Rebuilding
 /// the menu each minute would close it on anyone who has it open.
 #[derive(Default)]
 struct RefreshedRow(std::sync::Mutex<Option<MenuItem<tauri::Wry>>>);
 
-/// Keeps the tray's "Refreshed" row current between readings.
+/// Keeps the tray's "Refreshed" row current between readings. A short fixed tick, rather than a
+/// sleep to the next minute, also catches up soon after a suspend, which tokio's clock skips.
 async fn tick_refreshed_row(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let row = app.state::<RefreshedRow>();
     loop {
-        let state = app.state::<AppState>();
-        let wait = {
+        {
             let snapshot = state.snapshot.lock().await;
-            let epoch = refreshed_epoch(&snapshot);
-            let now = usage::now_epoch();
-            let row = app.state::<RefreshedRow>();
+            let label = refreshed_label(refreshed_epoch(&snapshot), usage::now_epoch());
             if let Some(row) = &*row.0.lock().expect("refreshed row lock poisoned") {
-                let _ = row.set_text(refreshed_label(epoch, now));
+                let _ = row.set_text(label);
             }
-            until_next_minute(epoch, now)
-        };
-        tokio::time::sleep(wait).await;
+        }
+        tokio::time::sleep(REFRESHED_TICK).await;
     }
 }
+
+const REFRESHED_TICK: Duration = Duration::from_secs(5);
 
 fn update_tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) {
     let Some(tray) = app.tray_by_id("usage") else {
@@ -902,21 +897,6 @@ mod tests {
             refreshed_label(Some(now - 86_400), now),
             "Refreshed 1 day ago"
         );
-    }
-
-    #[test]
-    fn the_refreshed_row_wakes_as_the_label_rolls_over() {
-        let now = 1_000_000;
-        assert_eq!(until_next_minute(Some(now), now), Duration::from_secs(60));
-        assert_eq!(
-            until_next_minute(Some(now - 45), now),
-            Duration::from_secs(15)
-        );
-        assert_eq!(
-            until_next_minute(Some(now - 120), now),
-            Duration::from_secs(60)
-        );
-        assert_eq!(until_next_minute(None, now), Duration::from_secs(60));
     }
 
     fn state() -> AppState {

@@ -11,8 +11,8 @@ one. The tray owns the menu, the tooltip, and the 5-minute polling schedule.
   `codex-0` upward, formatted `   5h   ███▎░░░░░░  42%` with `--` in place of the bar
   and figure when the reading has none. Every row is enabled, not dimmed, and
   opens the window when clicked. After the readings a dimmed `refreshed` row,
-  `Refreshed 3 minutes ago`, which `tick_refreshed_row` relabels in place each
-  minute without rebuilding the menu. A separator then `show` (Show usage),
+  `Refreshed 3 minutes ago`, which `tick_refreshed_row` relabels in place every
+  5 seconds without rebuilding the menu. A separator then `show` (Show usage),
   `refresh` (Refresh now), `quit` (Quit)
 - Bars are ten eighth-block cells, so the edge lands within 1.25 percent of the
   reading, and a figure over 100 fills the bar rather than overrunning it

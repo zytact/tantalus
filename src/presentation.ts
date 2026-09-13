@@ -119,7 +119,7 @@ export function refreshedEpoch(snapshot: UsageSnapshot): number | null {
 
 /** Whole units, floored, so the label only moves forward. `refreshed_label` in `lib.rs` is the
  * tray's copy. */
-export function refreshedAgo(epoch: number | null, now = Date.now() / 1000): string {
+export function refreshedAgo(epoch: number | null, now: number): string {
   if (epoch === null) return "Not refreshed yet";
   const minutes = Math.floor(Math.max(0, now - epoch) / 60);
   if (minutes < 1) return "Refreshed just now";
