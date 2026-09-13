@@ -409,34 +409,24 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
             true,
             None::<&str>,
         )?);
-        for (index, (span, window)) in
-            reported_windows(provider_usage(snapshot, provider)).enumerate()
-        {
+        let usage = provider_usage(snapshot, provider);
+        let windows: Vec<_> = reported_windows(usage).collect();
+        for (index, row) in tray_rows(usage, now).into_iter().enumerate() {
             let item = MenuItem::with_id(
                 app,
                 format!("{READING_PREFIX}{}-{index}", provider.id()),
-                tray_row(span, window, now),
+                row,
                 true,
                 None::<&str>,
             )?;
-            pace_rows.push(PaceRow {
-                item: item.clone(),
-                span,
-                window: window.clone(),
-            });
+            if let Some((span, window)) = windows.get(index) {
+                pace_rows.push(PaceRow {
+                    item: item.clone(),
+                    span,
+                    window: (*window).clone(),
+                });
+            }
             readings.push(item);
-        }
-        if reported_windows(provider_usage(snapshot, provider))
-            .next()
-            .is_none()
-        {
-            readings.push(MenuItem::with_id(
-                app,
-                format!("{READING_PREFIX}{}-0", provider.id()),
-                format!("{ROW_INDENT}--"),
-                true,
-                None::<&str>,
-            )?);
         }
     }
     let refreshed = (!readings.is_empty())
@@ -499,7 +489,6 @@ fn tray_menu(app: &AppHandle, snapshot: &UsageSnapshot) -> tauri::Result<Menu<ta
 /// plan, so none of the three is assumed: a Codex Go or free account has only the monthly one, and
 /// OpenAI has switched the 5-hour one off for a plan before. A reading with no window at all keeps
 /// the provider on the menu with a bare `--`.
-#[cfg(test)]
 fn tray_rows(provider: &ProviderUsage, now: i64) -> Vec<String> {
     let rows: Vec<String> = reported_windows(provider)
         .map(|(span, window)| tray_row(span, window, now))
