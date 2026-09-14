@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import { clockEpoch, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import {
   countdown,
@@ -90,6 +90,11 @@ describe("display contract", () => {
     expect(refreshedAgo(now - 60 * 59 - 59, now)).toBe("Refreshed 59 minutes ago");
     expect(refreshedAgo(now - 3600 * 2, now)).toBe("Refreshed 2 hours ago");
     expect(refreshedAgo(now - 86_400, now)).toBe("Refreshed 1 day ago");
+  });
+
+  it("uses the backend clock for a remote browser", () => {
+    expect(clockEpoch(1_880, 30_000)).toBe(1_910);
+    expect(refreshedAgo(1_820, clockEpoch(1_880, 30_000))).toBe("Refreshed 1 minute ago");
   });
 
   it("dates a credit expiry that sits weeks out", () => {

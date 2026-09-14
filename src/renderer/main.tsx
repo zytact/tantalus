@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   fiveHourSeconds,
+  clockEpoch,
   monthlySeconds,
   providerIds,
   providerNames,
@@ -200,12 +201,43 @@ function ProviderSection({ id, provider, now }: { id: ProviderId; provider: Prov
 
 /** The current epoch in seconds, re-read often enough that a minute-grained label is never more
  * than a few seconds behind. */
-function useNow() {
+function useNow(useServerClock: boolean) {
   const [now, setNow] = useState(() => Date.now() / 1000);
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now() / 1000), 5000);
-    return () => window.clearInterval(timer);
-  }, []);
+    let mounted = true;
+    let syncing = false;
+    let serverClock: { epoch: number; monotonic: number } | null = null;
+    const synchronize = () => {
+      if (!useServerClock || syncing) return;
+      syncing = true;
+      void window.tantalus
+        .current("serverEpoch")
+        .then((epoch) => {
+          if (!mounted || epoch === null) return;
+          serverClock = { epoch, monotonic: performance.now() };
+          setNow(epoch);
+        })
+        .catch(() => {
+          serverClock = null;
+        })
+        .finally(() => {
+          syncing = false;
+        });
+    };
+    synchronize();
+    const timer = window.setInterval(() => {
+      if (serverClock === null) synchronize();
+      setNow(
+        serverClock === null
+          ? Date.now() / 1000
+          : clockEpoch(serverClock.epoch, performance.now() - serverClock.monotonic),
+      );
+    }, 5000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [useServerClock]);
   return now;
 }
 
@@ -217,7 +249,7 @@ function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
   const [refreshing, setRefreshing] = useState(false);
-  const now = useNow();
+  const now = useNow(remote);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);

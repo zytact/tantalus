@@ -28,6 +28,7 @@ export type Commands = {
 export type Events = {
   usageSnapshot: UsageSnapshot;
   updateAvailable: AvailableUpdate;
+  serverEpoch: number;
 };
 
 /** The channel that serves the latest value of an event. */

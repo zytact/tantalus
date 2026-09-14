@@ -4,6 +4,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
 import type { UsageSnapshot } from "../shared/usage";
+import { nowEpoch } from "../shared/usage";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -25,6 +26,7 @@ export class WebServer {
     private readonly port: number,
     private readonly snapshot: () => UsageSnapshot,
     private readonly refresh: () => Promise<UsageSnapshot>,
+    private readonly now: () => number = nowEpoch,
   ) {}
 
   /** Listens on `host`, or stops when it is null. Moving to another host closes every open connection. */
@@ -74,11 +76,16 @@ export class WebServer {
     }
     if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     if (path === "/api/events") return this.stream(request, response);
-    if (path?.startsWith("/api/current/")) {
-      const value = path === "/api/current/usageSnapshot" ? this.snapshot() : null;
-      return send(response, 200, "application/json", JSON.stringify(value));
-    }
+    if (path?.startsWith("/api/current/")) return this.sendCurrent(response, path);
     void this.sendFile(response, path);
+  }
+
+  private sendCurrent(response: ServerResponse, path: string) {
+    const current: Record<string, () => unknown> = {
+      "/api/current/usageSnapshot": this.snapshot,
+      "/api/current/serverEpoch": this.now,
+    };
+    send(response, 200, "application/json", JSON.stringify(current[path]?.() ?? null));
   }
 
   /** The first event is the current snapshot, so a browser that reconnects misses nothing. */

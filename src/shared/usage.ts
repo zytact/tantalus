@@ -71,6 +71,11 @@ export const emptyProviderUsage = (): ProviderUsage => ({
 
 export const nowEpoch = () => Math.floor(Date.now() / 1000);
 
+/** Advances a server-supplied epoch by monotonic elapsed time. */
+export function clockEpoch(serverEpoch: number, elapsedMilliseconds: number): number {
+  return serverEpoch + elapsedMilliseconds / 1000;
+}
+
 /** Opencode reports fractional percentages, so one decimal is kept when the reading has one. The
  * providers that report whole numbers never grow a hollow ".0". */
 export function percent(value: number): string {
