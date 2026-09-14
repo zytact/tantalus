@@ -22,6 +22,7 @@ After every change, run the following commands from the repo root.
 vp install --frozen-lockfile
 vp check
 vp test
+vp run fallow
 vp build
 vp pack
 ```

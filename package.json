@@ -8,6 +8,7 @@
   "main": "dist-electron/main.mjs",
   "scripts": {
     "dev": "node scripts/dev.ts",
+    "fallow": "fallow audit --base origin/main",
     "package": "vp build && vp pack && node scripts/package.ts",
     "prepare": "vp config --no-agent"
   },
@@ -20,6 +21,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "44.3.0",
     "electron-builder": "26.15.3",
+    "fallow": "^3.25.0",
     "playwright-core": "1.63.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
