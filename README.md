@@ -21,7 +21,7 @@ Codex and Claude start on. Opencode is a separate paid plan, so it starts off; t
 
 Press **Ctrl+R**, or **Cmd+R** on macOS, to refresh.
 
-Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Show usage** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
+Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Open Tantalus** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
 
 ## Build and check
 
