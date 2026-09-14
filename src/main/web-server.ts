@@ -13,8 +13,8 @@ const contentTypes: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** Serves the built page to browsers on other devices, read-only: the current snapshot at
- * `/api/current/usageSnapshot`, and every later one as a server-sent event on `/api/events`. */
+/** Serves the built page to browsers on other devices: snapshots over HTTP and server-sent events,
+ * plus a guarded refresh action. */
 export class WebServer {
   private server: Server | null = null;
   private host: string | null = null;
@@ -24,6 +24,7 @@ export class WebServer {
     private readonly root: string,
     private readonly port: number,
     private readonly snapshot: () => UsageSnapshot,
+    private readonly refresh: () => Promise<UsageSnapshot>,
   ) {}
 
   /** Listens on `host`, or stops when it is null. Moving to another host closes every open connection. */
@@ -61,8 +62,17 @@ export class WebServer {
 
   private respond(request: IncomingMessage, response: ServerResponse) {
     if (!trustedHost(request.headers.host)) return send(response, 403, "text/plain", "Forbidden");
-    if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     const path = pathname(request.url);
+    if (path === "/api/refresh") {
+      if (request.method !== "POST" || request.headers["x-tantalus-action"] !== "refresh") {
+        return send(response, 405, "text/plain", "Method not allowed");
+      }
+      return void this.refresh().then(
+        (snapshot) => send(response, 200, "application/json", JSON.stringify(snapshot)),
+        () => send(response, 500, "text/plain", "Could not refresh"),
+      );
+    }
+    if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     if (path === "/api/events") return this.stream(request, response);
     if (path?.startsWith("/api/current/")) {
       const value = path === "/api/current/usageSnapshot" ? this.snapshot() : null;

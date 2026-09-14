@@ -19,6 +19,7 @@ const snapshot = (claude: boolean): UsageSnapshot => ({
 let root: string;
 let server: WebServer;
 let current: UsageSnapshot;
+let refreshes: number;
 
 beforeAll(async () => {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-web-"));
@@ -27,7 +28,17 @@ beforeAll(async () => {
   writeFileSync(join(root, "index.html"), "<main></main>");
   writeFileSync(join(directory, "secret.txt"), "outside the page");
   current = snapshot(true);
-  server = new WebServer(root, PORT, () => current);
+  refreshes = 0;
+  server = new WebServer(
+    root,
+    PORT,
+    () => current,
+    async () => {
+      refreshes += 1;
+      current = snapshot(false);
+      return current;
+    },
+  );
   await server.listen("127.0.0.1");
 });
 
@@ -48,6 +59,18 @@ describe("web server", () => {
   it("serves the current snapshot and nothing else the window can read", async () => {
     expect(await (await fetch(`${origin}/api/current/usageSnapshot`)).json()).toEqual(current);
     expect(await (await fetch(`${origin}/api/current/updateAvailable`)).json()).toBeNull();
+  });
+
+  it("refreshes usage only through POST", async () => {
+    expect((await fetch(`${origin}/api/refresh`)).status).toBe(405);
+    expect((await fetch(`${origin}/api/refresh`, { method: "POST" })).status).toBe(405);
+    const response = await fetch(`${origin}/api/refresh`, {
+      method: "POST",
+      headers: { "x-tantalus-action": "refresh" },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(snapshot(false));
+    expect(refreshes).toBe(1);
   });
 
   it("streams the current snapshot, then each one published", async () => {

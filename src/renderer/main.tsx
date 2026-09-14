@@ -209,8 +209,7 @@ function useNow() {
   return now;
 }
 
-/** A browser on another device has no preload, so it reads the published snapshot over HTTP and
- * leaves out everything that changes the app. */
+/** A browser on another device has no preload, so it reads snapshots and refreshes over HTTP. */
 const remote = !("tantalus" in window);
 if (remote) window.tantalus = webBridge();
 
@@ -229,7 +228,7 @@ function App() {
     }
   }, []);
 
-  const canRefresh = !remote && snapshot !== null && !refreshing;
+  const canRefresh = snapshot !== null && !refreshing;
 
   // The chord belongs to the app, so the default is cancelled whether or not a refresh can start.
   useEffect(() => {
@@ -265,19 +264,17 @@ function App() {
                     : "Loading provider settings"}
               </p>
             </div>
-            {!remote && (
-              <div className="header-actions">
-                <button onClick={() => setPage("settings")}>Settings</button>
-                <button
-                  onClick={() => void refresh()}
-                  disabled={!canRefresh}
-                  aria-busy={refreshing}
-                  title="Refresh (Ctrl+R or Cmd+R)"
-                >
-                  {refreshing ? "Refreshing" : "Refresh"}
-                </button>
-              </div>
-            )}
+            <div className="header-actions">
+              {!remote && <button onClick={() => setPage("settings")}>Settings</button>}
+              <button
+                onClick={() => void refresh()}
+                disabled={!canRefresh}
+                aria-busy={refreshing}
+                title="Refresh (Ctrl+R or Cmd+R)"
+              >
+                {refreshing ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
           </header>
 
           {!remote && <UpdateNotice />}

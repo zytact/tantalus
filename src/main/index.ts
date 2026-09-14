@@ -59,7 +59,12 @@ function start() {
       : null,
   );
 
-  const web = new WebServer(page, identity.ports.web, () => state.snapshot);
+  const web = new WebServer(
+    page,
+    identity.ports.web,
+    () => state.snapshot,
+    () => state.refresh(),
+  );
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
