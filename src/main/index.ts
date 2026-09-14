@@ -5,17 +5,19 @@ import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
-import { CURRENT } from "../shared/ipc";
+import { CURRENT, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, Reply } from "../shared/ipc";
 import { nowEpoch, providerIds } from "../shared/usage";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
+import { RemoteAccessRoutes } from "./remote-access";
 import { trayItems } from "./tray-menu";
 import type { TrayAction } from "./tray-menu";
 import { Updater } from "./update";
 import { pollUsage, UsageState } from "./usage-state";
+import { WebServer } from "./web-server";
 
 const identity = app.getName() === identities.preview.productName ? identities.preview : identities.release;
 const preview = identity === identities.preview;
@@ -31,6 +33,9 @@ const canvas = () => (nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#fbf8f1");
 /** Refreshes the time-derived tray labels without rebuilding, and so closing, an open menu when
  * nothing on it changed. */
 const TRAY_TICK = 5000;
+
+/** The built page, which the window loads from disk and the web server serves to other devices. */
+const page = join(import.meta.dirname, "..", "dist");
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -54,6 +59,7 @@ function start() {
       : null,
   );
 
+  const web = new WebServer(page, identity.ports.web, () => state.snapshot);
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
@@ -61,8 +67,10 @@ function start() {
     (snapshot) => {
       renderTray();
       publish("usageSnapshot", snapshot);
+      web.publish(snapshot);
     },
   );
+  const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
   const updater = new Updater((update) => {
     renderTray();
     publish("updateAvailable", update);
@@ -127,11 +135,19 @@ function start() {
   handle("installUpdate", () => updater.install());
   handle("openAtLogin", () => openAtLogin(identity));
   handle("setOpenAtLogin", (enabled) => setOpenAtLogin(identity, enabled === true));
+  handle("remoteAccess", () => remote.read());
+  handle("setRemoteAccess", (route, enabled) => {
+    if (!remoteRoutes.includes(route) || typeof enabled !== "boolean") {
+      throw new Error("Unknown remote access setting.");
+    }
+    return remote.set(route, enabled);
+  });
 
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
   if (!launchedHidden()) showWindow();
   void pollUsage(state, sleep);
+  remote.start().catch((error: unknown) => console.error("Failed to start remote access:", error));
   if (updatesEnabled) void updater.watch();
 }
 
@@ -166,7 +182,7 @@ function showWindow() {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   const devServer = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
-  void (devServer ? window.loadURL(devServer) : window.loadFile(join(import.meta.dirname, "..", "dist", "index.html")));
+  void (devServer ? window.loadURL(devServer) : window.loadFile(join(page, "index.html")));
 }
 
 /** The app mark without its base arc, which stays legible at tray sizes. macOS draws the release mark

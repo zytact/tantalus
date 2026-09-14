@@ -3,6 +3,14 @@ import type { ProviderId, UsageSnapshot } from "./usage";
 /** A signed release newer than the running build, as the window and tray show it. */
 export type AvailableUpdate = { version: string };
 
+/** The ways another device can open the allowance page, and whether each is switched on. */
+export const remoteRoutes = ["localNetwork", "tailscale"] as const;
+export type RemoteRoute = (typeof remoteRoutes)[number];
+export type RemoteSettings = Record<RemoteRoute, boolean>;
+/** Each route with the addresses it answers on. A route that is off, or whose address cannot be read,
+ * has none. */
+export type RemoteAccess = Record<RemoteRoute, { enabled: boolean; urls: string[] }>;
+
 /** Every request the window can make of the main process, keyed by channel. */
 export type Commands = {
   refreshUsage: () => UsageSnapshot;
@@ -11,6 +19,8 @@ export type Commands = {
   installUpdate: () => void;
   openAtLogin: () => boolean;
   setOpenAtLogin: (enabled: boolean) => void;
+  remoteAccess: () => RemoteAccess;
+  setRemoteAccess: (route: RemoteRoute, enabled: boolean) => RemoteAccess;
 };
 
 /** What the main process publishes to the window, keyed by channel. The window can also read the

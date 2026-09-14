@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { version } from "../../package.json";
+import { remoteRoutes } from "../shared/ipc";
+import type { RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { ProviderIcon } from "./provider-icon";
@@ -74,6 +76,111 @@ function ProviderRow({
           <span className="setting-state">{choice === "loading" ? "Checking" : "Unavailable"}</span>
         ) : (
           <Toggle label={name} checked={choice[id]} onToggle={() => toggle(!choice[id])} />
+        )}
+      </section>
+      {error && (
+        <p className="notice settings-notice" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
+const remoteRouteCopy = {
+  localNetwork: {
+    name: "Local network",
+    description: "Open this page from any device on the same network. Anyone on it can read your usage.",
+  },
+  tailscale: {
+    name: "Tailscale",
+    description: "Serve this page over HTTPS to devices on your tailnet.",
+  },
+} satisfies Record<RemoteRoute, { name: string; description: string }>;
+
+const pendingLabels = { loading: "Checking", unavailable: "Unavailable" } as const;
+
+/** Read on every visit, since the machine's addresses can change between one visit and the next. */
+function RemoteAccessRows() {
+  const [access, setAccess] = useState<RemoteAccess | "loading" | "unavailable">("loading");
+  const [saving, setSaving] = useState<RemoteRoute | null>(null);
+  const [error, setError] = useState<{ route: RemoteRoute; message: string } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void window.tantalus.invoke("remoteAccess").then(
+      (read) => {
+        if (mounted) setAccess(read);
+      },
+      () => {
+        if (mounted) setAccess("unavailable");
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const toggle = async (route: RemoteRoute, enabled: boolean) => {
+    setSaving(route);
+    setError(null);
+    try {
+      setAccess(await window.tantalus.invoke("setRemoteAccess", route, enabled));
+    } catch (reason) {
+      setError({ route, message: reason instanceof Error ? reason.message : "Could not change remote access." });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return remoteRoutes.map((route) => (
+    <RemoteRow
+      key={route}
+      route={route}
+      access={access}
+      saving={saving !== null}
+      error={error?.route === route ? error.message : null}
+      onToggle={(enabled) => void toggle(route, enabled)}
+    />
+  ));
+}
+
+function RemoteRow({
+  route,
+  access,
+  saving,
+  error,
+  onToggle,
+}: {
+  route: RemoteRoute;
+  access: RemoteAccess | "loading" | "unavailable";
+  saving: boolean;
+  error: string | null;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const { name, description } = remoteRouteCopy[route];
+  return (
+    <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>{name}</h2>
+          <p>{description}</p>
+          {typeof access !== "string" &&
+            access[route].urls.map((url) => (
+              <p key={url} className="setting-url">
+                {url}
+              </p>
+            ))}
+        </div>
+        {typeof access === "string" ? (
+          <span className="setting-state">{pendingLabels[access]}</span>
+        ) : (
+          <Toggle
+            label={name}
+            checked={access[route].enabled}
+            busy={saving}
+            onToggle={() => onToggle(!access[route].enabled)}
+          />
         )}
       </section>
       {error && (
@@ -204,6 +311,8 @@ export function SettingsPage({
             {startupError}
           </p>
         )}
+
+        <RemoteAccessRows />
 
         <VersionRow />
       </div>
