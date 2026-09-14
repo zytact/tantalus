@@ -71,7 +71,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$EVIDENCE/cargo-test
 5. Exercise the tray:
 
 - Confirm the blue icon and `Tantalus Preview` tooltip.
-- Compare each enabled provider's separate 5h, 7d, and 30d rows with the window. Rows may include `Under pace` or `Ahead of pace`.
+- Compare each enabled provider's separate 5h, 7d, and 30d rows with the window. Rows may include `Under pace`, `On pace`, or `Ahead of pace`.
 - Use Refresh now, close and reopen the window through Show usage or left-click, then leave Quit for final teardown.
 - A full polling proof takes at least five minutes. Confirm the refreshed label resets after the next poll.
 

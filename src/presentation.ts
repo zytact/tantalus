@@ -77,22 +77,31 @@ export function remainingPercent(value: number | null): string {
   return value === null ? "Unavailable" : percent(100 - value);
 }
 
+const PACE_TOLERANCE = 2;
+
+const paceLabels = {
+  under: "Under pace",
+  on: "On pace",
+  ahead: "Ahead of pace",
+} as const;
+
 export type UsagePace = {
   expectedPercent: number;
-  status: "under" | "ahead";
-  label: "Under pace" | "Ahead of pace";
+  status: keyof typeof paceLabels;
+  label: (typeof paceLabels)[keyof typeof paceLabels];
 };
 
 export function usagePace(window: WindowUsage, now: number): UsagePace | null {
   const { used_percent: used, limit_window_seconds: duration, reset_at_epoch: reset } = window;
   if (used === null || duration === null || reset === null || duration <= 0) return null;
   const expectedPercent = Math.min(100, Math.max(0, ((now - (reset - duration)) / duration) * 100));
-  const status = used <= expectedPercent ? "under" : "ahead";
-  return {
-    expectedPercent,
-    status,
-    label: status === "under" ? "Under pace" : "Ahead of pace",
-  };
+  const status = paceStatus(used, expectedPercent);
+  return { expectedPercent, status, label: paceLabels[status] };
+}
+
+function paceStatus(used: number, expectedPercent: number): UsagePace["status"] {
+  if (Math.abs(used - expectedPercent) <= PACE_TOLERANCE) return "on";
+  return used < expectedPercent ? "under" : "ahead";
 }
 
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
