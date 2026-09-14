@@ -38,6 +38,7 @@ beforeAll(async () => {
       current = snapshot(false);
       return current;
     },
+    () => 1_234_567,
   );
   await server.listen("127.0.0.1");
 });
@@ -58,6 +59,7 @@ describe("web server", () => {
 
   it("serves the current snapshot and nothing else the window can read", async () => {
     expect(await (await fetch(`${origin}/api/current/usageSnapshot`)).json()).toEqual(current);
+    expect(await (await fetch(`${origin}/api/current/serverEpoch`)).json()).toBe(1_234_567);
     expect(await (await fetch(`${origin}/api/current/updateAvailable`)).json()).toBeNull();
   });
 
