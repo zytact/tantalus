@@ -6,4 +6,4 @@ It shows the used percentage, a progressbar named `Monthly window usage`, option
 
 ## Preview proof
 
-In Tantalus Preview, enable Opencode or use a Codex account that reports Monthly, Refresh, and capture the native window. Confirm `Monthly window`, `30 days`, its facts, and its position after other reported windows. The tray uses separate provider headings and separate `5h`, `7d`, and `30d` rows. A monthly-only Codex account has only its `30d` row.
+In Tantalus Preview on `--mock` `ready`, enable Opencode, Refresh, and capture the native window; then switch to `monthly-only` for a Codex account with only Monthly. In real mode, use a Codex or Opencode account that reports Monthly. Confirm `Monthly window`, `30 days`, its facts, and its position after other reported windows. The tray uses separate provider headings and separate `5h`, `7d`, and `30d` rows. A monthly-only Codex account has only its `30d` row.

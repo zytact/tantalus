@@ -6,4 +6,4 @@ The section is named `Reset credits`, shows the banked count, and lists `Credit 
 
 ## Preview proof
 
-Enable Codex in Tantalus Preview and Refresh. Capture the native window after completion. Confirm Reset credits is last, its count matches the response, and each detail has an expiry or `No expiry reported`. Disable Codex and confirm the whole block disappears.
+In Tantalus Preview on `--mock` `ready`, Refresh: Reset credits reads 2 with two expiry rows. Switch to `monthly-only` and Refresh to see `No credit details available.` In real mode, enable Codex and Refresh. Capture the native window after completion. Confirm Reset credits is last, its count matches the response, and each detail has an expiry or `No expiry reported`. Disable Codex and confirm the whole block disappears.

@@ -6,4 +6,4 @@ Rust reads enabled providers concurrently. Disabled providers stop before creden
 
 ## Preview proof
 
-In Tantalus Preview, activate Refresh and capture the busy state when practical, then capture the completed native window. Confirm the timestamp and each provider status. Repeat through the keyboard shortcut and tray Refresh now. For isolated auth-missing proof, relaunch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories so none of the three providers can reach real credentials.
+In Tantalus Preview, activate Refresh and capture the busy state when practical, then capture the completed native window. Confirm the timestamp and each provider status. Repeat through the keyboard shortcut and tray Refresh now. On `--mock`, switch to `error` and Refresh: providers keep their figures and read `Cached`. `launch.sh --mock error` fails the very first read, so it shows `Could not refresh`. For isolated auth-missing proof, relaunch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories so none of the three providers can reach real credentials.

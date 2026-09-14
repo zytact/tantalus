@@ -6,4 +6,4 @@ It shows the used percentage, a progressbar named `Long window usage`, optional 
 
 ## Preview proof
 
-In Tantalus Preview, enable and refresh a provider with a weekly reading. Capture the native window and confirm `Long window`, `7 days`, the percentage, reset facts, and Remaining. A monthly-only Codex account must omit Long. The tray has a separate `7d` row when Long exists.
+In Tantalus Preview on `--mock` `ready`, refresh and use Codex 7d (12% with 5 of 7 days left) or Claude 7d. In real mode, use a provider with a weekly reading. Capture the native window and confirm `Long window`, `7 days`, the percentage, reset facts, and Remaining. A monthly-only Codex account must omit Long; the `monthly-only` scenario proves it. The tray has a separate `7d` row when Long exists.

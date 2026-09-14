@@ -9,6 +9,8 @@ OUTPUT="$EVIDENCE_DIR/$NAME.png"
 TEMP="$EVIDENCE_DIR/.$NAME-root.png"
 
 mkdir -p "$EVIDENCE_DIR"
+DISPLAY="$DISPLAY_ID" xdotool mousemove 799 799
+sleep 0.5
 DISPLAY="$DISPLAY_ID" import -window root "$TEMP"
 magick "$TEMP" -trim "$OUTPUT"
 rm -f "$TEMP"

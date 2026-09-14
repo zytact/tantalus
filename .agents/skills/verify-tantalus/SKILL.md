@@ -1,6 +1,6 @@
 ---
 name: verify-tantalus
-description: Build and drive the isolated native Tantalus Preview app, capture window screenshots, and run the frontend and Rust suites. Use when verifying allowance windows, refresh, provider settings, updates, tray behavior, or usage parsing.
+description: Build and drive the isolated native Tantalus Preview app against real accounts or fixture usage, capture window screenshots, and run the frontend and Rust suites. Use when verifying allowance windows, refresh, provider settings, updates, tray behavior, or usage parsing.
 ---
 
 # Verify Tantalus
@@ -22,7 +22,7 @@ That identity keeps the preview's app data, autostart entry, installation, and s
 
 ## Launch
 
-Run from the repo root. The screenshot path needs Xvfb, ImageMagick, and X11 tools (`xprop`).
+Run from the repo root. The screenshot path needs Xvfb, ImageMagick, and X11 tools (`xprop`, and `xdotool` for input). Mock mode also needs `python3` and `curl`.
 
 ```sh
 EVIDENCE=/tmp/opencode/tantalus-verify/$(date +%Y%m%d-%H%M%S)
@@ -32,13 +32,37 @@ mkdir -p "$EVIDENCE"
 .agents/skills/verify-tantalus/scripts/doctor.sh 2>&1 | tee "$EVIDENCE/doctor.log"
 ```
 
+Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts.
+
 `build-preview.sh` runs `vp run tauri build --config src-tauri/tauri.preview.conf.json --no-bundle` and checks for `src-tauri/target/release/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that binary on an isolated Xvfb display and records both owned PIDs under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
 
-Ready means `doctor.sh` confirms the preview config, binary, recorded process executable, and isolated display. Run doctor before the first drive and again after any failed or surprising interaction.
+Ready means `doctor.sh` confirms the preview config, binary, recorded process executable, isolated display, and usage mode. Run doctor before the first drive and again after any failed or surprising interaction.
+
+## Usage modes
+
+**Real.** `launch.sh` reads the local credential files and calls the live usage APIs. It proves real credential paths, real response shapes, and the account's actual plan. Doctor fails if the preview carries a fixture origin.
+
+**Mock.** `launch.sh --mock` starts `fixture-server.py` on a free 127.0.0.1 port and launches the preview with `TANTALUS_USAGE_BASE_URL` pointing at it. Only preview builds honor that variable, so release builds always call the providers. The preview still runs its real Rust client, parsers, commands, and WebKit window; only the network answers change. The launch also writes fixture credentials for all three providers under `/tmp/opencode/tantalus-verify/mock-home/` and points `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `HOME` there, so real credentials, saved provider settings, and the preview's autostart entry are never touched. `HOME` matters because the autostart plugin writes `~/.config/autostart/Tantalus Preview.desktop` and ignores `XDG_CONFIG_HOME`. In real mode that entry is written to your real home, so restore Open at login before teardown. Doctor confirms the preview process environment names the harness fixture server.
+
+The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios while the preview runs, then Refresh:
+
+```sh
+.agents/skills/verify-tantalus/scripts/mock-scenario.sh ready
+```
+
+- `ready`: Codex 5h and 7d with two credits, Claude 5h and 7d with extra usage, Opencode 5h, 7d, and 30d. Windows sit below, at, and above the elapsed share, so every pace label the build has appears.
+- `monthly-only`: Codex reports only a 30-day window and an empty credit list.
+- `blocked`: Codex limit reached, Claude locked, Opencode rolling window at 100%.
+- `no-windows`: every provider answers with no recognized window.
+- `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
+
+Every fixture request is logged with its timestamp, scenario, and path in `/tmp/opencode/tantalus-verify/fixture-requests.log`. Use it to prove which provider was read and the retry cadence. Copy it into the evidence directory before cleanup. A request without a fixture token gets 401, so a logged 200 path also proves the preview read the fixture credentials.
+
+Use mock mode for states a real account cannot produce on demand and for every feature proof that depends on specific figures. Use real mode at least once per run to prove live credentials and response shapes still parse.
 
 ## Drive
 
-Use one preview process for the whole pass. Drive the native window with X11 input tooling when interaction is required. Do not use browser automation, inject JavaScript, mock Tauri IPC, or inspect the page through Chromium tooling.
+Use one preview process per usage mode, and run cleanup before switching modes. Drive the native window with `xdotool` against the recorded display (`DISPLAY="$(cat /tmp/opencode/tantalus-verify/run.display)" xdotool ...`) when interaction is required. Do not use browser automation, inject JavaScript, mock Tauri IPC, or inspect the page through Chromium tooling.
 
 1. Run the offline suites:
 
@@ -84,7 +108,7 @@ cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$EVIDENCE/cargo-test
 
 The screenshot helper captures the isolated display, trims its black border to the native preview window, and rejects an image smaller than the configured minimum window size.
 
-The real preview may read local credential files and call the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `/tmp/opencode/tantalus-verify/coverage-home/`. Restore a normal preview launch before proving live readings.
+In real mode the preview reads local credential files and calls the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `/tmp/opencode/tantalus-verify/coverage-home/`. Restore a normal preview launch before proving live readings.
 
 ## Evidence
 
@@ -103,16 +127,18 @@ A screenshot proves visible native webview state. Pair it with the relevant inte
 .agents/skills/verify-tantalus/scripts/cleanup.sh
 ```
 
-The helper kills only the PID started by `launch.sh`, removes temporary credential scaffolding, and preserves evidence. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
+The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home` and `mock-home` scaffolding, and preserves evidence. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
 
 ## Helpers
 
 All shell helpers in `scripts/` are executable:
 
 - `build-preview.sh` builds the separately identified preview app without installing it
-- `launch.sh` starts the built preview binary on an isolated Xvfb display
-- `doctor.sh` checks the preview identity, processes, and display without changing state
+- `launch.sh [--mock [SCENARIO]]` starts the built preview binary on an isolated Xvfb display, with a fixture server in mock mode
+- `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
+- `mock-scenario.sh <NAME>` switches the running fixture scenario
+- `doctor.sh` checks the preview identity, processes, display, and usage mode without changing state
 - `screenshot.sh <EVIDENCE_DIR> [NAME]` captures the native preview window
-- `cleanup.sh` stops only the harness-owned preview and preserves evidence
+- `cleanup.sh` stops only the harness-owned preview, fixture server, and display, and preserves evidence
 
 The feature map is in `features/`. Read the relevant file before driving that feature.

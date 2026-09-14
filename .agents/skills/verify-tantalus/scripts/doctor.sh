@@ -35,4 +35,23 @@ else
   fail=1
 fi
 
+mode="$(cat "$RUN_DIR/run.mode" 2>/dev/null || echo real)"
+origin="$(tr '\0' '\n' <"/proc/$preview_pid/environ" 2>/dev/null | sed -n 's/^TANTALUS_USAGE_BASE_URL=//p')"
+if [ "$mode" = mock ]; then
+  fixture_pid="$(cat "$RUN_DIR/fixture.pid" 2>/dev/null || true)"
+  if [ -n "$fixture_pid" ] && kill -0 "$fixture_pid" 2>/dev/null &&
+    [ "$(readlink -f "/proc/$fixture_pid/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/fixture.exe" 2>/dev/null)" ] &&
+    [ -n "$origin" ] && curl -fsS "$origin/__fixture/health" >/dev/null 2>&1; then
+    echo "OK mock usage: preview reads $origin from harness fixture pid $fixture_pid"
+  else
+    echo "FAIL mock usage: fixture server is missing or the preview does not point at it"
+    fail=1
+  fi
+elif [ -z "$origin" ]; then
+  echo "OK real usage: preview has no fixture origin"
+else
+  echo "FAIL real usage: preview still points at $origin"
+  fail=1
+fi
+
 [ "$fail" -eq 0 ] && echo "DOCTOR: worth driving" || { echo "DOCTOR: not worth driving"; exit 1; }
