@@ -243,6 +243,11 @@ button:focus-visible {
   font-size: 0.78rem;
   line-height: 1.4;
 }
+.setting-copy .setting-url {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .setting-state {
   flex: none;
   color: var(--text-faint);

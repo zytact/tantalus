@@ -6,4 +6,4 @@ The main process saves the proposed choice before changing live state. Turning a
 
 ## Preview proof
 
-In Tantalus Preview, record one provider's state, switch it off, and capture Settings and Allowance. Confirm its block and tray rows disappear while other providers remain. Restart Preview to prove persistence, switch it on, confirm the immediate refresh, then restore the original state.
+In Tantalus Preview, record one provider's state, switch it off, and capture Settings and Allowance. Confirm its block and tray rows disappear while other providers remain. Run `launch.sh --restart` to prove persistence, switch it on, confirm the immediate refresh, then restore the original state.

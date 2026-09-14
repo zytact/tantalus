@@ -31,6 +31,7 @@ import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
 import { UpdateNotice } from "./update-notice";
+import { webBridge } from "./web-bridge";
 import "./styles.css";
 
 /** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
@@ -208,6 +209,11 @@ function useNow() {
   return now;
 }
 
+/** A browser on another device has no preload, so it reads the published snapshot over HTTP and
+ * leaves out everything that changes the app. */
+const remote = !("tantalus" in window);
+if (remote) window.tantalus = webBridge();
+
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
@@ -223,7 +229,7 @@ function App() {
     }
   }, []);
 
-  const canRefresh = snapshot !== null && !refreshing;
+  const canRefresh = !remote && snapshot !== null && !refreshing;
 
   // The chord belongs to the app, so the default is cancelled whether or not a refresh can start.
   useEffect(() => {
@@ -259,20 +265,22 @@ function App() {
                     : "Loading provider settings"}
               </p>
             </div>
-            <div className="header-actions">
-              <button onClick={() => setPage("settings")}>Settings</button>
-              <button
-                onClick={() => void refresh()}
-                disabled={!canRefresh}
-                aria-busy={refreshing}
-                title="Refresh (Ctrl+R or Cmd+R)"
-              >
-                {refreshing ? "Refreshing" : "Refresh"}
-              </button>
-            </div>
+            {!remote && (
+              <div className="header-actions">
+                <button onClick={() => setPage("settings")}>Settings</button>
+                <button
+                  onClick={() => void refresh()}
+                  disabled={!canRefresh}
+                  aria-busy={refreshing}
+                  title="Refresh (Ctrl+R or Cmd+R)"
+                >
+                  {refreshing ? "Refreshing" : "Refresh"}
+                </button>
+              </div>
+            )}
           </header>
 
-          <UpdateNotice />
+          {!remote && <UpdateNotice />}
 
           {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
 

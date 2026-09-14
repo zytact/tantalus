@@ -1,0 +1,17 @@
+# Remote access
+
+Settings has two switches below Open at login. Both start off and save to `remote-access.json` in the settings directory. Nothing listens while both are off.
+
+**Local network** makes the main process listen on `0.0.0.0` at the identity's web port, 4748 for the preview. The row lists `http://<address>:4748` for every non-internal IPv4 address, which includes the Tailscale address when Tailscale is up. **Tailscale** listens on `127.0.0.1` at the same port and runs `tailscale serve --bg --https=8444 http://127.0.0.1:4748`. The row shows `https://<machine>.<tailnet>.ts.net:8444`, read from `tailscale status --json`. Switching Tailscale off runs `tailscale serve --https=8444 off`. Tailscale keeps the route in its own config, so it survives a quit, and launch runs `serve` again when the switch is saved on.
+
+A change saves first, then listens, then runs Tailscale. If any step fails, the file and listener go back to how they were, the switch stays put, and an alert names the cause, such as `Port 4748 is already in use.` or `Tailscale is not signed in.` If the port is taken at launch, the saved switches stay on and Settings shows `Remote access is not being served. Port 4748 is already in use.` until the next successful change.
+
+The page is the allowance view without Settings, Refresh, or the update notice. It reads `/api/current/usageSnapshot`, then follows `/api/events`, which sends the current snapshot on connect and one more on every publish. Only GET is served. A Host header that is not an IP address, a single-label or `.local` name, or a `ts.net` name gets a 403, and a path outside the built page gets a 404.
+
+## Preview proof
+
+Launch with `--mock`, open Settings, and switch Local network on. Confirm the addresses, `{"localNetwork":true,"tailscale":false}` in `mock-home/config/dev.arnab.tantalus.preview/remote-access.json`, and a listener on `0.0.0.0:4748`. Load one listed address with `drive.ts --web ... screenshot` and confirm every provider renders with no Settings or Refresh button. Start `curl -sN http://127.0.0.1:4748/api/events` in the background, Refresh twice in the preview, and count three `event: usageSnapshot` lines. Probe with curl: `-H 'Host: evil.example'` returns 403, `--path-as-is /../package.json` returns 404, and POST returns 405.
+
+For Tailscale, save `tailscale serve status` first and confirm nothing is on 8444. Switch Tailscale on, confirm the `ts.net` URL and the route to `127.0.0.1:4748`, and load that URL with `drive.ts --web`. Switch both off and diff `tailscale serve status` against the saved copy. This needs Tailscale installed, signed in, with Serve and HTTPS allowed on the tailnet, and on Linux an operator set with `sudo tailscale set --operator=$USER`. Without those, record the alert the switch shows instead.
+
+To prove rollback, hold the port with a Python socket bound to `0.0.0.0:4748`, then switch Local network on. The switch stays off, the alert names the port, and the file is unchanged. To prove persistence and the launch message, switch both routes on and run `launch.sh --restart`. Both stay on, the listener returns, and the route is still there. Then stop the preview's recorded pid, bind the port again, run `launch.sh --restart`, and open Settings to read the launch alert. Free the port, and switch any route to clear it. Leaving Tailscale on is safe, since `cleanup.sh` removes the preview's route.

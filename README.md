@@ -23,6 +23,18 @@ Press **Ctrl+R**, or **Cmd+R** on macOS, to refresh.
 
 Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Open Tantalus** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
 
+## Remote access
+
+Settings has two switches that let other devices open a read-only copy of the allowance page. It has no Refresh button and no Settings, and it updates whenever the app refreshes. Both start off, and the choice is saved to `remote-access.json` in the app config directory.
+
+**Local network** listens on every interface at port 4747, so `http://<machine address>:4747` works from any device on the same network. Settings lists the addresses. Anyone on that network can read the page, and a firewall such as firewalld may need the port opened.
+
+**Tailscale** listens on `127.0.0.1:4747` and runs `tailscale serve --bg --https=8443` to proxy it, so `https://<machine>.<tailnet>.ts.net:8443` works from any device on your tailnet. Tailscale keeps the route in its own config, so the link returns an error while Tantalus is closed. Switching it off runs `tailscale serve --https=8443 off`. Tailscale keeps one route per HTTPS port, so switching it on replaces anything you already serve on 8443, and switching it off removes it. It needs Tailscale installed and signed in, with Serve and HTTPS certificates allowed for the tailnet. On Linux, running `serve` without root also needs `sudo tailscale set --operator=$USER` once.
+
+The server answers only requests addressed to an IP address, a single-label or `.local` name, or a `ts.net` name. Any other domain gets a 403, so a website cannot point its own domain at your machine and read the page from your browser.
+
+If the port is taken at launch, Settings says why the routes are not being served. A preview build uses ports 4748 and 8444, so it runs beside a release.
+
 ## Build and check
 
 ```sh
