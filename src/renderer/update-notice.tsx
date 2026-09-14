@@ -1,14 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { usePublishedState } from "./published-state";
 
-/** Mirrors `update::AvailableUpdate` in Rust. */
-export type AvailableUpdate = { version: string };
-
-/** Offers the release Rust found in the background. Installing relaunches into the new version, so
+/** Offers the release the main process found in the background. Installing relaunches into the new version, so
  * a success never comes back here; only a failure, such as a cancelled password prompt, does. */
 export function UpdateNotice() {
-  const [update] = usePublishedState<AvailableUpdate>("update-available", "available_update");
+  const [update] = usePublishedState("updateAvailable");
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,9 +14,9 @@ export function UpdateNotice() {
     setInstalling(true);
     setError(null);
     try {
-      await invoke("install_update");
+      await window.tantalus.invoke("installUpdate");
     } catch (reason) {
-      setError(typeof reason === "string" ? reason : "Could not install the update.");
+      setError(reason instanceof Error ? reason.message : "Could not install the update.");
     } finally {
       setInstalling(false);
     }

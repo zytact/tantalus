@@ -26,16 +26,10 @@ jobs:
         include:
           # deb + rpm
           - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            args: --bundles deb,rpm
-          # dmg. The updater archive is built from the app bundle, so dmg alone would skip it.
+          # dmg to install, zip for the updater
           - platform: macos-latest
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles app,dmg
           # exe (NSIS installer)
           - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            args: --bundles nsis
 
     runs-on: ${{ matrix.platform }}
     permissions:
@@ -58,7 +52,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          version=$(jq -r .version src-tauri/tauri.conf.json)
+          version=$(jq -r .version package.json)
           if [ "$TAG" != "v$version" ]; then
             echo "::error::tag $TAG does not match the app version $version"
             exit 1
@@ -66,40 +60,37 @@ jobs:
 
       - uses: ./.github/actions/setup-frontend
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
+      # electron-builder assembles the rpm with rpmbuild.
       - if: startsWith(matrix.platform, 'ubuntu')
-        uses: ./.github/actions/linux-tauri-deps
+        run: sudo apt-get install -y rpm
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          key: ${{ matrix.target }}
+      - run: vp run package
 
-      # tauri.release.conf.json turns on the updater artifacts: a .sig beside each installer, and an
-      # .app.tar.gz for macOS. Signing them takes the private key, which a preview build never has.
-      - uses: tauri-apps/tauri-action@v0
+      # The updater accepts only bundles signed with this key. Without it the bundles still build, but
+      # publishing fails for want of signatures.
+      - shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tauriScript: vp run tauri
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set, so the bundles are unsigned"
+            exit 0
+          fi
+          shopt -s nullglob
+          node scripts/sign-update.ts release/tantalus/*.deb release/tantalus/*.rpm release/tantalus/*.zip release/tantalus/*-setup.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bundle-${{ matrix.target }}
+          name: bundle-${{ matrix.platform }}
           retention-days: 7
           if-no-files-found: error
           path: |
-            src-tauri/target/**/*.deb
-            src-tauri/target/**/*.rpm
-            src-tauri/target/**/*.dmg
-            src-tauri/target/**/*setup.exe
-            src-tauri/target/**/*.app.tar.gz
-            src-tauri/target/**/*.sig
+            release/tantalus/*.deb
+            release/tantalus/*.rpm
+            release/tantalus/*.dmg
+            release/tantalus/*.zip
+            release/tantalus/*-setup.exe
+            release/tantalus/*.sig
 
   publish:
     if: github.event_name == 'push' || inputs.publish
@@ -122,19 +113,21 @@ jobs:
         # latest.json is what installed apps read from the latest release. Each platform key names
         # the bundle that app was installed from, so an rpm install never downloads the deb.
         run: |
+          shopt -s nullglob
           platforms='{}'
-          while IFS= read -r sig; do
-            name=$(basename "${sig%.sig}")
+          for bundle in bundles/*.deb bundles/*.rpm bundles/*.zip bundles/*-setup.exe; do
+            name=$(basename "$bundle")
+            [ -f "$bundle.sig" ] || { echo "::error::$name is not signed"; exit 1; }
             case "$name" in
               *_amd64.deb) key=linux-x86_64-deb ;;
               *.x86_64.rpm) key=linux-x86_64-rpm ;;
-              *.app.tar.gz) key=darwin-aarch64 ;;
+              *.app.zip) key=darwin-aarch64 ;;
               *-setup.exe) key=windows-x86_64 ;;
               *) echo "::error::no updater platform for $name"; exit 1 ;;
             esac
             platforms=$(jq --arg key "$key" --arg url "https://github.com/$GH_REPO/releases/download/$TAG/$name" \
-              --rawfile signature "$sig" '.[$key] = {url: $url, signature: ($signature | rtrimstr("\n"))}' <<<"$platforms")
-          done < <(find bundles -name '*.sig')
+              --rawfile signature "$bundle.sig" '.[$key] = {url: $url, signature: ($signature | rtrimstr("\n"))}' <<<"$platforms")
+          done
           jq -n --arg version "${TAG#v}" --argjson platforms "$platforms" \
             '{version: $version, pub_date: (now | todate), platforms: $platforms}' > bundles/latest.json
 

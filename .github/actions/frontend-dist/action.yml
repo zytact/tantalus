@@ -1,8 +1,0 @@
-name: frontend dist
-description: Build dist/, which tauri-build requires before any cargo command.
-runs:
-  using: composite
-  steps:
-    - uses: ./.github/actions/setup-frontend
-    - shell: bash
-      run: vp build

@@ -1,12 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
-import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
-import { version } from "../src-tauri/tauri.conf.json";
-import { providerIds, providerNames } from "./presentation";
-import type { ProviderId, UsageSnapshot } from "./presentation";
+import { version } from "../../package.json";
+import { providerIds, providerNames } from "../shared/usage";
+import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { ProviderIcon } from "./provider-icon";
 import { UpdateNotice } from "./update-notice";
-import type { AvailableUpdate } from "./update-notice";
 
 /** The provider choice, or why it cannot be shown yet. */
 export type ProviderChoice = Record<ProviderId, boolean> | "loading" | "unavailable";
@@ -54,13 +51,13 @@ function ProviderRow({
   const [error, setError] = useState<string | null>(null);
   const name = providerNames[id];
 
-  // Rust persists the choice and publishes the new snapshot before it refreshes the provider it
+  // The main process persists the choice and publishes the new snapshot before it refreshes the provider it
   // just switched on, so the switch follows that event rather than waiting out the request.
   const toggle = (enabled: boolean) => {
     setError(null);
-    void invoke<UsageSnapshot>("set_provider_enabled", { provider: id, enabled }).then(onChange, () =>
-      setError(`Could not save the ${name} setting.`),
-    );
+    void window.tantalus
+      .invoke("setProviderEnabled", id, enabled)
+      .then(onChange, () => setError(`Could not save the ${name} setting.`));
   };
 
   return (
@@ -89,7 +86,7 @@ function ProviderRow({
 }
 
 /** The running version and a manual check. A found release is offered by the update notice,
- * which Rust's announcement reaches the same way as a background check. */
+ * which the main process's announcement reaches the same way as a background check. */
 function VersionRow() {
   const [check, setCheck] = useState<"idle" | "checking" | "latest">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -98,11 +95,11 @@ function VersionRow() {
     setCheck("checking");
     setError(null);
     try {
-      const update = await invoke<AvailableUpdate | null>("check_for_update");
+      const update = await window.tantalus.invoke("checkForUpdate");
       setCheck(update ? "idle" : "latest");
     } catch (reason) {
       setCheck("idle");
-      setError(typeof reason === "string" ? reason : "Could not check for updates.");
+      setError(reason instanceof Error ? reason.message : "Could not check for updates.");
     }
   };
 
@@ -146,7 +143,7 @@ export function SettingsPage({
   // cached: it can change from outside the app between one visit and the next.
   useEffect(() => {
     let mounted = true;
-    void isEnabled().then(
+    void window.tantalus.invoke("openAtLogin").then(
       (enabled) => {
         if (mounted) setStartupEnabled(enabled);
       },
@@ -165,7 +162,7 @@ export function SettingsPage({
     setSavingStartup(true);
     setStartupError(null);
     try {
-      await (nextEnabled ? enable() : disable());
+      await window.tantalus.invoke("setOpenAtLogin", nextEnabled);
       setStartupEnabled(nextEnabled);
     } catch {
       setStartupError(nextEnabled ? "Could not turn on opening at login." : "Could not turn off opening at login.");
