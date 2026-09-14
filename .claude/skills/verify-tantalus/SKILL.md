@@ -1,13 +1,13 @@
 ---
 name: verify-tantalus
-description: Build and drive the isolated Tantalus Preview Electron app against real accounts or fixture usage, capture window screenshots, inspect the tray menu, and run the test suite. Use when verifying allowance windows, refresh, provider settings, updates, tray behavior, or usage parsing.
+description: Build and drive the isolated Tantalus Preview Electron app against real accounts or fixture usage, capture window screenshots, inspect the tray menu, and run the test suite. Use when verifying allowance windows, refresh, provider settings, remote access over the local network or Tailscale, updates, tray behavior, or usage parsing.
 ---
 
 # Verify Tantalus
 
-Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`.
+Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`. With remote access on, it also serves a read-only copy of that page over HTTP to other devices.
 
-Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process.
+Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process. The one exception is the remote access page, which is built for a plain browser. Load it from the running preview's own server with `drive.ts --web`.
 
 ## Isolation
 
@@ -17,8 +17,9 @@ Verification uses the built preview app. Electron ships its own Chromium, so the
 - app id `dev.arnab.tantalus.preview`
 - executable name `tantalus-preview`
 - blue app and tray icons
+- remote access on port 4748 and Tailscale HTTPS port 8444, where the release uses 4747 and 8443
 
-That identity keeps the preview's settings directory, open-at-login entry, and single-instance lock separate from the release app. Do not launch `release/tantalus/`, install a release bundle, or quit an existing release instance during verification.
+That identity keeps the preview's settings directory, open-at-login entry, single-instance lock, and remote access ports separate from the release app. Do not launch `release/tantalus/`, install a release bundle, or quit an existing release instance during verification.
 
 ## Launch
 
@@ -32,7 +33,9 @@ mkdir -p "$EVIDENCE"
 .agents/skills/verify-tantalus/scripts/doctor.sh 2>&1 | tee "$EVIDENCE/doctor.log"
 ```
 
-Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts.
+Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts. Pass `--restart` to quit and relaunch only the preview, keeping the display, usage mode, fixture server, and saved settings, which is how a proof shows that something survives a restart. Run doctor again after it.
+
+If `build-preview.sh` fails with `The specified electronDist does not exist`, the install skipped Electron's download, which happens in a fresh worktree. Run `node node_modules/electron/install.js` and build again.
 
 `build-preview.sh` runs `vp build`, `vp pack`, and `node scripts/package.ts --preview --dir`, then checks for `release/tantalus-preview/linux-unpacked/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that executable on an isolated Xvfb display with `--remote-debugging-port` on a free local port, and records the PIDs and the port under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
 
@@ -74,6 +77,13 @@ node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" sett
 
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click by ARIA role and accessible name, as the snapshot shows them.
 
+Prefix a command with `--web <url>` to run it against the remote access page instead. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
+
+```sh
+node .agents/skills/verify-tantalus/scripts/drive.ts --web http://127.0.0.1:4748/ snapshot
+node .agents/skills/verify-tantalus/scripts/drive.ts --web https://<machine>.<tailnet>.ts.net:8444/ screenshot "$EVIDENCE" web
+```
+
 1. Run the offline suite:
 
 ```sh
@@ -96,6 +106,7 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 - Confirm Codex and Claude default on and Opencode defaults off only when the preview has no saved settings.
 - Confirm the version and the Open at login switch. Restore the original value before teardown.
 - Click Check for updates. Preview must report `Dev and preview builds do not check for updates.`
+- Exercise Local network and Tailscale (see `features/remote-access.md`). Switch both off before teardown.
 
 5. Exercise the tray (see `features/tray-and-autorefresh.md`).
 
@@ -120,18 +131,18 @@ A screenshot proves the rendered page. Pair it with the relevant interaction and
 .agents/skills/verify-tantalus/scripts/cleanup.sh
 ```
 
-The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home` and `mock-home` scaffolding, and preserves evidence. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
+The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home` and `mock-home` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
 
 ## Helpers
 
 All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it
-- `launch.sh [--mock [SCENARIO]]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode
-- `drive.ts <snapshot | click ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window
+- `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
+- `drive.ts [--web URL] <snapshot | click ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
-- `cleanup.sh` stops only the harness-owned preview, fixture server, and display, and preserves evidence
+- `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
 
 The feature map is in `features/`. Read the relevant file before driving that feature.

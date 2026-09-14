@@ -30,6 +30,12 @@ stop_owned() {
 stop_owned preview "$RUN_DIR/run.pid" "$(readlink -f "$BIN" 2>/dev/null)"
 stop_owned "fixture server" "$RUN_DIR/fixture.pid" "$(cat "$RUN_DIR/fixture.exe" 2>/dev/null || true)"
 stop_owned Xvfb "$RUN_DIR/xvfb.pid" "$(cat "$RUN_DIR/xvfb.exe" 2>/dev/null || true)"
+# The preview's Tailscale switch writes a route into Tailscale's own config, which outlives the app. Remove
+# it only while it still points at the preview's local port, so a route the user set up stays.
+if command -v tailscale >/dev/null && tailscale serve status 2>/dev/null | grep -A1 ':8444 ' | grep -q '127.0.0.1:4748'; then
+  echo "Removing the preview's Tailscale route on port 8444"
+  tailscale serve --https=8444 off >/dev/null
+fi
 rm -f "$RUN_DIR/run.pid" "$RUN_DIR/xvfb.pid" "$RUN_DIR/xvfb.exe" "$RUN_DIR/run.display" "$RUN_DIR/run.cdp" \
   "$RUN_DIR/run.mode" "$RUN_DIR/fixture.pid" "$RUN_DIR/fixture.exe" "$RUN_DIR/fixture.port"
 

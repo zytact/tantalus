@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Launch the built preview on an isolated virtual display with its DevTools protocol open for drive.ts.
-# --mock serves fixture usage instead of the live APIs.
+# --mock serves fixture usage instead of the live APIs. --restart relaunches only the preview, keeping the
+# display, the usage mode, the fixture server, and every saved setting, to prove what survives a restart.
 set -euo pipefail
 RUN_DIR="/tmp/opencode/tantalus-verify"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOCK_HOME="$RUN_DIR/mock-home"
 MODE="real"
 SCENARIO="ready"
+RESTART=0
 case "${1:-}" in
   "") ;;
   --mock) MODE="mock"; SCENARIO="${2:-ready}" ;;
-  *) echo "usage: launch.sh [--mock [SCENARIO]]" >&2; exit 1 ;;
+  --restart) RESTART=1; MODE="$(cat "$RUN_DIR/run.mode" 2>/dev/null || echo real)" ;;
+  *) echo "usage: launch.sh [--mock [SCENARIO] | --restart]" >&2; exit 1 ;;
 esac
 BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
 XVFB="${TANTALUS_XVFB:-$(command -v Xvfb || true)}"
@@ -19,44 +22,64 @@ mkdir -p "$RUN_DIR"
 [ -x "$BIN" ] || { echo "Preview binary missing. Run scripts/build-preview.sh first." >&2; exit 1; }
 [ -x "$XVFB" ] || { echo "Xvfb is required. Install it or set TANTALUS_XVFB." >&2; exit 1; }
 
-if [ -f "$RUN_DIR/run.pid" ]; then
-  recorded_pid="$(cat "$RUN_DIR/run.pid")"
-  if kill -0 "$recorded_pid" 2>/dev/null &&
-    [ "$(readlink -f "/proc/$recorded_pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]; then
+preview_running() {
+  local pid
+  pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
+    [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]
+}
+
+if [ "$RESTART" = 1 ]; then
+  [ -s "$RUN_DIR/run.display" ] || { echo "Nothing to restart. Run launch.sh first." >&2; exit 1; }
+  if preview_running; then
+    kill "$(cat "$RUN_DIR/run.pid")"
+    for _ in $(seq 1 10); do
+      preview_running || break
+      sleep 1
+    done
+    preview_running && { echo "The preview did not quit. Run cleanup.sh." >&2; exit 1; }
+  fi
+  rm -f "$RUN_DIR/run.pid"
+elif [ -f "$RUN_DIR/run.pid" ]; then
+  if preview_running; then
     echo "Refusing: a preview from this harness is still running. Run cleanup.sh first." >&2
     exit 1
   fi
   rm -f "$RUN_DIR/run.pid"
 fi
 
-display_number=""
-for candidate in $(seq 90 110); do
-  if [ ! -e "/tmp/.X11-unix/X$candidate" ]; then
-    display_number="$candidate"
-    break
-  fi
-done
-[ -n "$display_number" ] || { echo "No free virtual display from :90 to :110." >&2; exit 1; }
-display=":$display_number"
+if [ "$RESTART" = 1 ]; then
+  display="$(cat "$RUN_DIR/run.display")"
+else
+  display_number=""
+  for candidate in $(seq 90 110); do
+    if [ ! -e "/tmp/.X11-unix/X$candidate" ]; then
+      display_number="$candidate"
+      break
+    fi
+  done
+  [ -n "$display_number" ] || { echo "No free virtual display from :90 to :110." >&2; exit 1; }
+  display=":$display_number"
 
-setsid "$XVFB" "$display" -screen 0 800x800x24 -nolisten tcp >"$RUN_DIR/xvfb.log" 2>&1 &
-xvfb_pid=$!
-echo "$xvfb_pid" >"$RUN_DIR/xvfb.pid"
-readlink -f "$XVFB" >"$RUN_DIR/xvfb.exe"
-echo "$display" >"$RUN_DIR/run.display"
+  setsid "$XVFB" "$display" -screen 0 800x800x24 -nolisten tcp >"$RUN_DIR/xvfb.log" 2>&1 &
+  xvfb_pid=$!
+  echo "$xvfb_pid" >"$RUN_DIR/xvfb.pid"
+  readlink -f "$XVFB" >"$RUN_DIR/xvfb.exe"
+  echo "$display" >"$RUN_DIR/run.display"
 
-for _ in $(seq 1 30); do
-  DISPLAY="$display" xprop -root >/dev/null 2>&1 && break
-  kill -0 "$xvfb_pid" 2>/dev/null || { echo "Xvfb exited early." >&2; exit 1; }
-  sleep 1
-done
+  for _ in $(seq 1 30); do
+    DISPLAY="$display" xprop -root >/dev/null 2>&1 && break
+    kill -0 "$xvfb_pid" 2>/dev/null || { echo "Xvfb exited early." >&2; exit 1; }
+    sleep 1
+  done
+fi
 
 echo "$MODE" >"$RUN_DIR/run.mode"
 cdp_port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 echo "$cdp_port" >"$RUN_DIR/run.cdp"
 # A shell inside another Electron app can carry ELECTRON_RUN_AS_NODE, which starts a bare Node instead.
 preview_env=(env -u TANTALUS_USAGE_BASE_URL -u ELECTRON_RUN_AS_NODE DISPLAY="$display")
-if [ "$MODE" = mock ]; then
+if [ "$MODE" = mock ] && [ "$RESTART" = 0 ]; then
   rm -rf "$MOCK_HOME"
   mkdir -p "$MOCK_HOME/codex" "$MOCK_HOME/claude" "$MOCK_HOME/data/opencode" "$MOCK_HOME/config" "$MOCK_HOME/home"
   echo '{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account"}}' >"$MOCK_HOME/codex/auth.json"
@@ -73,6 +96,8 @@ if [ "$MODE" = mock ]; then
     sleep 0.5
   done
   [ -s "$RUN_DIR/fixture.port" ] || { echo "Fixture server did not start:" >&2; cat "$RUN_DIR/fixture.log" >&2; exit 1; }
+fi
+if [ "$MODE" = mock ]; then
   preview_env+=(
     TANTALUS_USAGE_BASE_URL="http://127.0.0.1:$(cat "$RUN_DIR/fixture.port")"
     CODEX_HOME="$MOCK_HOME/codex"
