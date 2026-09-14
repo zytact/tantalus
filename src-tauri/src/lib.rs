@@ -42,7 +42,7 @@ struct AppState {
     /// One lock per provider, in `Provider::ALL` order, so a refresh and a switch never read the
     /// same provider at once.
     requests: [Mutex<()>; Provider::ALL.len()],
-    client: reqwest::Client,
+    api: api::UsageApi,
     settings_path: PathBuf,
 }
 
@@ -210,9 +210,9 @@ async fn fetch_provider(
 ) -> Result<ProviderUsage, RefreshError> {
     let credentials = credentials.map_err(RefreshError::Auth)?;
     match provider {
-        Provider::Codex => api::fetch_codex(&state.client, &credentials).await,
-        Provider::Claude => api::fetch_claude(&state.client, &credentials).await,
-        Provider::Opencode => api::fetch_opencode(&state.client, &credentials).await,
+        Provider::Codex => state.api.fetch_codex(&credentials).await,
+        Provider::Claude => state.api.fetch_claude(&credentials).await,
+        Provider::Opencode => state.api.fetch_opencode(&credentials).await,
     }
     .map_err(RefreshError::Api)
 }
@@ -683,6 +683,7 @@ fn show_window(app: &AppHandle) {
 /// was bundled with rather than a build flag, so a preview can never end up wearing release
 /// identity or the other way round.
 const PREVIEW_IDENTIFIER: &str = "dev.arnab.tantalus.preview";
+const USAGE_ORIGIN_VARIABLE: &str = "TANTALUS_USAGE_BASE_URL";
 
 /// The app mark without its base arc, which stays legible at tray sizes. macOS renders it from
 /// the alpha channel alone as a template image.
@@ -696,13 +697,19 @@ fn is_preview(app: &AppHandle) -> bool {
     app.config().identifier == PREVIEW_IDENTIFIER
 }
 
+fn usage_origin_override(app: &AppHandle) -> Option<String> {
+    is_preview(app)
+        .then(|| std::env::var(USAGE_ORIGIN_VARIABLE).ok())
+        .flatten()
+        .filter(|origin| !origin.is_empty())
+}
+
 fn tray_icon(preview: bool) -> tauri::image::Image<'static> {
     let bytes = if preview { PREVIEW_TRAY_PNG } else { TRAY_PNG };
     tauri::image::Image::from_bytes(bytes).expect("tray icon is a valid PNG")
 }
 
 pub fn run() {
-    let client = api::client().expect("failed to create HTTP client");
     tauri::Builder::default()
         // A second launch belongs to the instance already in the tray, so it raises that
         // window instead of starting a rival process with its own tray icon.
@@ -741,7 +748,8 @@ pub fn run() {
                 snapshot: Mutex::new(settings_snapshot),
                 refreshing: AtomicU8::new(0),
                 requests: Default::default(),
-                client,
+                api: api::UsageApi::new(usage_origin_override(app.handle()))
+                    .expect("failed to create HTTP client"),
                 settings_path,
             });
             let preview = is_preview(app.handle());
@@ -973,7 +981,7 @@ mod tests {
             snapshot: Mutex::new(UsageSnapshot::default()),
             refreshing: AtomicU8::new(0),
             requests: Default::default(),
-            client: api::client().expect("client"),
+            api: api::UsageApi::new(None).expect("client"),
             settings_path: std::env::temp_dir().join("tantalus-test-providers.json"),
         }
     }
