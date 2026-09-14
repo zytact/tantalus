@@ -527,6 +527,8 @@ fn tray_row(span: &str, window: &usage::WindowUsage, now: i64) -> String {
     }
 }
 
+const PACE_TOLERANCE: f64 = 2.0;
+
 fn pace_label(window: &usage::WindowUsage, now: i64) -> Option<&'static str> {
     let used = window.used_percent?;
     let duration = window.limit_window_seconds?;
@@ -537,7 +539,9 @@ fn pace_label(window: &usage::WindowUsage, now: i64) -> Option<&'static str> {
     let started = reset.saturating_sub(duration);
     let elapsed = now.saturating_sub(started);
     let expected = (elapsed as f64 / duration as f64 * 100.0).clamp(0.0, 100.0);
-    Some(if used <= expected {
+    Some(if (used - expected).abs() <= PACE_TOLERANCE {
+        "On pace"
+    } else if used < expected {
         "Under pace"
     } else {
         "Ahead of pace"
@@ -901,14 +905,17 @@ mod tests {
 
     #[test]
     fn the_tray_compares_usage_with_elapsed_time() {
-        let mut under = window(usage::SEVEN_DAY_SECONDS, 14.0);
+        let mut under = window(usage::SEVEN_DAY_SECONDS, 12.0);
         under.reset_at_epoch = Some(1_000_000 + usage::SEVEN_DAY_SECONDS * 6 / 7);
+        let mut on = under.clone();
+        on.used_percent = Some(16.0);
         let mut ahead = under.clone();
-        ahead.used_percent = Some(15.0);
+        ahead.used_percent = Some(16.5);
 
         assert_eq!(pace_label(&under, 1_000_000), Some("Under pace"));
+        assert_eq!(pace_label(&on, 1_000_000), Some("On pace"));
         assert_eq!(pace_label(&ahead, 1_000_000), Some("Ahead of pace"));
-        assert!(tray_row("7d", &under, 1_000_000).ends_with("14%  Under pace"));
+        assert!(tray_row("7d", &under, 1_000_000).ends_with("12%  Under pace"));
     }
 
     /// Every bar is the same width whatever the reading, so the rows stack into a column.

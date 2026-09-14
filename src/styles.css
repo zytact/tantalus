@@ -302,6 +302,9 @@ button:focus-visible {
 .pace[data-pace="under"] {
   color: var(--ok);
 }
+.pace[data-pace="on"] {
+  color: var(--text-muted);
+}
 .pace[data-pace="ahead"] {
   color: var(--danger);
 }

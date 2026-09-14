@@ -54,13 +54,15 @@ describe("display contract", () => {
   it("compares usage with elapsed time in its reset window", () => {
     const now = 1_000_000;
     const window = {
-      used_percent: 14,
+      used_percent: 12,
       limit_window_seconds: 700,
       reset_at_epoch: now + 600,
     };
     expect(usagePace(window, now)?.expectedPercent).toBeCloseTo(100 / 7);
     expect(usagePace(window, now)?.label).toBe("Under pace");
-    expect(usagePace({ ...window, used_percent: 15 }, now)?.label).toBe("Ahead of pace");
+    expect(usagePace({ ...window, used_percent: 12.3 }, now)?.label).toBe("On pace");
+    expect(usagePace({ ...window, used_percent: 16.2 }, now)?.label).toBe("On pace");
+    expect(usagePace({ ...window, used_percent: 16.3 }, now)?.label).toBe("Ahead of pace");
     expect(usagePace({ ...window, reset_at_epoch: null }, now)).toBeNull();
   });
 
