@@ -17,25 +17,59 @@ export function launchedHidden(): boolean {
 }
 
 /** Linux has no login item API, so the registration is an XDG autostart entry. */
-function autostartEntry(identity: Identity): string {
+function autostartEntries(identity: Identity): string[] {
   const config = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-  return join(config, "autostart", `${identity.executableName}.desktop`);
+  return [
+    ...new Set([
+      join(config, "autostart", `${identity.productName}.desktop`),
+      join(config, "autostart", `${identity.executableName}.desktop`),
+      join(homedir(), ".config", "autostart", `${identity.productName}.desktop`),
+    ]),
+  ];
+}
+
+function legacyMacLoginItem(identity: Identity): string {
+  return join(homedir(), "Library", "LaunchAgents", `${identity.productName}.plist`);
 }
 
 /** Read from the operating system on every call, since the registration can change from outside the app. */
 export function openAtLogin(identity: Identity): boolean {
-  if (process.platform === "linux") return existsSync(autostartEntry(identity));
-  return app.getLoginItemSettings({ args: [HIDDEN_FLAG] }).openAtLogin;
+  if (process.platform === "linux") return autostartEntries(identity).some(existsSync);
+  return systemOpenAtLogin(identity);
+}
+
+function systemOpenAtLogin(identity: Identity): boolean {
+  const settings = app.getLoginItemSettings({ args: [HIDDEN_FLAG] });
+  if (process.platform === "darwin") return settings.openAtLogin || existsSync(legacyMacLoginItem(identity));
+  return (
+    settings.openAtLogin || settings.launchItems.some((item) => item.name === identity.productName && item.enabled)
+  );
 }
 
 export function setOpenAtLogin(identity: Identity, enabled: boolean) {
-  if (process.platform !== "linux") {
-    app.setLoginItemSettings({ openAtLogin: enabled, args: [HIDDEN_FLAG] });
+  if (process.platform === "linux") {
+    setLinuxOpenAtLogin(identity, enabled);
     return;
   }
-  const entry = autostartEntry(identity);
+  setSystemOpenAtLogin(identity, enabled);
+}
+
+function setSystemOpenAtLogin(identity: Identity, enabled: boolean) {
+  if (process.platform === "darwin") {
+    app.setLoginItemSettings({ openAtLogin: enabled, args: [HIDDEN_FLAG] });
+    rmSync(legacyMacLoginItem(identity), { force: true });
+    return;
+  }
+  if (process.platform === "win32") {
+    app.setLoginItemSettings({ openAtLogin: enabled, args: [HIDDEN_FLAG], name: identity.productName });
+    if (!enabled) app.setLoginItemSettings({ openAtLogin: false, args: [HIDDEN_FLAG] });
+  }
+}
+
+function setLinuxOpenAtLogin(identity: Identity, enabled: boolean) {
+  const [entry, ...supersededEntries] = autostartEntries(identity);
   if (!enabled) {
-    rmSync(entry, { force: true });
+    for (const path of [entry, ...supersededEntries]) rmSync(path, { force: true });
     return;
   }
   mkdirSync(join(entry, ".."), { recursive: true });
@@ -50,4 +84,5 @@ export function setOpenAtLogin(identity: Identity, enabled: boolean) {
       "",
     ].join("\n"),
   );
+  for (const path of supersededEntries) rmSync(path, { force: true });
 }

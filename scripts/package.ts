@@ -11,7 +11,11 @@ await build({
   config: {
     appId: identity.appId,
     productName: identity.productName,
-    extraMetadata: { name: identity.executableName, productName: identity.productName },
+    extraMetadata: {
+      name: identity.executableName,
+      productName: identity.productName,
+      desktopName: identity.productName,
+    },
     directories: { output: `release/${identity.executableName}`, buildResources: "build" },
     electronDist: "node_modules/electron/dist",
     files: ["dist/**", "dist-electron/**", "package.json"],
@@ -24,6 +28,7 @@ await build({
       icon: `${identity.icons}/icon.png`,
       category: "Utility",
       maintainer: "Arnab",
+      syncDesktopName: true,
     },
     deb: { artifactName: "${name}_${version}_amd64.${ext}" },
     rpm: { artifactName: "${name}-${version}.x86_64.${ext}" },
@@ -32,7 +37,7 @@ await build({
         ? "dir"
         : [
             { target: "dmg", arch: "arm64" },
-            { target: "zip", arch: "arm64" },
+            { target: "tar.gz", arch: "arm64" },
           ],
       icon: `${identity.icons}/icon.png`,
       category: "public.app-category.utilities",
@@ -47,6 +52,11 @@ await build({
       executableName: identity.executableName,
       icon: `${identity.icons}/icon.png`,
     },
-    nsis: { oneClick: true, perMachine: false, artifactName: "${productName}_${version}_x64-setup.${ext}" },
+    nsis: {
+      oneClick: true,
+      perMachine: false,
+      include: "build/installer.nsh",
+      artifactName: "${productName}_${version}_x64-setup.${ext}",
+    },
   },
 });

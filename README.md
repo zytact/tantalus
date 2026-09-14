@@ -47,7 +47,7 @@ vp run package
 
 `vp check` verifies formatting with Oxfmt, lints with Oxlint, and type checks. Add `--fix` to rewrite instead of report. A pre-commit hook runs `vp staged`, which applies `vp check --fix` to the staged files.
 
-`vp run package` builds the page and the main process, then `scripts/package.ts` runs electron-builder into `release/tantalus/`: a deb and an rpm on Linux, a dmg and an updater zip on macOS, and an NSIS installer on Windows. Build each platform's bundles on that platform. Add `-- --dir` to stop at the unpacked app. Assembling the Linux packages needs `rpmbuild`, and electron-builder's bundled fpm needs `libcrypt.so.1`, which Fedora ships as `libxcrypt-compat`.
+`vp run package` builds the page and the main process, then `scripts/package.ts` runs electron-builder into `release/tantalus/`: a deb and an rpm on Linux, a dmg and an updater tarball on macOS, and an NSIS installer on Windows. Build each platform's bundles on that platform. Add `-- --dir` to stop at the unpacked app. Assembling the Linux packages needs `rpmbuild`, and electron-builder's bundled fpm needs `libcrypt.so.1`, which Fedora ships as `libxcrypt-compat`.
 
 ## Preview builds
 
@@ -69,16 +69,11 @@ magick tray.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/tray.png
 
 ## Updates
 
-A release build checks `latest.json` on the latest published GitHub release at launch and every 6 hours, and Settings has a **Check for updates** button that runs the same check on demand. When it finds a newer version, the window shows an **Install update** banner and the tray menu gains an item that opens the window. Installing downloads the update for the bundle the app was installed from (the deb, the rpm, the NSIS installer, or a zip on macOS), verifies its Ed25519 signature, installs it, and relaunches. A deb or rpm install asks for an administrator password through polkit. On macOS the new app replaces the old one in place, so the app needs write access to its folder. Dev and preview builds never check.
+A release build checks `latest.json` on the latest published GitHub release at launch and every 6 hours, and Settings has a **Check for updates** button that runs the same check on demand. When it finds a newer version, the window shows an **Install update** banner and the tray menu gains an item that opens the window. Installing downloads the update for the bundle the app was installed from (the deb, the rpm, the NSIS installer, or an app tarball on macOS), verifies its Minisign Ed25519 signature, installs it, and relaunches. A deb or rpm install asks for an administrator password through polkit. On macOS the new app replaces the old one in place, so the app needs write access to its folder. Dev and preview builds never check.
 
 macOS builds are ad-hoc signed rather than signed with an Apple Developer ID, so the first launch of a downloaded dmg needs **Open** from the app's context menu, or `xattr -dr com.apple.quarantine /Applications/Tantalus.app`. Updates arrive without that step, since the app downloads them itself.
 
-The release workflow signs every bundle with the private key in the `UPDATE_SIGNING_KEY` secret through `scripts/sign-update.ts`, and writes `latest.json` into the draft release. Installed apps see a release only after its draft is published. The matching public key lives in `src/main/release.ts`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub. To make a new pair:
-
-```sh
-openssl genpkey -algorithm ed25519 -out update-signing-key.pem
-openssl pkey -in update-signing-key.pem -pubout
-```
+The release workflow signs every bundle with the existing Tauri Minisign key in the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets through `scripts/sign-update.ts`, and writes `latest.json` into the draft release. Installed Tauri and Electron versions trust that same key. The matching public key lives in `src/main/release.ts`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub.
 
 ## Privacy and behavior
 

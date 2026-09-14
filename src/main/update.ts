@@ -79,8 +79,9 @@ export class Updater {
     if (!update) throw new Error("No update is ready to install.");
     if (this.installing) throw new Error("The update is already installing.");
     this.installing = true;
-    const directory = await mkdtemp(join(app.getPath("temp"), "tantalus-update-"));
+    let directory: string | null = null;
     try {
+      directory = await mkdtemp(join(app.getPath("temp"), "tantalus-update-"));
       // A stalled download would otherwise hold the install open, and every retry refused, for good.
       const response = await fetch(update.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT) });
       if (!response.ok) throw new Error(`the download returned ${response.status}`);
@@ -90,7 +91,11 @@ export class Updater {
       await writeFile(file, data);
       await installBundle(file, directory);
     } catch (error) {
-      await rm(directory, { recursive: true, force: true });
+      if (directory) {
+        await rm(directory, { recursive: true, force: true }).catch((cleanupError: unknown) =>
+          console.error("Failed to remove the update directory:", cleanupError),
+        );
+      }
       throw new Error(`Could not install the update: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       this.installing = false;
@@ -101,7 +106,7 @@ export class Updater {
 async function installBundle(file: string, directory: string) {
   switch (process.platform) {
     case "win32":
-      spawn(file, ["--updated", "/S", "--force-run"], { detached: true, stdio: "ignore" }).unref();
+      await launchWindowsInstaller(file);
       app.exit(0);
       return;
     case "darwin":
@@ -110,9 +115,20 @@ async function installBundle(file: string, directory: string) {
     default:
       await run("pkexec", platformKey()?.endsWith("-rpm") ? ["rpm", "-U", file] : ["dpkg", "-i", file]);
   }
-  await rm(directory, { recursive: true, force: true });
+  await rm(directory, { recursive: true, force: true }).catch((error: unknown) =>
+    console.error("Failed to remove the update directory:", error),
+  );
   app.relaunch();
   app.exit(0);
+}
+
+async function launchWindowsInstaller(file: string) {
+  const installer = spawn(file, ["--updated", "/S", "--force-run"], { detached: true, stdio: "ignore" });
+  await new Promise<void>((resolve, reject) => {
+    installer.once("spawn", resolve);
+    installer.once("error", reject);
+  });
+  installer.unref();
 }
 
 /** Unpacks the new bundle beside the running one, so the swap is a rename on one volume, and puts the
@@ -123,7 +139,7 @@ async function replaceAppBundle(archive: string) {
   const unpacked = join(staging, basename(bundle));
   const previous = join(staging, "previous.app");
   try {
-    await run("ditto", ["-x", "-k", archive, staging]);
+    await run("tar", ["-xzf", archive, "-C", staging]);
     await access(join(unpacked, "Contents", "Info.plist"));
     await rename(bundle, previous);
     try {

@@ -26,7 +26,7 @@ jobs:
         include:
           # deb + rpm
           - platform: ubuntu-22.04
-          # dmg to install, zip for the updater
+          # dmg to install, tar.gz for the updater
           - platform: macos-latest
           # exe (NSIS installer)
           - platform: windows-latest
@@ -66,18 +66,19 @@ jobs:
 
       - run: vp run package
 
-      # The updater accepts only bundles signed with this key. Without it the bundles still build, but
-      # publishing fails for want of signatures.
+      # The updater accepts only bundles signed with the same key as the Tauri releases. Without it the
+      # bundles still build, but publishing fails for want of signatures.
       - shell: bash
         env:
-          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          if [ -z "$UPDATE_SIGNING_KEY" ]; then
-            echo "::warning::UPDATE_SIGNING_KEY is not set, so the bundles are unsigned"
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set, so the bundles are unsigned"
             exit 0
           fi
           shopt -s nullglob
-          node scripts/sign-update.ts release/tantalus/*.deb release/tantalus/*.rpm release/tantalus/*.zip release/tantalus/*-setup.exe
+          node scripts/sign-update.ts release/tantalus/*.deb release/tantalus/*.rpm release/tantalus/*.tar.gz release/tantalus/*-setup.exe
 
       - uses: actions/upload-artifact@v4
         with:
@@ -88,7 +89,7 @@ jobs:
             release/tantalus/*.deb
             release/tantalus/*.rpm
             release/tantalus/*.dmg
-            release/tantalus/*.zip
+            release/tantalus/*.tar.gz
             release/tantalus/*-setup.exe
             release/tantalus/*.sig
 
@@ -115,13 +116,13 @@ jobs:
         run: |
           shopt -s nullglob
           platforms='{}'
-          for bundle in bundles/*.deb bundles/*.rpm bundles/*.zip bundles/*-setup.exe; do
+          for bundle in bundles/*.deb bundles/*.rpm bundles/*.tar.gz bundles/*-setup.exe; do
             name=$(basename "$bundle")
             [ -f "$bundle.sig" ] || { echo "::error::$name is not signed"; exit 1; }
             case "$name" in
               *_amd64.deb) key=linux-x86_64-deb ;;
               *.x86_64.rpm) key=linux-x86_64-rpm ;;
-              *.app.zip) key=darwin-aarch64 ;;
+              *.tar.gz) key=darwin-aarch64 ;;
               *-setup.exe) key=windows-x86_64 ;;
               *) echo "::error::no updater platform for $name"; exit 1 ;;
             esac

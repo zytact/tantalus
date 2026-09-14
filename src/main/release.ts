@@ -1,10 +1,10 @@
-import { createPublicKey, verify } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { field } from "./parse";
 
-/** The key `scripts/sign-update.ts` signs releases with, from the `UPDATE_SIGNING_KEY` secret. */
-const PUBLIC_KEY = createPublicKey(
-  "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPnuyITCysHmJF6y3/m9b9LutJ9rk6B0o3TL3DX0C8+o=\n-----END PUBLIC KEY-----",
-);
+/** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
+const PUBLIC_KEY =
+  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4Q0M5ODY5MTI1MDVEQjgKUldTNFhWQVNhWmpNU0N5VXJlQVYxNGppUHZrZTJFVVFKZzcyQWxKY2xqVUJYOU5WTDVyVW41MkUK";
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 export type ReleaseAsset = { url: string; signature: string };
 export type Manifest = { version: string; platforms: Record<string, ReleaseAsset> };
@@ -33,6 +33,40 @@ export function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
-export function verifySignature(data: Buffer, signature: string, key = PUBLIC_KEY): boolean {
-  return verify(null, data, key, Buffer.from(signature, "base64"));
+export function verifySignature(data: Buffer, signature: string, publicKey = PUBLIC_KEY): boolean {
+  try {
+    const publicKeyLines = Buffer.from(publicKey, "base64").toString("utf8").trimEnd().split(/\r?\n/);
+    const signatureLines = Buffer.from(signature, "base64").toString("utf8").trimEnd().split(/\r?\n/);
+    if (publicKeyLines.length !== 2 || signatureLines.length !== 4) return false;
+
+    const publicKeyPacket = Buffer.from(publicKeyLines[1], "base64");
+    const signaturePacket = Buffer.from(signatureLines[1], "base64");
+    const globalSignature = Buffer.from(signatureLines[3], "base64");
+    if (
+      publicKeyPacket.length !== 42 ||
+      publicKeyPacket.subarray(0, 2).toString("ascii") !== "Ed" ||
+      signaturePacket.length !== 74 ||
+      signaturePacket.subarray(0, 2).toString("ascii") !== "ED" ||
+      globalSignature.length !== 64 ||
+      !signatureLines[2].startsWith("trusted comment: ") ||
+      !publicKeyPacket.subarray(2, 10).equals(signaturePacket.subarray(2, 10))
+    ) {
+      return false;
+    }
+
+    const key = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, publicKeyPacket.subarray(10)]),
+      format: "der",
+      type: "spki",
+    });
+    const releaseSignature = signaturePacket.subarray(10);
+    const digest = createHash("blake2b512").update(data).digest();
+    const trustedComment = Buffer.from(signatureLines[2].slice("trusted comment: ".length));
+    return (
+      verify(null, digest, key, releaseSignature) &&
+      verify(null, Buffer.concat([releaseSignature, trustedComment]), key, globalSignature)
+    );
+  } catch {
+    return false;
+  }
 }
