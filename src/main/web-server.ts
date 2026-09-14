@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
 import type { UsageSnapshot } from "../shared/usage";
 
@@ -59,6 +60,7 @@ export class WebServer {
   }
 
   private respond(request: IncomingMessage, response: ServerResponse) {
+    if (!trustedHost(request.headers.host)) return send(response, 403, "text/plain", "Forbidden");
     if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     const path = pathname(request.url);
     if (path === "/api/events") return this.stream(request, response);
@@ -86,6 +88,20 @@ export class WebServer {
       send(response, 404, "text/plain", "Not found");
     }
   }
+}
+
+/** A website can point its own domain at this machine and read the page from the visitor's browser. It
+ * cannot own an IP address, a single-label or `.local` name, or a Tailscale `ts.net` name, so those are
+ * the only hosts served. */
+export function trustedHost(header: string | undefined): boolean {
+  if (!header) return false;
+  let host: string;
+  try {
+    host = new URL(`http://${header}`).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return false;
+  }
+  return isIP(host) !== 0 || !host.includes(".") || host.endsWith(".local") || host.endsWith(".ts.net");
 }
 
 /** The decoded path, or null when the request's is malformed. */

@@ -29,9 +29,11 @@ Settings has two switches that let other devices open a read-only copy of the al
 
 **Local network** listens on every interface at port 4747, so `http://<machine address>:4747` works from any device on the same network. Settings lists the addresses. Anyone on that network can read the page, and a firewall such as firewalld may need the port opened.
 
-**Tailscale** listens on `127.0.0.1:4747` and runs `tailscale serve --bg --https=8443` to proxy it, so `https://<machine>.<tailnet>.ts.net:8443` works from any device on your tailnet. Tailscale keeps the route in its own config, so the link returns an error while Tantalus is closed. Switching it off runs `tailscale serve --https=8443 off`. It needs Tailscale installed and signed in, with Serve and HTTPS certificates allowed for the tailnet. On Linux, running `serve` without root also needs `sudo tailscale set --operator=$USER` once.
+**Tailscale** listens on `127.0.0.1:4747` and runs `tailscale serve --bg --https=8443` to proxy it, so `https://<machine>.<tailnet>.ts.net:8443` works from any device on your tailnet. Tailscale keeps the route in its own config, so the link returns an error while Tantalus is closed. Switching it off runs `tailscale serve --https=8443 off`. Tailscale keeps one route per HTTPS port, so switching it on replaces anything you already serve on 8443, and switching it off removes it. It needs Tailscale installed and signed in, with Serve and HTTPS certificates allowed for the tailnet. On Linux, running `serve` without root also needs `sudo tailscale set --operator=$USER` once.
 
-A preview build uses ports 4748 and 8444, so it runs beside a release.
+The server answers only requests addressed to an IP address, a single-label or `.local` name, or a `ts.net` name. Any other domain gets a 403, so a website cannot point its own domain at your machine and read the page from your browser.
+
+If the port is taken at launch, Settings says why the routes are not being served. A preview build uses ports 4748 and 8444, so it runs beside a release.
 
 ## Build and check
 

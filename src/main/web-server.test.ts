@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { emptyProviderUsage } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
-import { WebServer } from "./web-server";
+import { trustedHost, WebServer } from "./web-server";
 
 const PORT = 47_470;
 const origin = `http://127.0.0.1:${PORT}`;
@@ -59,5 +59,23 @@ describe("web server", () => {
     server.publish(snapshot(false));
     expect((await next()).enabled.claude).toBe(false);
     controller.abort();
+  });
+});
+
+describe("trusted hosts", () => {
+  it("serves addresses, local names and tailnet names, but not a domain someone else controls", () => {
+    for (const host of [
+      "127.0.0.1:4747",
+      "192.168.1.5:4747",
+      "[::1]:4747",
+      "fedora:4747",
+      "fedora.local",
+      "fedora.tail1.ts.net:8443",
+    ]) {
+      expect(trustedHost(host)).toBe(true);
+    }
+    for (const host of [undefined, "", "evil.example:4747", "127.0.0.1.evil.example", "ts.net.evil.example"]) {
+      expect(trustedHost(host)).toBe(false);
+    }
   });
 });

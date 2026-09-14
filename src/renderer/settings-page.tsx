@@ -99,10 +99,11 @@ const remoteRouteCopy = {
 } satisfies Record<RemoteRoute, { name: string; description: string }>;
 
 const pendingLabels = { loading: "Checking", unavailable: "Unavailable" } as const;
+type RemoteAccessState = RemoteAccess | keyof typeof pendingLabels;
 
 /** Read on every visit, since the machine's addresses can change between one visit and the next. */
 function RemoteAccessRows() {
-  const [access, setAccess] = useState<RemoteAccess | "loading" | "unavailable">("loading");
+  const [access, setAccess] = useState<RemoteAccessState>("loading");
   const [saving, setSaving] = useState<RemoteRoute | null>(null);
   const [error, setError] = useState<{ route: RemoteRoute; message: string } | null>(null);
 
@@ -133,16 +134,25 @@ function RemoteAccessRows() {
     }
   };
 
-  return remoteRoutes.map((route) => (
-    <RemoteRow
-      key={route}
-      route={route}
-      access={access}
-      saving={saving !== null}
-      error={error?.route === route ? error.message : null}
-      onToggle={(enabled) => void toggle(route, enabled)}
-    />
-  ));
+  return (
+    <>
+      {remoteRoutes.map((route) => (
+        <RemoteRow
+          key={route}
+          route={route}
+          access={access}
+          saving={saving !== null}
+          error={error?.route === route ? error.message : null}
+          onToggle={(enabled) => void toggle(route, enabled)}
+        />
+      ))}
+      {typeof access !== "string" && access.error && (
+        <p className="notice settings-notice" role="alert">
+          {access.error}
+        </p>
+      )}
+    </>
+  );
 }
 
 function RemoteRow({
@@ -153,7 +163,7 @@ function RemoteRow({
   onToggle,
 }: {
   route: RemoteRoute;
-  access: RemoteAccess | "loading" | "unavailable";
+  access: RemoteAccessState;
   saving: boolean;
   error: string | null;
   onToggle: (enabled: boolean) => void;

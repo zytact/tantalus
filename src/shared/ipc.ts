@@ -8,8 +8,8 @@ export const remoteRoutes = ["localNetwork", "tailscale"] as const;
 export type RemoteRoute = (typeof remoteRoutes)[number];
 export type RemoteSettings = Record<RemoteRoute, boolean>;
 /** Each route with the addresses it answers on. A route that is off, or whose address cannot be read,
- * has none. */
-export type RemoteAccess = Record<RemoteRoute, { enabled: boolean; urls: string[] }>;
+ * has none. `error` says why the switched-on routes are not being served. */
+export type RemoteAccess = Record<RemoteRoute, { enabled: boolean; urls: string[] }> & { error: string | null };
 
 /** Every request the window can make of the main process, keyed by channel. */
 export type Commands = {

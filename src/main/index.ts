@@ -147,7 +147,7 @@ function start() {
   app.on("activate", showWindow);
   if (!launchedHidden()) showWindow();
   void pollUsage(state, sleep);
-  remote.start().catch((error: unknown) => console.error("Failed to start remote access:", error));
+  void remote.start();
   if (updatesEnabled) void updater.watch();
 }
 
