@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Launch the built preview on an isolated virtual display. --mock serves fixture usage instead.
+# Launch the built preview on an isolated virtual display with its DevTools protocol open for drive.ts.
+# --mock serves fixture usage instead of the live APIs.
 set -euo pipefail
 RUN_DIR="/tmp/opencode/tantalus-verify"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,7 +12,7 @@ case "${1:-}" in
   --mock) MODE="mock"; SCENARIO="${2:-ready}" ;;
   *) echo "usage: launch.sh [--mock [SCENARIO]]" >&2; exit 1 ;;
 esac
-BIN="src-tauri/target/release/tantalus-preview"
+BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
 XVFB="${TANTALUS_XVFB:-$(command -v Xvfb || true)}"
 mkdir -p "$RUN_DIR"
 
@@ -51,10 +52,13 @@ for _ in $(seq 1 30); do
 done
 
 echo "$MODE" >"$RUN_DIR/run.mode"
-preview_env=(env -u TANTALUS_USAGE_BASE_URL DISPLAY="$display" GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1)
+cdp_port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+echo "$cdp_port" >"$RUN_DIR/run.cdp"
+# A shell inside another Electron app can carry ELECTRON_RUN_AS_NODE, which starts a bare Node instead.
+preview_env=(env -u TANTALUS_USAGE_BASE_URL -u ELECTRON_RUN_AS_NODE DISPLAY="$display")
 if [ "$MODE" = mock ]; then
   rm -rf "$MOCK_HOME"
-  mkdir -p "$MOCK_HOME/codex" "$MOCK_HOME/claude" "$MOCK_HOME/data/opencode" "$MOCK_HOME/config" "$MOCK_HOME/home/.config/autostart"
+  mkdir -p "$MOCK_HOME/codex" "$MOCK_HOME/claude" "$MOCK_HOME/data/opencode" "$MOCK_HOME/config" "$MOCK_HOME/home"
   echo '{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account"}}' >"$MOCK_HOME/codex/auth.json"
   echo '{"claudeAiOauth":{"accessToken":"fixture-claude"}}' >"$MOCK_HOME/claude/.credentials.json"
   echo '{"opencode-go":{"key":"fixture-opencode"}}' >"$MOCK_HOME/data/opencode/auth.json"
@@ -79,7 +83,7 @@ if [ "$MODE" = mock ]; then
   )
 fi
 
-"${preview_env[@]}" setsid "$BIN" </dev/null >"$RUN_DIR/preview.log" 2>&1 &
+"${preview_env[@]}" setsid "$BIN" --ozone-platform=x11 --remote-debugging-port="$cdp_port" </dev/null >"$RUN_DIR/preview.log" 2>&1 &
 preview_pid=$!
 echo "$preview_pid" >"$RUN_DIR/run.pid"
 
@@ -89,12 +93,8 @@ for _ in $(seq 1 30); do
     tail -n 20 "$RUN_DIR/preview.log" >&2
     exit 1
   }
-  DISPLAY="$display" import -window root "$RUN_DIR/readiness.png" 2>/dev/null || true
-  if [ -s "$RUN_DIR/readiness.png" ] &&
-    magick "$RUN_DIR/readiness.png" -trim -format '%w %h' info: 2>/dev/null |
-      awk '$1 >= 360 && $2 >= 500 { found=1 } END { exit !found }'; then
-    rm -f "$RUN_DIR/readiness.png"
-    echo "Ready: Tantalus Preview ($MODE usage) on isolated display $display (pid $preview_pid)"
+  if curl -fsS "http://127.0.0.1:$cdp_port/json/list" 2>/dev/null | grep -q '"type": "page"'; then
+    echo "Ready: Tantalus Preview ($MODE usage) on isolated display $display (pid $preview_pid, DevTools port $cdp_port)"
     exit 0
   fi
   sleep 1

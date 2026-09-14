@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Build the separately identified preview app without installing or packaging it.
+# Build the separately identified preview app, unpacked, without installing or packaging it.
 set -euo pipefail
 
-vp run tauri build --config src-tauri/tauri.preview.conf.json --no-bundle
+vp build
+vp pack
+node scripts/package.ts --preview --dir
 
-BIN="src-tauri/target/release/tantalus-preview"
+BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
 [ -x "$BIN" ] || { echo "Preview build did not produce $BIN" >&2; exit 1; }
 echo "PREVIEW-BUILD: pass ($BIN)"

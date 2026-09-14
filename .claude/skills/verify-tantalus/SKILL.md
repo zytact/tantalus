@@ -1,28 +1,28 @@
 ---
 name: verify-tantalus
-description: Build and drive the isolated native Tantalus Preview app against real accounts or fixture usage, capture window screenshots, and run the frontend and Rust suites. Use when verifying allowance windows, refresh, provider settings, updates, tray behavior, or usage parsing.
+description: Build and drive the isolated Tantalus Preview Electron app against real accounts or fixture usage, capture window screenshots, inspect the tray menu, and run the test suite. Use when verifying allowance windows, refresh, provider settings, updates, tray behavior, or usage parsing.
 ---
 
 # Verify Tantalus
 
-Tantalus is a Tauri 2 tray app. Rust reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots to the React webview.
+Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`.
 
-Verification uses the native preview build. Never use a browser to judge this UI. Linux and macOS use WebKit, while Windows uses WebView2, so a Chromium tab is not a faithful runtime.
+Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process.
 
 ## Isolation
 
-The preview config gives the verification build its own identity:
+`src/main/identity.ts` gives the verification build its own identity:
 
 - product name `Tantalus Preview`
-- bundle identifier `dev.arnab.tantalus.preview`
-- binary name `tantalus-preview`
+- app id `dev.arnab.tantalus.preview`
+- executable name `tantalus-preview`
 - blue app and tray icons
 
-That identity keeps the preview's app data, autostart entry, installation, and single-instance lock separate from the release app. Do not launch `src-tauri/target/release/tantalus`, install a release bundle, or quit an existing release instance during verification.
+That identity keeps the preview's settings directory, open-at-login entry, and single-instance lock separate from the release app. Do not launch `release/tantalus/`, install a release bundle, or quit an existing release instance during verification.
 
 ## Launch
 
-Run from the repo root. The screenshot path needs Xvfb, ImageMagick, and X11 tools (`xprop`, and `xdotool` for input). Mock mode also needs `python3` and `curl`.
+Run from the repo root. The launch needs Xvfb, `curl`, and `python3`.
 
 ```sh
 EVIDENCE=/tmp/opencode/tantalus-verify/$(date +%Y%m%d-%H%M%S)
@@ -34,15 +34,15 @@ mkdir -p "$EVIDENCE"
 
 Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts.
 
-`build-preview.sh` runs `vp run tauri build --config src-tauri/tauri.preview.conf.json --no-bundle` and checks for `src-tauri/target/release/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that binary on an isolated Xvfb display and records both owned PIDs under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
+`build-preview.sh` runs `vp build`, `vp pack`, and `node scripts/package.ts --preview --dir`, then checks for `release/tantalus-preview/linux-unpacked/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that executable on an isolated Xvfb display with `--remote-debugging-port` on a free local port, and records the PIDs and the port under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
 
-Ready means `doctor.sh` confirms the preview config, binary, recorded process executable, isolated display, and usage mode. Run doctor before the first drive and again after any failed or surprising interaction.
+Ready means `doctor.sh` confirms the preview identity, executable, recorded process, isolated display, DevTools port, and usage mode. Run doctor before the first drive and again after any failed or surprising interaction.
 
 ## Usage modes
 
-**Real.** `launch.sh` reads the local credential files and calls the live usage APIs. It proves real credential paths, real response shapes, and the account's actual plan. Doctor fails if the preview carries a fixture origin.
+**Real.** `launch.sh` reads the local credential files and calls the live usage APIs. It proves real credential paths, real response shapes, and the account's actual plan. Doctor fails if a harness fixture server is still running.
 
-**Mock.** `launch.sh --mock` starts `fixture-server.py` on a free 127.0.0.1 port and launches the preview with `TANTALUS_USAGE_BASE_URL` pointing at it. Only preview builds honor that variable, so release builds always call the providers. The preview still runs its real Rust client, parsers, commands, and WebKit window; only the network answers change. The launch also writes fixture credentials for all three providers under `/tmp/opencode/tantalus-verify/mock-home/` and points `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `HOME` there, so real credentials, saved provider settings, and the preview's autostart entry are never touched. `HOME` matters because the autostart plugin writes `~/.config/autostart/Tantalus Preview.desktop` and ignores `XDG_CONFIG_HOME`. In real mode that entry is written to your real home, so restore Open at login before teardown. Doctor confirms the preview process environment names the harness fixture server.
+**Mock.** `launch.sh --mock` starts `fixture-server.py` on a free 127.0.0.1 port and launches the preview with `TANTALUS_USAGE_BASE_URL` pointing at it. Only preview builds honor that variable, so release builds always call the providers. The preview still runs its real main process, parsers, IPC, and window; only the network answers change. The launch also writes fixture credentials for all three providers under `/tmp/opencode/tantalus-verify/mock-home/` and points `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `HOME` there, so real credentials, saved provider settings, and the preview's autostart entry are never touched. On Linux both the settings directory and the autostart entry follow `XDG_CONFIG_HOME`. In real mode they land in your real config directory, so restore Open at login before teardown. Chromium rewrites its own process environment, so doctor proves mock mode from the fixture request log instead of the preview's environment.
 
 The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios while the preview runs, then Refresh:
 
@@ -62,20 +62,25 @@ Use mock mode for states a real account cannot produce on demand and for every f
 
 ## Drive
 
-Use one preview process per usage mode, and run cleanup before switching modes. Drive the native window with `xdotool` against the recorded display (`DISPLAY="$(cat /tmp/opencode/tantalus-verify/run.display)" xdotool ...`) when interaction is required. Do not use browser automation, inject JavaScript, mock Tauri IPC, or inspect the page through Chromium tooling.
+Use one preview process per usage mode, and run cleanup before switching modes. `drive.ts` connects to the recorded DevTools port for each command and disconnects without closing the app:
 
-1. Run the offline suites:
+```sh
+node .agents/skills/verify-tantalus/scripts/drive.ts snapshot
+node .agents/skills/verify-tantalus/scripts/drive.ts click button Settings
+node .agents/skills/verify-tantalus/scripts/drive.ts click switch Opencode
+node .agents/skills/verify-tantalus/scripts/drive.ts press Control+R
+node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" settings
+```
+
+`snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click by ARIA role and accessible name, as the snapshot shows them.
+
+1. Run the offline suite:
 
 ```sh
 vp test 2>&1 | tee "$EVIDENCE/vitest.log"
-cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$EVIDENCE/cargo-test.log"
 ```
 
-2. Capture the initial native window:
-
-```sh
-.agents/skills/verify-tantalus/scripts/screenshot.sh "$EVIDENCE" allowance
-```
+2. Capture the initial window with `drive.ts screenshot "$EVIDENCE" allowance`.
 
 3. Exercise the mapped window and refresh features in the preview:
 
@@ -89,24 +94,12 @@ cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$EVIDENCE/cargo-test
 
 - Switch one provider off, confirm its allowance block and tray rows disappear, then switch it back on and confirm the immediate refresh.
 - Confirm Codex and Claude default on and Opencode defaults off only when the preview has no saved settings.
-- Confirm the version and the Open at login switch. Restore the original autostart value before teardown.
+- Confirm the version and the Open at login switch. Restore the original value before teardown.
 - Click Check for updates. Preview must report `Dev and preview builds do not check for updates.`
 
-5. Exercise the tray:
+5. Exercise the tray (see `features/tray-and-autorefresh.md`).
 
-- Confirm the blue icon and `Tantalus Preview` tooltip.
-- Compare each enabled provider's separate 5h, 7d, and 30d rows with the window. Rows may include `Under pace`, `On pace`, or `Ahead of pace`.
-- Use Refresh now, close and reopen the window through Show usage or left-click, then leave Quit for final teardown.
-- A full polling proof takes at least five minutes. Confirm the refreshed label resets after the next poll.
-
-6. Capture screenshots after each materially different state:
-
-```sh
-.agents/skills/verify-tantalus/scripts/screenshot.sh "$EVIDENCE" settings
-.agents/skills/verify-tantalus/scripts/screenshot.sh "$EVIDENCE" refreshed
-```
-
-The screenshot helper captures the isolated display, trims its black border to the native preview window, and rejects an image smaller than the configured minimum window size.
+6. Capture screenshots after each materially different state.
 
 In real mode the preview reads local credential files and calls the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `/tmp/opencode/tantalus-verify/coverage-home/`. Restore a normal preview launch before proving live readings.
 
@@ -115,11 +108,11 @@ In real mode the preview reads local credential files and calls the live usage A
 Keep each run under `/tmp/opencode/tantalus-verify/<timestamp>/`:
 
 - `preview-build.log`, `launch.log`, and `doctor.log`
-- `vitest.log` and `cargo-test.log`
-- one PNG per meaningful native window state
+- `vitest.log`
+- one PNG per meaningful window state
 - concise `notes.md` listing features covered, inaccessible prerequisites, and observed drift
 
-A screenshot proves visible native webview state. Pair it with the relevant interaction and suite result. Xvfb has no desktop tray host, so tray menus require a separate preview launch on a real desktop.
+A screenshot proves the rendered page. Pair it with the relevant interaction and suite result. Closing the window destroys its page, so `drive.ts` reports no window until the tray or a second launch opens it again.
 
 ## Cleanup
 
@@ -131,14 +124,14 @@ The helper kills only the preview, fixture server, and Xvfb PIDs started by `lau
 
 ## Helpers
 
-All shell helpers in `scripts/` are executable:
+All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it
-- `launch.sh [--mock [SCENARIO]]` starts the built preview binary on an isolated Xvfb display, with a fixture server in mock mode
+- `launch.sh [--mock [SCENARIO]]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode
+- `drive.ts <snapshot | click ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
-- `doctor.sh` checks the preview identity, processes, display, and usage mode without changing state
-- `screenshot.sh <EVIDENCE_DIR> [NAME]` captures the native preview window
+- `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, and preserves evidence
 
 The feature map is in `features/`. Read the relevant file before driving that feature.

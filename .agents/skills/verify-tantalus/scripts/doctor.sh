@@ -2,12 +2,12 @@
 # Read-only check that the isolated preview is worth driving.
 set -u
 RUN_DIR="/tmp/opencode/tantalus-verify"
-BIN="src-tauri/target/release/tantalus-preview"
+BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
 fail=0
 
-if grep -q '"productName": "Tantalus Preview"' src-tauri/tauri.preview.conf.json &&
-  grep -q '"identifier": "dev.arnab.tantalus.preview"' src-tauri/tauri.preview.conf.json &&
-  grep -q '"mainBinaryName": "tantalus-preview"' src-tauri/tauri.preview.conf.json; then
+if grep -q 'productName: "Tantalus Preview"' src/main/identity.ts &&
+  grep -q 'appId: "dev.arnab.tantalus.preview"' src/main/identity.ts &&
+  grep -q 'executableName: "tantalus-preview"' src/main/identity.ts; then
   echo "OK preview name, identifier, and binary name are isolated from release"
 else
   echo "FAIL preview identity config is incomplete"
@@ -35,22 +35,32 @@ else
   fail=1
 fi
 
+cdp_port="$(cat "$RUN_DIR/run.cdp" 2>/dev/null || true)"
+if [ -n "$cdp_port" ] && curl -fsS "http://127.0.0.1:$cdp_port/json/list" 2>/dev/null | grep -q '"type": "page"'; then
+  echo "OK DevTools port $cdp_port serves the preview window"
+else
+  echo "FAIL DevTools port is missing or has no window; open the window from the tray or relaunch"
+  fail=1
+fi
+
+# Chromium rewrites its own /proc environ, so the usage mode is proved by traffic rather than by
+# reading the preview's environment: the launch refreshes at once, and only fixture credentials get a 200.
 mode="$(cat "$RUN_DIR/run.mode" 2>/dev/null || echo real)"
-origin="$(tr '\0' '\n' <"/proc/$preview_pid/environ" 2>/dev/null | sed -n 's/^TANTALUS_USAGE_BASE_URL=//p')"
+fixture_pid="$(cat "$RUN_DIR/fixture.pid" 2>/dev/null || true)"
+fixture_alive=0
+[ -n "$fixture_pid" ] && kill -0 "$fixture_pid" 2>/dev/null &&
+  [ "$(readlink -f "/proc/$fixture_pid/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/fixture.exe" 2>/dev/null)" ] && fixture_alive=1
 if [ "$mode" = mock ]; then
-  fixture_pid="$(cat "$RUN_DIR/fixture.pid" 2>/dev/null || true)"
-  if [ -n "$fixture_pid" ] && kill -0 "$fixture_pid" 2>/dev/null &&
-    [ "$(readlink -f "/proc/$fixture_pid/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/fixture.exe" 2>/dev/null)" ] &&
-    [ -n "$origin" ] && curl -fsS "$origin/__fixture/health" >/dev/null 2>&1; then
-    echo "OK mock usage: preview reads $origin from harness fixture pid $fixture_pid"
+  if [ "$fixture_alive" = 1 ] && grep -q "GET /" "$RUN_DIR/fixture-requests.log" 2>/dev/null; then
+    echo "OK mock usage: harness fixture pid $fixture_pid has served the preview's reads"
   else
-    echo "FAIL mock usage: fixture server is missing or the preview does not point at it"
+    echo "FAIL mock usage: fixture server is missing or the preview has not read from it"
     fail=1
   fi
-elif [ -z "$origin" ]; then
-  echo "OK real usage: preview has no fixture origin"
+elif [ "$fixture_alive" = 0 ]; then
+  echo "OK real usage: no harness fixture server is running"
 else
-  echo "FAIL real usage: preview still points at $origin"
+  echo "FAIL real usage: a fixture server is still running from an earlier mock launch"
   fail=1
 fi
 

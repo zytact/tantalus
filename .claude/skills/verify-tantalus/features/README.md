@@ -1,6 +1,6 @@
 # Tantalus feature map
 
-One file covers each user-facing feature backed by `src/`, `src-tauri/src/`, and the README.
+One file covers each user-facing feature backed by `src/` and the README.
 
 - [short-window](short-window.md) - 5-hour usage entry
 - [long-window](long-window.md) - 7-day usage entry
@@ -12,6 +12,6 @@ One file covers each user-facing feature backed by `src/`, `src-tauri/src/`, and
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
 - [updates](updates.md) - release update checks and installation
 
-All UI proof uses the built native Tantalus Preview app and window screenshots. Do not use a browser or injected Tauri mock. Fixture usage from `launch.sh --mock` is allowed because only the network answers change. The preview's product name, identifier, binary, settings, autostart entry, and single-instance lock are separate from the installed release.
+All UI proof uses the built Tantalus Preview app, driven through `drive.ts`, and its window screenshots. Do not load the page in a separate browser or stub the preload bridge. Fixture usage from `launch.sh --mock` is allowed because only the network answers change. The preview's product name, app id, executable, settings, autostart entry, and single-instance lock are separate from the installed release.
 
-Fixture suites prove parsing and formatting edges. The preview proves the real React webview, Rust commands, tray, and settings persistence. Real mode proves live credential paths and the windows the account actually reports. Mock mode proves specific figures and states on demand, so each proof below names a scenario.
+Fixture suites prove parsing and formatting edges. The preview proves the real React page, main-process commands, tray, and settings persistence. Real mode proves live credential paths and the windows the account actually reports. Mock mode proves specific figures and states on demand, so each proof below names a scenario.
