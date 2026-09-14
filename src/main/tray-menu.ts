@@ -8,7 +8,7 @@ export type TrayItem = { label: string; action: TrayAction | null } | "separator
 /** A heading and one row per window for every enabled provider, a dimmed row saying when they were
  * refreshed, then a separator and the actions, led by the pending update when there is one. The
  * readings stay enabled so the menu renders them at full contrast rather than dimming the numbers
- * the app exists to show; clicking one opens the window, like Show usage. The window carries the
+ * the app exists to show; clicking one opens the window, like Open Tantalus. The window carries the
  * install button, so the update item opens it too. */
 export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | null, now: number): TrayItem[] {
   const readings = providerIds
@@ -23,7 +23,7 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
     ...readings,
     ...refreshed,
     ...(update ? [{ label: `Update to v${update.version}`, action: "show" as const }] : []),
-    { label: "Show usage", action: "show" },
+    { label: "Open Tantalus", action: "show" },
     { label: "Refresh now", action: "refresh" },
     { label: "Quit", action: "quit" },
   ];

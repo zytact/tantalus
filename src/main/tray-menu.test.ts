@@ -67,7 +67,7 @@ describe("tray menu", () => {
       { label: "Refreshed 1 minute ago", action: null },
       "separator",
       { label: "Update to v0.1.0", action: "show" },
-      { label: "Show usage", action: "show" },
+      { label: "Open Tantalus", action: "show" },
       { label: "Refresh now", action: "refresh" },
       { label: "Quit", action: "quit" },
     ]);
@@ -76,7 +76,7 @@ describe("tray menu", () => {
   it("drops the refreshed row when no provider is on", () => {
     const items = trayItems(snapshot({ codex: false, claude: false, opencode: false }), null, 1000);
     expect(items.map((item) => (item === "separator" ? item : item.label))).toEqual([
-      "Show usage",
+      "Open Tantalus",
       "Refresh now",
       "Quit",
     ]);
