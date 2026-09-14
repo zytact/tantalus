@@ -4,6 +4,7 @@
   "ignoreDependencies": [
     "@fontsource-variable/inter-tight",
     "@fontsource/newsreader",
+    "@tauri-apps/cli",
     "playwright-core",
     "react",
     "react-dom"

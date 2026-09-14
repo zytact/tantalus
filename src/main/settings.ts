@@ -70,8 +70,13 @@ export function saveSettings(path: string, settings: ProviderSettings | RemoteSe
     throw error;
   }
   if (process.platform !== "win32") {
-    const handle = openSync(directory, "r");
-    fsyncSync(handle);
-    closeSync(handle);
+    try {
+      const handle = openSync(directory, "r");
+      try {
+        fsyncSync(handle);
+      } finally {
+        closeSync(handle);
+      }
+    } catch {}
   }
 }

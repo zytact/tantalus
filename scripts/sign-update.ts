@@ -1,13 +1,6 @@
-import { createPrivateKey, sign } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { run } from "@tauri-apps/cli";
 
-/** Signs each bundle named on the command line with the Ed25519 key in `UPDATE_SIGNING_KEY`, writing
- * a base64 `<bundle>.sig` beside it. The updater checks it against the public key in
- * `src/main/release.ts`. */
-const pem = process.env.UPDATE_SIGNING_KEY;
-if (!pem) throw new Error("UPDATE_SIGNING_KEY is not set");
-const key = createPrivateKey(pem);
+/** Signs bundles in the format used by Tauri releases, so every installed version trusts them. */
 for (const file of process.argv.slice(2)) {
-  writeFileSync(`${file}.sig`, sign(null, readFileSync(file), key).toString("base64"));
-  console.log(`signed ${file}`);
+  await run(["signer", "sign", file]);
 }
