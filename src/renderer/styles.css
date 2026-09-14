@@ -175,7 +175,8 @@ button:focus-visible {
   font-size: 1.1rem;
   font-weight: 500;
 }
-.provider-status {
+.provider-status,
+.facts dt {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -370,12 +371,6 @@ button:focus-visible {
   gap: 8px;
   margin: 0;
 }
-.facts dt {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
 .facts dd {
   margin: 3px 0 0;
   font-size: 0.86rem;
@@ -395,7 +390,7 @@ button:focus-visible {
   border-top: 1px dotted var(--hairline-soft);
   font-size: 0.8rem;
 }
-.credits li span:last-child {
+.credit-value {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
