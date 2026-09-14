@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
+import { refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import {
   countdown,
   creditExpiry,
   isRefreshShortcut,
-  refreshedAgo,
-  refreshedEpoch,
   remainingPercent,
   statusLine,
   statusTone,
   usagePercent,
-  usagePace,
   usageTier,
 } from "./presentation";
-import type { Chord, ProviderUsage, UsageSnapshot } from "./presentation";
+import type { Chord } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },

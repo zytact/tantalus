@@ -1,12 +1,12 @@
 # AGENTS.md
 
-Tantalus is a Tauri 2 desktop tray app. React + Vite+ + TypeScript frontend in `src/`, Rust backend in `src-tauri/`.
+Tantalus is an Electron tray app written in TypeScript. The main process is in `src/main/`, the preload bridge in `src/preload/`, the React page in `src/renderer/`, and the types and helpers both sides use in `src/shared/`. The IPC contract lives in `src/shared/ipc.ts`.
 
 ## Toolchain
 
-The frontend toolchain is [Vite+](https://viteplus.dev), driven by the global `vp` CLI. It bundles Vite, Vitest, Oxlint and Oxfmt, and it delegates package management to pnpm. Install it with `curl -fsSL https://vite.plus | bash`.
+The toolchain is [Vite+](https://viteplus.dev), driven by the global `vp` CLI. It bundles Vite, Vitest, Oxlint and Oxfmt, and it delegates package management to pnpm. Install it with `curl -fsSL https://vite.plus | bash`.
 
-Lint, format and staged-file config live in the `lint`, `fmt` and `staged` blocks of `vite.config.ts`. Do not add `.oxlintrc.json`, `.oxfmtrc.json` or a `lint-staged` config.
+`vp build` bundles the page into `dist/`, and `vp pack` bundles the main process and preload into `dist-electron/`. Lint, format, pack and staged-file config live in the `lint`, `fmt`, `pack` and `staged` blocks of `vite.config.ts`. Do not add `.oxlintrc.json`, `.oxfmtrc.json` or a `lint-staged` config.
 
 `vp check` type checks through Oxlint's type-aware path, so there is no separate `tsc --noEmit` step.
 
@@ -16,18 +16,12 @@ A pre-commit hook at `.vite-hooks/pre-commit` runs `vp staged`. `vp config` inst
 
 ## Validation
 
-After every change, run the following commands. Frontend commands run from the repo root. Cargo commands run from `src-tauri/`.
+After every change, run the following commands from the repo root.
 
 ```sh
 vp install --frozen-lockfile
 vp check
 vp test
 vp build
-```
-
-```sh
-cd src-tauri
-cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
+vp pack
 ```

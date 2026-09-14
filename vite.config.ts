@@ -1,14 +1,50 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig, lazyPlugins } from "vite-plus";
 
-/** Build output, the Rust crate (cargo fmt owns it), and the hand-laid-out agent skill docs. */
-const notOurs = ["dist/**", "src-tauri/**", ".agents/**", ".claude/**"];
+/** Build output and the hand-laid-out agent skill docs. */
+const notOurs = ["dist/**", "dist-electron/**", "release/**", ".agents/**", ".claude/**"];
+
+/** The packaged window loads its page from disk, so the policy ships as a meta tag. The dev server
+ * injects an inline script for fast refresh, so it only applies to builds. */
+const CONTENT_SECURITY_POLICY = "default-src 'self'; style-src 'self' 'unsafe-inline'";
 
 export default defineConfig({
-  plugins: lazyPlugins(() => [react()]),
+  plugins: lazyPlugins(() => [
+    react(),
+    {
+      name: "content-security-policy",
+      apply: "build",
+      transformIndexHtml: () => [
+        {
+          tag: "meta",
+          attrs: { "http-equiv": "Content-Security-Policy", content: CONTENT_SECURITY_POLICY },
+          injectTo: "head-prepend",
+        },
+      ],
+    },
+  ]),
+  // The window loads the build from the file system, where absolute asset paths do not resolve.
+  base: "./",
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  envPrefix: ["VITE_", "TAURI_"],
+  pack: [
+    {
+      entry: { main: "src/main/index.ts" },
+      format: "esm",
+      outDir: "dist-electron",
+      clean: false,
+      deps: { neverBundle: ["electron"] },
+      loader: { ".png": "dataurl" },
+    },
+    // A sandboxed preload cannot load an ES module.
+    {
+      entry: { preload: "src/preload/index.ts" },
+      format: "cjs",
+      outDir: "dist-electron",
+      clean: false,
+      deps: { neverBundle: ["electron"] },
+    },
+  ],
   fmt: {
     ignorePatterns: notOurs,
     printWidth: 120,

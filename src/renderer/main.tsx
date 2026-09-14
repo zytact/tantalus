@@ -1,31 +1,32 @@
 import "@fontsource-variable/inter-tight/wght.css";
 import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  fiveHourSeconds,
+  monthlySeconds,
+  providerIds,
+  providerNames,
+  refreshedAgo,
+  refreshedEpoch,
+  sevenDaySeconds,
+  usagePace,
+} from "../shared/usage";
+import type { ExtraUsage, ProviderId, ProviderUsage, WindowUsage } from "../shared/usage";
 import {
   absoluteTime,
   countdown,
   creditAmount,
   creditExpiry,
-  fiveHourSeconds,
   isRefreshShortcut,
-  monthlySeconds,
   providerExtras,
-  providerIds,
-  providerNames,
-  refreshedAgo,
-  refreshedEpoch,
   remainingPercent,
-  sevenDaySeconds,
   statusLine,
   statusTone,
   usagePercent,
-  usagePace,
   usageTier,
 } from "./presentation";
-import type { ExtraUsage, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
@@ -209,14 +210,14 @@ function useNow() {
 
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
-  const [snapshot, setSnapshot, snapshotError] = usePublishedState<UsageSnapshot>("usage-snapshot", "cached_usage");
+  const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow();
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      setSnapshot(await invoke<UsageSnapshot>("refresh_usage"));
+      setSnapshot(await window.tantalus.invoke("refreshUsage"));
     } finally {
       setRefreshing(false);
     }
@@ -224,9 +225,7 @@ function App() {
 
   const canRefresh = snapshot !== null && !refreshing;
 
-  // The chord belongs to the app, so the default reload is cancelled whether or not a refresh can
-  // start. WebView2 handles Ctrl+R above the page and reloads anyway; the remount reads the cache
-  // back, so that costs a repaint rather than the reading.
+  // The chord belongs to the app, so the default is cancelled whether or not a refresh can start.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isRefreshShortcut(event)) return;

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ProviderId } from "./presentation";
+import type { ProviderId } from "../shared/usage";
 
 /** Provider marks from svgl; Codex carries the OpenAI mark. Claude keeps its brand orange, while
  * the other two draw in the page ink so they follow the tokens when they swap for dark. */

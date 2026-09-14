@@ -2,30 +2,31 @@
   "name": "tantalus",
   "version": "0.0.13",
   "private": true,
+  "description": "Codex, Claude, and Opencode usage in the system tray",
+  "author": "Arnab",
   "type": "module",
+  "main": "dist-electron/main.mjs",
   "scripts": {
-    "tauri": "tauri",
+    "dev": "node scripts/dev.ts",
+    "package": "vp build && vp pack && node scripts/package.ts",
     "prepare": "vp config --no-agent"
   },
-  "dependencies": {
+  "devDependencies": {
     "@fontsource-variable/inter-tight": "^5.3.0",
     "@fontsource/newsreader": "^5.3.0",
-    "@tauri-apps/api": "^2.9.1",
-    "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-opener": "^2.5.0",
-    "@tauri-apps/plugin-shell": "^2.3.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.9.5",
     "@types/node": "^24.13.4",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "playwright-core": "1.63.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "typescript": "^5.9.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
-  "packageManager": "pnpm@11.24.0"
+  "packageManager": "pnpm@11.24.0",
+  "productName": "Tantalus"
 }

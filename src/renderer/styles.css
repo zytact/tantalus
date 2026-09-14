@@ -49,6 +49,7 @@
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
+  scrollbar-width: none;
 }
 * {
   box-sizing: border-box;
