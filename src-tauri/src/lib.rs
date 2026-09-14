@@ -907,13 +907,16 @@ mod tests {
     fn the_tray_compares_usage_with_elapsed_time() {
         let mut under = window(usage::SEVEN_DAY_SECONDS, 12.0);
         under.reset_at_epoch = Some(1_000_000 + usage::SEVEN_DAY_SECONDS * 6 / 7);
-        let mut on = under.clone();
-        on.used_percent = Some(16.0);
+        let mut on_below = under.clone();
+        on_below.used_percent = Some(12.5);
+        let mut on_above = under.clone();
+        on_above.used_percent = Some(16.0);
         let mut ahead = under.clone();
         ahead.used_percent = Some(16.5);
 
         assert_eq!(pace_label(&under, 1_000_000), Some("Under pace"));
-        assert_eq!(pace_label(&on, 1_000_000), Some("On pace"));
+        assert_eq!(pace_label(&on_below, 1_000_000), Some("On pace"));
+        assert_eq!(pace_label(&on_above, 1_000_000), Some("On pace"));
         assert_eq!(pace_label(&ahead, 1_000_000), Some("Ahead of pace"));
         assert!(tray_row("7d", &under, 1_000_000).ends_with("12%  Under pace"));
     }
