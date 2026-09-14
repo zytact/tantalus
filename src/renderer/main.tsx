@@ -111,7 +111,7 @@ function Spend({ extra }: { extra: ExtraUsage }) {
       <ol className="credits">
         <li>
           <span>Monthly limit</span>
-          <span>{creditAmount(extra.monthly_limit, extra.currency)}</span>
+          <span className="credit-value">{creditAmount(extra.monthly_limit, extra.currency)}</span>
         </li>
       </ol>
     </section>
@@ -133,7 +133,7 @@ function Credits({ provider }: { provider: ProviderUsage }) {
           {provider.reset_credits.map((credit, index) => (
             <li key={index}>
               <span>Credit {index + 1}</span>
-              <span>{creditExpiry(credit.expires_at_epoch)}</span>
+              <span className="credit-value">{creditExpiry(credit.expires_at_epoch)}</span>
             </li>
           ))}
         </ol>
