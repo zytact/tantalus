@@ -243,10 +243,22 @@ button:focus-visible {
   font-size: 0.78rem;
   line-height: 1.4;
 }
-.setting-copy .setting-url {
+.setting-url p {
   color: var(--ink);
   overflow-wrap: anywhere;
   user-select: text;
+}
+.qr-toggle {
+  min-height: 22px;
+  margin-left: 10px;
+  padding: 0 8px;
+  font-size: 0.68rem;
+  vertical-align: middle;
+  user-select: none;
+}
+.qr-code {
+  display: block;
+  margin-top: 10px;
 }
 .setting-state {
   flex: none;
