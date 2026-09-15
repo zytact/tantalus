@@ -254,11 +254,10 @@ button:focus-visible {
   padding: 0 8px;
   font-size: 0.68rem;
   vertical-align: middle;
+  user-select: none;
 }
 .qr-code {
   display: block;
-  width: 156px;
-  height: 156px;
   margin-top: 10px;
 }
 .setting-state {

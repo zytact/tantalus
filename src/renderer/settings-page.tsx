@@ -166,12 +166,12 @@ function RemoteUrl({ url }: { url: string }) {
           className="qr-toggle"
           aria-label={`${showQr ? "Hide QR" : "QR"} code for ${url}`}
           aria-expanded={showQr}
-          onClick={() => setShowQr(!showQr)}
+          onClick={() => setShowQr((shown) => !shown)}
         >
           {showQr ? "Hide QR" : "QR"}
         </button>
       </p>
-      {showQr && <QrCode value={url} label={`QR code for ${url}`} />}
+      {showQr && <QrCode value={url} />}
     </div>
   );
 }
