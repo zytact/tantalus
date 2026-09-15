@@ -7,7 +7,8 @@
     "@tauri-apps/cli",
     "playwright-core",
     "react",
-    "react-dom"
+    "react-dom",
+    "uqr"
   ],
   "duplicates": {
     "minOccurrences": 3,

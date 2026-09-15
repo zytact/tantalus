@@ -5,6 +5,7 @@ import type { RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { ProviderIcon } from "./provider-icon";
+import { QrCode } from "./qr-code";
 import { UpdateNotice } from "./update-notice";
 
 /** The provider choice, or why it cannot be shown yet. */
@@ -155,6 +156,26 @@ function RemoteAccessRows() {
   );
 }
 
+function RemoteUrl({ url }: { url: string }) {
+  const [showQr, setShowQr] = useState(false);
+  return (
+    <div className="setting-url">
+      <p>
+        {url}
+        <button
+          className="qr-toggle"
+          aria-label={`${showQr ? "Hide QR" : "QR"} code for ${url}`}
+          aria-expanded={showQr}
+          onClick={() => setShowQr(!showQr)}
+        >
+          {showQr ? "Hide QR" : "QR"}
+        </button>
+      </p>
+      {showQr && <QrCode value={url} label={`QR code for ${url}`} />}
+    </div>
+  );
+}
+
 function RemoteRow({
   route,
   access,
@@ -175,12 +196,7 @@ function RemoteRow({
         <div className="setting-copy">
           <h2>{name}</h2>
           <p>{description}</p>
-          {typeof access !== "string" &&
-            access[route].urls.map((url) => (
-              <p key={url} className="setting-url">
-                {url}
-              </p>
-            ))}
+          {typeof access !== "string" && access[route].urls.map((url) => <RemoteUrl key={url} url={url} />)}
         </div>
         {typeof access === "string" ? (
           <span className="setting-state">{pendingLabels[access]}</span>
