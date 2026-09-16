@@ -15,6 +15,7 @@ import {
   usagePace,
 } from "../shared/usage";
 import type { ExtraUsage, ProviderId, ProviderUsage, WindowUsage } from "../shared/usage";
+import { BusyButton, PendingLabel } from "./busy";
 import {
   absoluteTime,
   countdown,
@@ -289,23 +290,27 @@ function App() {
             <div>
               <h1>Allowance</h1>
               <p className="status">
-                {snapshot
-                  ? refreshedAgo(refreshedEpoch(snapshot), now)
-                  : snapshotError
-                    ? "Could not load provider settings"
-                    : "Loading provider settings"}
+                {snapshot ? (
+                  refreshedAgo(refreshedEpoch(snapshot), now)
+                ) : (
+                  <PendingLabel
+                    failed={snapshotError}
+                    failedLabel="Could not load provider settings"
+                    pendingLabel="Loading provider settings"
+                  />
+                )}
               </p>
             </div>
             <div className="header-actions">
               {!remote && <button onClick={() => setPage("settings")}>Settings</button>}
-              <button
-                onClick={() => void refresh()}
-                disabled={!canRefresh}
-                aria-busy={refreshing}
+              <BusyButton
+                label="Refresh"
+                busyLabel="Refreshing"
+                busy={refreshing}
+                disabled={snapshot === null}
                 title="Refresh (Ctrl+R or Cmd+R)"
-              >
-                {refreshing ? "Refreshing" : "Refresh"}
-              </button>
+                onClick={() => void refresh()}
+              />
             </div>
           </header>
 

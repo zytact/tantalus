@@ -96,6 +96,10 @@ h1 {
   color: var(--text-muted);
 }
 
+[data-hidden="true"] {
+  visibility: hidden;
+}
+
 button {
   min-height: 32px;
   padding: 0 14px;

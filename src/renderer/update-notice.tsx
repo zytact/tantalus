@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BusyButton } from "./busy";
 import { usePublishedState } from "./published-state";
 
 /** Offers the release the main process found in the background. Installing relaunches into the new version, so
@@ -26,9 +27,7 @@ export function UpdateNotice() {
     <>
       <section className="update" aria-label="Update available">
         <p>Version {update.version} is available.</p>
-        <button onClick={() => void install()} disabled={installing} aria-busy={installing}>
-          {installing ? "Installing" : "Install update"}
-        </button>
+        <BusyButton label="Install update" busyLabel="Installing" busy={installing} onClick={() => void install()} />
       </section>
       {error && (
         <p className="notice" role="alert">
