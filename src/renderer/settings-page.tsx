@@ -4,14 +4,17 @@ import { remoteRoutes } from "../shared/ipc";
 import type { RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
+import { BusyButton, PendingLabel, useVisiblePending } from "./busy";
+import type { Loadable } from "./busy";
 import { ProviderIcon } from "./provider-icon";
 import { QrCode } from "./qr-code";
 import { UpdateNotice } from "./update-notice";
 
 /** The provider choice, or why it cannot be shown yet. */
-export type ProviderChoice = Record<ProviderId, boolean> | "loading" | "unavailable";
+export type ProviderChoice = Loadable<Record<ProviderId, boolean>>;
 
-/** The switch every settings row uses. */
+/** The switch every settings row uses. It ignores clicks while `busy`, and dims and says so only
+ * while the pending state is visible. */
 function Toggle({
   label,
   checked,
@@ -23,22 +26,30 @@ function Toggle({
   busy?: boolean;
   onToggle: () => void;
 }) {
+  const saving = useVisiblePending(busy);
+  const toggle = () => {
+    if (!busy) onToggle();
+  };
   return (
     <button
       className="setting-toggle"
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      aria-busy={busy}
-      disabled={busy}
-      onClick={onToggle}
+      aria-busy={saving}
+      disabled={saving}
+      onClick={toggle}
     >
-      <span className="setting-state">{busy ? "Saving" : checked ? "On" : "Off"}</span>
+      <span className="setting-state">{saving ? "Saving" : checked ? "On" : "Off"}</span>
       <span className="switch-track" aria-hidden="true">
         <span className="switch-knob" />
       </span>
     </button>
   );
+}
+
+function SettingPending({ failed }: { failed: boolean }) {
+  return <PendingLabel className="setting-state" failed={failed} failedLabel="Unavailable" pendingLabel="Checking" />;
 }
 
 /** Switching a provider off stops the polling for it and drops it from the allowance view. */
@@ -74,7 +85,7 @@ function ProviderRow({
           <p>Show {name} usage in the allowance view and poll it every 5 minutes.</p>
         </div>
         {typeof choice === "string" ? (
-          <span className="setting-state">{choice === "loading" ? "Checking" : "Unavailable"}</span>
+          <SettingPending failed={choice === "unavailable"} />
         ) : (
           <Toggle label={name} checked={choice[id]} onToggle={() => toggle(!choice[id])} />
         )}
@@ -99,8 +110,7 @@ const remoteRouteCopy = {
   },
 } satisfies Record<RemoteRoute, { name: string; description: string }>;
 
-const pendingLabels = { loading: "Checking", unavailable: "Unavailable" } as const;
-type RemoteAccessState = RemoteAccess | keyof typeof pendingLabels;
+type RemoteAccessState = Loadable<RemoteAccess>;
 
 /** Read on every visit, since the machine's addresses can change between one visit and the next. */
 function RemoteAccessRows() {
@@ -199,7 +209,7 @@ function RemoteRow({
           {typeof access !== "string" && access[route].urls.map((url) => <RemoteUrl key={url} url={url} />)}
         </div>
         {typeof access === "string" ? (
-          <span className="setting-state">{pendingLabels[access]}</span>
+          <SettingPending failed={access === "unavailable"} />
         ) : (
           <Toggle
             label={name}
@@ -245,9 +255,12 @@ function VersionRow() {
           </h2>
           {check === "latest" && <p>You have the latest version.</p>}
         </div>
-        <button onClick={() => void checkForUpdate()} disabled={check === "checking"} aria-busy={check === "checking"}>
-          {check === "checking" ? "Checking" : "Check for updates"}
-        </button>
+        <BusyButton
+          label="Check for updates"
+          busyLabel="Checking"
+          busy={check === "checking"}
+          onClick={() => void checkForUpdate()}
+        />
       </section>
       {error && (
         <p className="notice settings-notice" role="alert">
@@ -290,7 +303,7 @@ export function SettingsPage({
   }, []);
 
   const toggleStartup = async () => {
-    if (startupEnabled === null || savingStartup) return;
+    if (startupEnabled === null) return;
     const nextEnabled = !startupEnabled;
     setSavingStartup(true);
     setStartupError(null);
@@ -322,7 +335,7 @@ export function SettingsPage({
             <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
           </div>
           {startupEnabled === null ? (
-            <span className="setting-state">{startupError ? "Unavailable" : "Checking"}</span>
+            <SettingPending failed={startupError !== null} />
           ) : (
             <Toggle
               label="Open at login"
