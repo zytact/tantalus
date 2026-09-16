@@ -327,4 +327,7 @@ function App() {
   );
 }
 
+// The first frame waits for the bundled faces, since drawing it in a fallback face reflows the page a
+// frame later.
+await Promise.all(["1em 'Inter Tight Variable'", "500 1em Newsreader"].map((font) => document.fonts.load(font)));
 createRoot(document.getElementById("root")!).render(<App />);
