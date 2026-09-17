@@ -1,7 +1,7 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RemoteSettings } from "../shared/ipc";
-import type { ProviderSettings } from "../shared/usage";
+import type { ProviderSettings, ProxyHubConfig } from "../shared/usage";
 import { field } from "./parse";
 
 /** Opencode is a separate paid plan, so it stays off until someone switches it on. */
@@ -31,6 +31,55 @@ export function loadRemoteSettings(path: string): RemoteSettings {
   });
 }
 
+export function loadProxyHubSettings(path: string): ProxyHubConfig[] {
+  return load(path, [], [], (value) => {
+    if (!Array.isArray(value)) return null;
+    const hubs = value.map(proxyHubConfig);
+    return hubs.every((hub) => hub !== null) ? hubs : null;
+  });
+}
+
+function proxyHubConfig(value: unknown): ProxyHubConfig | null {
+  try {
+    return {
+      id: requiredString(value, "id"),
+      label: requiredString(value, "label"),
+      url: requiredHttpUrl(value, "url"),
+      managementKey: requiredString(value, "managementKey"),
+      enabled: requiredBoolean(value, "enabled"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function requiredString(value: unknown, key: string): string {
+  const found = field(value, key);
+  if (typeof found !== "string" || found.length === 0) throw new Error(`Invalid ${key}.`);
+  return found;
+}
+
+function requiredHttpUrl(value: unknown, key: string): string {
+  const found = requiredString(value, key);
+  if (!httpUrl(found)) throw new Error(`Invalid ${key}.`);
+  return found;
+}
+
+function requiredBoolean(value: unknown, key: string): boolean {
+  const found = field(value, key);
+  if (typeof found !== "boolean") throw new Error(`Invalid ${key}.`);
+  return found;
+}
+
+export function httpUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** `missing` is what a file that does not exist yet reads as, and `invalid` what an unreadable or
  * malformed one falls back to. `parse` returns null for a value of the wrong shape. */
 function load<T>(path: string, missing: T, invalid: T, parse: (value: unknown) => T | null): T {
@@ -52,12 +101,12 @@ function load<T>(path: string, missing: T, invalid: T, parse: (value: unknown) =
 
 /** Writes through a synced temporary file and a rename, so a failed save leaves the previous file
  * whole. The write is synchronous, so no read or refresh can interleave with a settings switch. */
-export function saveSettings(path: string, settings: ProviderSettings | RemoteSettings) {
+export function saveSettings<T>(path: string, settings: T) {
   const directory = dirname(path);
   const temporary = `${path}.${process.pid}.tmp`;
   mkdirSync(directory, { recursive: true });
   try {
-    const file = openSync(temporary, "w");
+    const file = openSync(temporary, "w", 0o600);
     try {
       writeSync(file, JSON.stringify(settings));
       fsyncSync(file);

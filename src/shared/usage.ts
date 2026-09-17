@@ -30,6 +30,21 @@ export type ProviderUsage = {
   error_message: string | null;
 };
 export type ProviderId = "codex" | "claude" | "opencode";
+export type ProxyHubProviderId = Extract<ProviderId, "codex" | "claude">;
+export type ProxyHubConfig = {
+  id: string;
+  label: string;
+  url: string;
+  managementKey: string;
+  enabled: boolean;
+};
+export type ProxyHubAccount = {
+  id: string;
+  email: string | null;
+  plan: string | null;
+  provider: ProxyHubProviderId;
+  usage: ProviderUsage;
+};
 export type ProviderSettings = Record<ProviderId, boolean>;
 export type UsageSnapshot = Record<ProviderId, ProviderUsage> & { enabled: ProviderSettings };
 

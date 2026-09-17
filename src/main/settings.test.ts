@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import {
   defaultSettings,
+  loadProxyHubSettings,
   loadRemoteSettings,
   loadSettings,
   noProviders,
@@ -52,5 +53,31 @@ describe("remote access settings", () => {
     expect(loadRemoteSettings(file)).toEqual(noRemoteAccess);
     saveSettings(file, { localNetwork: false, tailscale: true });
     expect(loadRemoteSettings(file)).toEqual({ localNetwork: false, tailscale: true });
+  });
+});
+
+describe("proxy hub settings", () => {
+  it("stores valid hubs and rejects malformed or unsafe URLs", () => {
+    const file = path();
+    const hubs = [
+      {
+        id: "home",
+        label: "Home hub",
+        url: "http://127.0.0.1:8317",
+        managementKey: "secret",
+        enabled: true,
+      },
+    ];
+    saveSettings(file, hubs);
+    expect(loadProxyHubSettings(file)).toEqual(hubs);
+
+    writeFileSync(file, JSON.stringify([{ ...hubs[0], url: "file:///tmp/socket" }]));
+    expect(loadProxyHubSettings(file)).toEqual([]);
+  });
+
+  it.runIf(process.platform !== "win32")("writes settings with owner-only permissions", () => {
+    const file = path();
+    saveSettings(file, []);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });
