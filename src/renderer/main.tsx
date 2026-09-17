@@ -14,7 +14,15 @@ import {
   sevenDaySeconds,
   usagePace,
 } from "../shared/usage";
-import type { ExtraUsage, ProviderId, ProviderUsage, WindowUsage } from "../shared/usage";
+import type {
+  ExtraUsage,
+  ProviderId,
+  ProviderUsage,
+  ProxyHubAccount,
+  ProxyHubSnapshot,
+  ProxyHubStatus,
+  WindowUsage,
+} from "../shared/usage";
 import { BusyButton, PendingLabel } from "./busy";
 import {
   absoluteTime,
@@ -170,7 +178,17 @@ function windowEntries(provider: ProviderUsage) {
   ];
 }
 
-function ProviderSection({ id, provider, now }: { id: ProviderId; provider: ProviderUsage; now: number }) {
+function ProviderSection({
+  id,
+  provider,
+  now,
+  detail,
+}: {
+  id: ProviderId;
+  provider: ProviderUsage;
+  now: number;
+  detail?: string;
+}) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
   const windows = windowEntries(provider);
@@ -182,7 +200,10 @@ function ProviderSection({ id, provider, now }: { id: ProviderId; provider: Prov
     <div className="provider">
       <div className="provider-row">
         <ProviderIcon id={id} />
-        <h2 className="provider-name">{name}</h2>
+        <h2 className="provider-name">
+          {name}
+          {detail && <small>{detail}</small>}
+        </h2>
         <span className="provider-status" data-tone={statusTone(provider)}>
           {statusLine(provider)}
         </span>
@@ -198,6 +219,70 @@ function ProviderSection({ id, provider, now }: { id: ProviderId; provider: Prov
       <Extras id={id} provider={provider} />
     </div>
   );
+}
+
+const hubStatusLabels = {
+  loading: "Loading",
+  ready: "Live",
+  stale: "Cached",
+  error: "Could not refresh",
+} satisfies Record<ProxyHubStatus, string>;
+
+const hubStatusTones = {
+  loading: "warn",
+  ready: "ok",
+  stale: "warn",
+  error: "danger",
+} satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
+
+function HubSection({ hub, now }: { hub: ProxyHubSnapshot; now: number }) {
+  return (
+    <section className="hub">
+      <div className="hub-row">
+        <h2>{hub.label}</h2>
+        <span className="provider-status" data-tone={hubStatusTones[hub.status]}>
+          {hubStatusLabels[hub.status]}
+        </span>
+      </div>
+      <HubMessage hub={hub} />
+      <HubAccounts accounts={hub.accounts} now={now} />
+    </section>
+  );
+}
+
+function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
+  const messages = {
+    loading: null,
+    ready: hub.accounts.length === 0 ? <p className="empty">No supported accounts found.</p> : null,
+    stale: (
+      <p className="notice" role="status">
+        {hub.error_message}
+      </p>
+    ),
+    error: (
+      <p className="notice" role="status">
+        {hub.error_message}
+      </p>
+    ),
+  } satisfies Record<ProxyHubStatus, React.ReactNode>;
+  return messages[hub.status];
+}
+
+function HubAccounts({ accounts, now }: { accounts: ProxyHubAccount[]; now: number }) {
+  return accounts.map((account) => (
+    <ProviderSection
+      key={`${account.provider}:${account.id}`}
+      id={account.provider}
+      provider={account.usage}
+      now={now}
+      detail={accountDetail(account)}
+    />
+  ));
+}
+
+function accountDetail(account: ProxyHubAccount): string {
+  const details = [account.email, account.plan].filter((value) => value !== null).join(" · ");
+  return details.length > 0 ? details : account.id;
 }
 
 /** The current epoch in seconds, re-read often enough that a minute-grained label is never more
@@ -316,9 +401,13 @@ function App() {
 
           {!remote && <UpdateNotice />}
 
-          {snapshot && shown.length === 0 && <p className="empty">No providers are on. Turn one on in Settings.</p>}
+          {snapshot && shown.length === 0 && snapshot.proxy_hubs.length === 0 && (
+            <p className="empty">No providers are on. Turn one on in Settings.</p>
+          )}
 
           {snapshot && shown.map((id) => <ProviderSection key={id} id={id} provider={snapshot[id]} now={now} />)}
+
+          {snapshot && snapshot.proxy_hubs.map((hub) => <HubSection key={hub.id} hub={hub} now={now} />)}
 
           <footer>Auto-refreshes every 5 minutes</footer>
         </>

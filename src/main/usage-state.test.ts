@@ -1,11 +1,19 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { emptyProviderUsage } from "../shared/usage";
-import type { ProviderId, ProviderUsage, UsageSnapshot } from "../shared/usage";
+import { emptyProviderUsage, emptyProxyHubSnapshot } from "../shared/usage";
+import type {
+  ProviderId,
+  ProviderUsage,
+  ProxyHubAccount,
+  ProxyHubConfig,
+  ProxyHubSnapshot,
+  UsageSnapshot,
+} from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { applyReading, nextBackoff, settled, UsageState } from "./usage-state";
+import { saveSettings } from "./settings";
+import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -17,11 +25,36 @@ function settingsPath() {
   return join(directory, "providers.json");
 }
 
+function createState(
+  readProvider: (id: ProviderId) => Promise<ProviderUsage>,
+  publish: (snapshot: UsageSnapshot) => void = () => {},
+  readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]> = async () => [],
+) {
+  const providers = settingsPath();
+  return new UsageState(providers, join(providers, "..", "proxy-hubs.json"), readProvider, readHub, publish);
+}
+
 const ready = (used: number): ProviderUsage => ({
   ...emptyProviderUsage(),
   seven_day: { used_percent: used, limit_window_seconds: 604_800, reset_at_epoch: null },
   last_successful_update_epoch: 1,
   status: "ready",
+});
+
+const hubConfig: ProxyHubConfig = {
+  id: "hub",
+  label: "Home hub",
+  url: "http://hub.test:8317",
+  managementKey: "management-secret",
+  enabled: true,
+};
+
+const hubAccount = (used: number): ProxyHubAccount => ({
+  id: "codex.json",
+  email: "codex@example.com",
+  plan: "pro",
+  provider: "codex",
+  usage: ready(used),
 });
 
 /** A provider read that finishes only when the test releases it. */
@@ -34,21 +67,17 @@ function heldReads() {
 describe("usage state", () => {
   it("never reads a disabled provider", async () => {
     const read: ProviderId[] = [];
-    const state = new UsageState(
-      settingsPath(),
-      async (id) => {
-        read.push(id);
-        return ready(1);
-      },
-      () => {},
-    );
+    const state = createState(async (id) => {
+      read.push(id);
+      return ready(1);
+    });
     await state.refresh();
     expect(read).toEqual(["codex", "claude"]);
   });
 
   it("drops a reading for a provider switched off while it was read", async () => {
     const { reads, read } = heldReads();
-    const state = new UsageState(settingsPath(), read, () => {});
+    const state = createState(read);
     const refreshed = state.refresh();
     await state.setProviderEnabled("codex", false);
     for (const { release } of reads) release(ready(42));
@@ -59,7 +88,7 @@ describe("usage state", () => {
   it("folds a refresh asked for mid-read into one more pass that both callers get", async () => {
     const { reads, read } = heldReads();
     const published: UsageSnapshot[] = [];
-    const state = new UsageState(settingsPath(), read, (snapshot) => published.push(snapshot));
+    const state = createState(read, (snapshot) => published.push(snapshot));
     const first = state.refresh();
     const second = state.refresh();
     expect(second).toBe(first);
@@ -74,7 +103,7 @@ describe("usage state", () => {
 
   it("reads a provider switched on during a refresh", async () => {
     const { reads, read } = heldReads();
-    const state = new UsageState(settingsPath(), read, () => {});
+    const state = createState(read);
     const refreshed = state.refresh();
     const enabled = state.setProviderEnabled("opencode", true);
     for (const { release } of reads.splice(0)) release(ready(1));
@@ -89,7 +118,9 @@ describe("usage state", () => {
     const path = settingsPath();
     const state = new UsageState(
       path,
+      join(path, "..", "proxy-hubs.json"),
       async () => ready(42),
+      async () => [],
       () => {},
     );
     await state.refresh();
@@ -99,6 +130,66 @@ describe("usage state", () => {
     expect(() => state.setProviderEnabled("codex", false)).toThrow();
     expect(state.snapshot.enabled.codex).toBe(true);
     expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+  });
+
+  it("persists a hub before reading it and returns only redacted settings", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async () => [hubAccount(42)],
+      () => {},
+    );
+    const settings = state.addProxyHub({ label: "Home hub", url: "http://hub.test:8317", managementKey: "secret" });
+    expect(JSON.stringify(settings)).not.toContain("secret");
+    expect(readFileSync(hubs, "utf8")).toContain("secret");
+    await state.refresh();
+    expect(state.snapshot.proxy_hubs[0]?.accounts[0]?.usage.seven_day.used_percent).toBe(42);
+  });
+
+  it("enables and disables the whole hub without individual provider settings", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig]);
+    let reads = 0;
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async () => {
+        reads += 1;
+        return [hubAccount(42)];
+      },
+      () => {},
+    );
+    await state.refresh();
+    expect(state.setProxyHubEnabled("hub", false)[0]?.enabled).toBe(false);
+    expect(state.snapshot.proxy_hubs).toEqual([]);
+    await state.refresh();
+    expect(reads).toBe(1);
+    expect(state.setProxyHubEnabled("hub", true)[0]?.enabled).toBe(true);
+    await state.refresh();
+    expect(state.snapshot.proxy_hubs[0]?.accounts).toHaveLength(1);
+  });
+
+  it("does not restore a hub removed while its read is in flight", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig]);
+    let release = (_accounts: ProxyHubAccount[]) => {};
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      () => new Promise<ProxyHubAccount[]>((resolve) => (release = resolve)),
+      () => {},
+    );
+    const refresh = state.refresh();
+    state.removeProxyHub("hub");
+    release([hubAccount(42)]);
+    expect((await refresh).proxy_hubs).toEqual([]);
   });
 });
 
@@ -110,6 +201,31 @@ describe("failed readings", () => {
     const failed = applyReading(emptyProviderUsage(), new ReadFailure("response"));
     expect(failed.status).toBe("error");
     expect(failed.error_message).toBe("The usage service returned an unexpected response");
+  });
+
+  it("keeps prior account usage stale while distinguishing an empty hub from a failed listing", () => {
+    const previous: ProxyHubSnapshot = {
+      ...emptyProxyHubSnapshot(hubConfig),
+      accounts: [hubAccount(23)],
+      last_successful_update_epoch: 1,
+      status: "ready",
+    };
+    const failedAccount = hubAccount(0);
+    failedAccount.usage = { ...emptyProviderUsage(), status: "error", error_message: "Account failed." };
+    const partial = applyHubReading(previous, hubConfig, [failedAccount]);
+    expect(partial.accounts[0]?.usage.status).toBe("stale");
+    expect(partial.accounts[0]?.usage.seven_day.used_percent).toBe(23);
+
+    const failed = applyHubReading(previous, hubConfig, new Error("secret response"));
+    expect(failed.status).toBe("stale");
+    expect(failed.accounts).toHaveLength(1);
+    expect(failed.accounts[0]?.usage.status).toBe("stale");
+    expect(failed.accounts[0]?.usage.seven_day.used_percent).toBe(23);
+    expect(failed.error_message).not.toContain("secret response");
+
+    const empty = applyHubReading(previous, hubConfig, []);
+    expect(empty.status).toBe("ready");
+    expect(empty.accounts).toEqual([]);
   });
 });
 
@@ -132,8 +248,27 @@ describe("polling", () => {
       claude: { ...emptyProviderUsage(), status: "error" },
       opencode: emptyProviderUsage(),
       enabled: { codex: true, claude: true, opencode: false },
+      proxy_hubs: [],
     };
     expect(settled(snapshot)).toBe(false);
     expect(settled({ ...snapshot, enabled: { codex: true, claude: false, opencode: false } })).toBe(true);
+  });
+
+  it("retries failed hub accounts but accepts a successful empty hub", () => {
+    const snapshot: UsageSnapshot = {
+      codex: ready(1),
+      claude: ready(1),
+      opencode: emptyProviderUsage(),
+      enabled: { codex: true, claude: true, opencode: false },
+      proxy_hubs: [
+        {
+          ...emptyProxyHubSnapshot(hubConfig),
+          status: "ready",
+          accounts: [{ ...hubAccount(1), usage: { ...emptyProviderUsage(), status: "error" } }],
+        },
+      ],
+    };
+    expect(settled(snapshot)).toBe(false);
+    expect(settled({ ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0]!, accounts: [] }] })).toBe(true);
   });
 });

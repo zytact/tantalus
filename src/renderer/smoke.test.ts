@@ -79,8 +79,24 @@ describe("display contract", () => {
       claude: provider({ last_successful_update_epoch: now - 60 }),
       opencode: provider(),
       enabled: { codex: true, claude: false, opencode: true },
+      proxy_hubs: [],
     };
     expect(refreshedEpoch(snapshot)).toBe(now - 600);
+    expect(
+      refreshedEpoch({
+        ...snapshot,
+        proxy_hubs: [
+          {
+            id: "hub",
+            label: "Hub",
+            accounts: [],
+            last_successful_update_epoch: now - 30,
+            status: "ready",
+            error_message: null,
+          },
+        ],
+      }),
+    ).toBe(now - 30);
     expect(refreshedEpoch({ ...snapshot, enabled: { codex: false, claude: false, opencode: true } })).toBeNull();
 
     expect(refreshedAgo(null, now)).toBe("Not refreshed yet");

@@ -14,6 +14,7 @@ const snapshot = (claude: boolean): UsageSnapshot => ({
   claude: emptyProviderUsage(),
   opencode: emptyProviderUsage(),
   enabled: { codex: true, claude, opencode: false },
+  proxy_hubs: [],
 });
 
 let root: string;

@@ -1,4 +1,4 @@
-import type { ProviderId, UsageSnapshot } from "./usage";
+import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 
 /** A signed release newer than the running build, as the window and tray show it. */
 export type AvailableUpdate = { version: string };
@@ -10,11 +10,16 @@ export type RemoteSettings = Record<RemoteRoute, boolean>;
 /** Each route with the addresses it answers on. A route that is off, or whose address cannot be read,
  * has none. `error` says why the switched-on routes are not being served. */
 export type RemoteAccess = Record<RemoteRoute, { enabled: boolean; urls: string[] }> & { error: string | null };
+export type ProxyHubInput = { label: string; url: string; managementKey: string };
 
 /** Every request the window can make of the main process, keyed by channel. */
 export type Commands = {
   refreshUsage: () => UsageSnapshot;
   setProviderEnabled: (provider: ProviderId, enabled: boolean) => UsageSnapshot;
+  proxyHubs: () => ProxyHubSettings[];
+  addProxyHub: (input: ProxyHubInput) => ProxyHubSettings[];
+  setProxyHubEnabled: (id: string, enabled: boolean) => ProxyHubSettings[];
+  removeProxyHub: (id: string) => ProxyHubSettings[];
   checkForUpdate: () => AvailableUpdate | null;
   installUpdate: () => void;
   openAtLogin: () => boolean;

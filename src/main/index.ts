@@ -1,20 +1,22 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, Tray } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, remoteRoutes } from "../shared/ipc";
-import type { Commands, Events, Reply } from "../shared/ipc";
+import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
 import { nowEpoch, providerIds } from "../shared/usage";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
+import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
 import { trayItems } from "./tray-menu";
-import type { TrayAction } from "./tray-menu";
+import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
 import { pollUsage, UsageState } from "./usage-state";
 import { WebServer } from "./web-server";
@@ -51,13 +53,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function start() {
-  // The default menu binds Ctrl+R to reload, and that chord belongs to the app's refresh. macOS keeps
-  // a menu without it, so Cmd+Q and the edit shortcuts still work.
-  Menu.setApplicationMenu(
-    process.platform === "darwin"
-      ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
-      : null,
-  );
+  configureApplicationMenu();
 
   const web = new WebServer(
     page,
@@ -66,9 +62,12 @@ function start() {
     () => state.refresh(),
   );
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
+  const proxyHubs = new ProxyHubApi();
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
+    join(app.getPath("userData"), "proxy-hubs.json"),
     async (provider) => api.fetch(provider, await readCredentials(provider)),
+    (config) => proxyHubs.read(config),
     (snapshot) => {
       renderTray();
       publish("usageSnapshot", snapshot);
@@ -86,9 +85,7 @@ function start() {
 
   const tray = new Tray(trayImage());
   tray.setToolTip(identity.productName);
-  // macOS opens the menu on a left click; elsewhere the click opens the window and the menu keeps its
-  // own button.
-  if (process.platform !== "darwin") tray.on("click", showWindow);
+  bindTrayClick(tray);
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
     refresh: () => void state.refresh(),
@@ -100,19 +97,7 @@ function start() {
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
     shownTray = shown;
-    tray.setContextMenu(
-      Menu.buildFromTemplate(
-        items.map((item) =>
-          item === "separator"
-            ? { type: "separator" }
-            : {
-                label: item.label,
-                enabled: item.action !== null,
-                click: item.action ? trayActions[item.action] : undefined,
-              },
-        ),
-      ),
-    );
+    tray.setContextMenu(Menu.buildFromTemplate(menuTemplate(items, trayActions)));
   }
   renderTray();
   setInterval(renderTray, TRAY_TICK);
@@ -123,15 +108,7 @@ function start() {
     serverEpoch: nowEpoch,
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);
-  handle("refreshUsage", () => state.refresh());
-  handle("setProviderEnabled", (provider, enabled) => {
-    if (!providerIds.includes(provider) || typeof enabled !== "boolean") throw new Error("Unknown provider setting.");
-    try {
-      return state.setProviderEnabled(provider, enabled);
-    } catch (error) {
-      throw new Error(`Could not save provider setting: ${message(error)}`);
-    }
-  });
+  registerUsageHandlers(state);
   handle("checkForUpdate", async () => {
     if (!updatesEnabled) throw new Error("Dev and preview builds do not check for updates.");
     return updater.check().catch((error: unknown) => {
@@ -151,10 +128,78 @@ function start() {
 
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
+  startBackgroundServices(state, remote, updater, updatesEnabled);
+}
+
+function menuTemplate(items: TrayItem[], actions: Record<TrayAction, () => void>): MenuItemConstructorOptions[] {
+  return items.map((item) => {
+    if (item === "separator") return { type: "separator" };
+    if ("submenu" in item) return { label: item.label, submenu: menuTemplate(item.submenu, actions) };
+    return {
+      label: item.label,
+      enabled: item.action !== null,
+      click: item.action ? actions[item.action] : undefined,
+    };
+  });
+}
+
+function configureApplicationMenu() {
+  // The default menu binds Ctrl+R to reload, and that chord belongs to the app's refresh. macOS keeps
+  // a menu without it, so Cmd+Q and the edit shortcuts still work.
+  Menu.setApplicationMenu(
+    process.platform === "darwin"
+      ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }])
+      : null,
+  );
+}
+
+function bindTrayClick(tray: Tray) {
+  // macOS opens the menu on a left click; elsewhere the click opens the window and the menu keeps its
+  // own button.
+  if (process.platform !== "darwin") tray.on("click", showWindow);
+}
+
+function startBackgroundServices(
+  state: UsageState,
+  remote: RemoteAccessRoutes,
+  updater: Updater,
+  updatesEnabled: boolean,
+) {
   if (!launchedHidden()) showWindow();
   void pollUsage(state, sleep);
   void remote.start();
   if (updatesEnabled) void updater.watch();
+}
+
+function registerUsageHandlers(state: UsageState) {
+  handle("refreshUsage", () => state.refresh());
+  handle("setProviderEnabled", (provider, enabled) => {
+    if (!providerIds.includes(provider) || typeof enabled !== "boolean") throw new Error("Unknown provider setting.");
+    try {
+      return state.setProviderEnabled(provider, enabled);
+    } catch (error) {
+      throw new Error(`Could not save provider setting: ${message(error)}`);
+    }
+  });
+  handle("proxyHubs", () => state.proxyHubs());
+  handle("addProxyHub", (input) => {
+    assertProxyHubInput(input);
+    return state.addProxyHub(input);
+  });
+  handle("setProxyHubEnabled", (id, enabled) => {
+    if (typeof id !== "string" || typeof enabled !== "boolean") throw new Error("Unknown proxy hub setting.");
+    return state.setProxyHubEnabled(id, enabled);
+  });
+  handle("removeProxyHub", (id) => {
+    if (typeof id !== "string") throw new Error("Unknown proxy hub setting.");
+    return state.removeProxyHub(id);
+  });
+}
+
+function assertProxyHubInput(input: ProxyHubInput): void {
+  if (typeof input !== "object" || input === null) throw new Error("Invalid proxy hub settings.");
+  const valid = [input.label, input.url, input.managementKey].every((value) => typeof value === "string");
+  if (!valid) throw new Error("Invalid proxy hub settings.");
 }
 
 /** Closing the window destroys it, so the tray and a normal launch build it afresh. A closed window

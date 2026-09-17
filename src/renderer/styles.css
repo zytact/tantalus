@@ -179,6 +179,38 @@ button:focus-visible {
   font-size: 1.1rem;
   font-weight: 500;
 }
+.provider-name small {
+  display: block;
+  margin-top: 2px;
+  font-family: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+.hub {
+  padding-top: 18px;
+  border-bottom: 2px solid var(--border-strong);
+}
+.hub-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+.hub-row h2 {
+  margin: 0;
+  font-family: Newsreader, Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+.hub .provider {
+  padding-left: 12px;
+  border-bottom-width: 1px;
+  border-bottom-color: var(--hairline);
+}
 .provider-status,
 .facts dt {
   font-size: 0.68rem;
@@ -282,6 +314,58 @@ button:focus-visible {
 }
 .setting-toggle .setting-state {
   color: inherit;
+}
+.hub-heading {
+  border-top: 2px solid var(--border-strong);
+}
+.hub-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hub-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.hub-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hub-form label:last-of-type {
+  grid-column: 1 / -1;
+}
+.optional-label {
+  color: var(--text-faint);
+  font-weight: 450;
+}
+.hub-form input {
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 450;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.hub-form input:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.hub-form button {
+  justify-self: start;
 }
 .settings-notice {
   margin-top: 0;
@@ -447,6 +531,16 @@ footer {
   }
   .setting-row {
     gap: 16px;
+  }
+  .hub-form {
+    grid-template-columns: 1fr;
+  }
+  .hub-form label:last-of-type {
+    grid-column: auto;
+  }
+  .hub-controls {
+    align-items: flex-end;
+    flex-direction: column;
   }
 }
 @media (prefers-reduced-motion: reduce) {

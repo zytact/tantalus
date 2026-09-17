@@ -1,9 +1,12 @@
 import type { AvailableUpdate } from "../shared/ipc";
 import { percent, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
-import type { ProviderUsage, UsageSnapshot, WindowUsage } from "../shared/usage";
+import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
 
 export type TrayAction = "show" | "refresh" | "quit";
-export type TrayItem = { label: string; action: TrayAction | null } | "separator";
+export type TrayItem =
+  | { label: string; action: TrayAction | null }
+  | { label: string; submenu: TrayItem[] }
+  | "separator";
 
 /** A heading and one row per window for every enabled provider, a dimmed row saying when they were
  * refreshed, then a separator and the actions, led by the pending update when there is one. The
@@ -11,12 +14,13 @@ export type TrayItem = { label: string; action: TrayAction | null } | "separator
  * the app exists to show; clicking one opens the window, like Open Tantalus. The window carries the
  * install button, so the update item opens it too. */
 export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | null, now: number): TrayItem[] {
-  const readings = providerIds
+  const direct = providerIds
     .filter((id) => snapshot.enabled[id])
     .flatMap((id): TrayItem[] => [
       { label: providerNames[id], action: "show" },
       ...trayRows(snapshot[id], now).map((label) => ({ label, action: "show" as const })),
     ]);
+  const readings: TrayItem[] = [...direct, ...snapshot.proxy_hubs.map((hub) => hubTrayItem(hub, now))];
   const refreshed: TrayItem[] =
     readings.length > 0 ? [{ label: refreshedAgo(refreshedEpoch(snapshot), now), action: null }, "separator"] : [];
   return [
@@ -27,6 +31,30 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
     { label: "Refresh now", action: "refresh" },
     { label: "Quit", action: "quit" },
   ];
+}
+
+function hubTrayItem(hub: ProxyHubSnapshot, now: number): TrayItem {
+  const accounts = hub.accounts.flatMap((account, index): TrayItem[] => {
+    const separator: TrayItem[] = index === 0 ? [] : ["separator"];
+    return [
+      ...separator,
+      {
+        label: `${providerNames[account.provider]} · ${account.email ?? account.plan ?? account.id}`,
+        action: "show",
+      },
+      ...trayRows(account.usage, now).map((label) => ({ label, action: "show" as const })),
+    ];
+  });
+  const submenu =
+    accounts.length > 0
+      ? accounts
+      : [
+          {
+            label: hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts"),
+            action: null,
+          },
+        ];
+  return { label: hub.label, submenu };
 }
 
 /** A row per window the reading actually carries. Which windows an account has depends on its plan,
