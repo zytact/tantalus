@@ -66,6 +66,13 @@ jobs:
 
       - run: vp run package
 
+      - if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          if rpm -qpl release/tantalus/*.rpm | grep -q '^/usr/lib/.build-id/'; then
+            echo "::error::RPM contains global build-id links"
+            exit 1
+          fi
+
       # The updater accepts only bundles signed with the same key as the Tauri releases. Without it the
       # bundles still build, but publishing fails for want of signatures.
       - shell: bash
