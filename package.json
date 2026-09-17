@@ -10,6 +10,7 @@
     "dev": "node scripts/dev.ts",
     "fallow": "fallow audit --base origin/main",
     "package": "vp build && vp pack && node scripts/package.ts",
+    "postinstall": "install-electron",
     "prepare": "vp config --no-agent"
   },
   "devDependencies": {
