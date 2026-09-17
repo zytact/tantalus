@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, Tray } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
@@ -15,7 +16,7 @@ import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
 import { trayItems } from "./tray-menu";
-import type { TrayAction } from "./tray-menu";
+import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
 import { pollUsage, UsageState } from "./usage-state";
 import { WebServer } from "./web-server";
@@ -96,19 +97,7 @@ function start() {
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
     shownTray = shown;
-    tray.setContextMenu(
-      Menu.buildFromTemplate(
-        items.map((item) =>
-          item === "separator"
-            ? { type: "separator" }
-            : {
-                label: item.label,
-                enabled: item.action !== null,
-                click: item.action ? trayActions[item.action] : undefined,
-              },
-        ),
-      ),
-    );
+    tray.setContextMenu(Menu.buildFromTemplate(menuTemplate(items, trayActions)));
   }
   renderTray();
   setInterval(renderTray, TRAY_TICK);
@@ -140,6 +129,18 @@ function start() {
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
   startBackgroundServices(state, remote, updater, updatesEnabled);
+}
+
+function menuTemplate(items: TrayItem[], actions: Record<TrayAction, () => void>): MenuItemConstructorOptions[] {
+  return items.map((item) => {
+    if (item === "separator") return { type: "separator" };
+    if ("submenu" in item) return { label: item.label, submenu: menuTemplate(item.submenu, actions) };
+    return {
+      label: item.label,
+      enabled: item.action !== null,
+      click: item.action ? actions[item.action] : undefined,
+    };
+  });
 }
 
 function configureApplicationMenu() {

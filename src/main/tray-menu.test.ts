@@ -82,4 +82,43 @@ describe("tray menu", () => {
       "Quit",
     ]);
   });
+
+  it("keeps every pooled account inside its hub submenu", () => {
+    const usage = snapshot({ codex: false, claude: false, opencode: false });
+    usage.proxy_hubs = [
+      {
+        id: "home",
+        label: "Home hub",
+        last_successful_update_epoch: 940,
+        status: "ready",
+        error_message: null,
+        accounts: [
+          {
+            id: "first.json",
+            email: "first@example.com",
+            plan: "pro",
+            provider: "codex",
+            usage: provider({ seven_day: window(sevenDaySeconds, 20) }),
+          },
+          {
+            id: "second.json",
+            email: "second@example.com",
+            plan: "Claude Subscription",
+            provider: "claude",
+            usage: provider({ five_hour: window(18_000, 70) }),
+          },
+        ],
+      },
+    ];
+    expect(trayItems(usage, null, 1000)[0]).toEqual({
+      label: "Home hub",
+      submenu: [
+        { label: "Codex · first@example.com", action: "show" },
+        { label: "   7d   ██░░░░░░░░  20%", action: "show" },
+        "separator",
+        { label: "Claude · second@example.com", action: "show" },
+        { label: "   5h   ███████░░░  70%", action: "show" },
+      ],
+    });
+  });
 });

@@ -4,53 +4,16 @@ import { remoteRoutes } from "../shared/ipc";
 import type { RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
-import { BusyButton, PendingLabel, useVisiblePending } from "./busy";
+import { BusyButton } from "./busy";
 import type { Loadable } from "./busy";
 import { ProviderIcon } from "./provider-icon";
+import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
+import { SettingPending, Toggle } from "./settings-controls";
 import { UpdateNotice } from "./update-notice";
 
 /** The provider choice, or why it cannot be shown yet. */
 export type ProviderChoice = Loadable<Record<ProviderId, boolean>>;
-
-/** The switch every settings row uses. It ignores clicks while `busy`, and dims and says so only
- * while the pending state is visible. */
-function Toggle({
-  label,
-  checked,
-  busy = false,
-  onToggle,
-}: {
-  label: string;
-  checked: boolean;
-  busy?: boolean;
-  onToggle: () => void;
-}) {
-  const saving = useVisiblePending(busy);
-  const toggle = () => {
-    if (!busy) onToggle();
-  };
-  return (
-    <button
-      className="setting-toggle"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      aria-busy={saving}
-      disabled={saving}
-      onClick={toggle}
-    >
-      <span className="setting-state">{saving ? "Saving" : checked ? "On" : "Off"}</span>
-      <span className="switch-track" aria-hidden="true">
-        <span className="switch-knob" />
-      </span>
-    </button>
-  );
-}
-
-function SettingPending({ failed }: { failed: boolean }) {
-  return <PendingLabel className="setting-state" failed={failed} failedLabel="Unavailable" pendingLabel="Checking" />;
-}
 
 /** Switching a provider off stops the polling for it and drops it from the allowance view. */
 function ProviderRow({
@@ -328,6 +291,8 @@ export function SettingsPage({
         {providerIds.map((id) => (
           <ProviderRow key={id} id={id} choice={providers} onChange={onProviderChange} />
         ))}
+
+        <ProxyHubSettingsRows />
 
         <section className="setting-row">
           <div className="setting-copy">
