@@ -1,7 +1,18 @@
-import { emptyProviderUsage, providerIds } from "../shared/usage";
-import type { ProviderId, ProviderSettings, ProviderUsage, UsageSnapshot } from "../shared/usage";
+import { randomUUID } from "node:crypto";
+import type { ProxyHubInput } from "../shared/ipc";
+import { emptyProviderUsage, emptyProxyHubSnapshot, nowEpoch, providerIds } from "../shared/usage";
+import type {
+  ProviderId,
+  ProviderSettings,
+  ProviderUsage,
+  ProxyHubAccount,
+  ProxyHubConfig,
+  ProxyHubSettings,
+  ProxyHubSnapshot,
+  UsageSnapshot,
+} from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { loadSettings, saveSettings } from "./settings";
+import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./settings";
 
 export const REFRESH_INTERVAL = 300_000;
 const RETRY_BACKOFF_START = 5000;
@@ -12,17 +23,25 @@ export class UsageState {
   snapshot: UsageSnapshot;
   private running: Promise<UsageSnapshot> | null = null;
   private again = false;
+  private hubConfigs: ProxyHubConfig[];
+  private hubGeneration = 0;
 
   constructor(
-    private readonly settingsPath: string,
-    private readonly read: (provider: ProviderId) => Promise<ProviderUsage>,
+    private readonly providerSettingsPath: string,
+    private readonly proxyHubSettingsPath: string,
+    private readonly readProvider: (provider: ProviderId) => Promise<ProviderUsage>,
+    private readonly readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]>,
     private readonly publish: (snapshot: UsageSnapshot) => void,
   ) {
+    this.hubConfigs = loadProxyHubSettings(proxyHubSettingsPath);
     this.snapshot = {
       codex: emptyProviderUsage(),
       claude: emptyProviderUsage(),
       opencode: emptyProviderUsage(),
-      enabled: loadSettings(settingsPath),
+      enabled: loadSettings(providerSettingsPath),
+      proxy_hubs: this.hubConfigs
+        .filter(({ enabled }) => enabled)
+        .map((config) => emptyProxyHubSnapshot(redact(config))),
     };
   }
 
@@ -40,19 +59,40 @@ export class UsageState {
   private async run(): Promise<UsageSnapshot> {
     for (;;) {
       this.again = false;
-      const readings = await Promise.all(
-        providerIds.map(async (id) => {
-          if (!this.snapshot.enabled[id]) return null;
-          const reading = await this.read(id).catch((error: unknown) =>
-            error instanceof Error ? error : new Error(String(error)),
-          );
-          return { id, reading };
-        }),
-      );
+      const hubGeneration = this.hubGeneration;
+      const hubConfigs = this.hubConfigs.filter(({ enabled }) => enabled);
+      const [providerReadings, hubReadings] = await Promise.all([
+        Promise.all(
+          providerIds.map(async (id) => {
+            if (!this.snapshot.enabled[id]) return null;
+            const reading = await this.readProvider(id).catch((error: unknown) =>
+              error instanceof Error ? error : new Error(String(error)),
+            );
+            return { id, reading };
+          }),
+        ),
+        Promise.all(
+          hubConfigs.map(async (config) => ({
+            config,
+            reading: await this.readHub(config).catch((error: unknown) =>
+              error instanceof Error ? error : new Error(String(error)),
+            ),
+          })),
+        ),
+      ]);
       const next = { ...this.snapshot };
-      for (const result of readings) {
+      for (const result of providerReadings) {
         // A provider switched off while its read was in flight keeps the reading it was cleared to.
         if (result && next.enabled[result.id]) next[result.id] = applyReading(next[result.id], result.reading);
+      }
+      if (hubGeneration === this.hubGeneration) {
+        next.proxy_hubs = hubReadings.map(({ config, reading }) =>
+          applyHubReading(
+            next.proxy_hubs.find((hub) => hub.id === config.id) ?? emptyProxyHubSnapshot(redact(config)),
+            redact(config),
+            reading,
+          ),
+        );
       }
       this.snapshot = next;
       if (!this.again) {
@@ -67,12 +107,60 @@ export class UsageState {
    * off drops its reading; switching one on reads it straight away. */
   setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
     const settings: ProviderSettings = { ...this.snapshot.enabled, [provider]: enabled };
-    saveSettings(this.settingsPath, settings);
+    saveSettings(this.providerSettingsPath, settings);
     const next = { ...this.snapshot, enabled: settings };
     if (!enabled) next[provider] = emptyProviderUsage();
     this.snapshot = next;
     this.publish(next);
     return enabled ? this.refresh() : Promise.resolve(next);
+  }
+
+  proxyHubs(): ProxyHubSettings[] {
+    return this.hubConfigs.map(redact);
+  }
+
+  addProxyHub(input: ProxyHubInput): ProxyHubSettings[] {
+    const url = input.url.trim();
+    const managementKey = input.managementKey.trim();
+    if (!httpUrl(url)) throw new Error("Enter an HTTP or HTTPS hub URL.");
+    if (managementKey.length === 0) throw new Error("Enter the hub management key.");
+    const label = input.label.trim() || new URL(url).host;
+    return this.saveProxyHubs(
+      [...this.hubConfigs, { id: randomUUID(), label, url, managementKey, enabled: true }],
+      true,
+    );
+  }
+
+  setProxyHubEnabled(id: string, enabled: boolean): ProxyHubSettings[] {
+    if (!this.hubConfigs.some((hub) => hub.id === id)) throw new Error("Unknown proxy hub.");
+    return this.saveProxyHubs(
+      this.hubConfigs.map((hub) => (hub.id === id ? { ...hub, enabled } : hub)),
+      enabled,
+    );
+  }
+
+  removeProxyHub(id: string): ProxyHubSettings[] {
+    if (!this.hubConfigs.some((hub) => hub.id === id)) throw new Error("Unknown proxy hub.");
+    return this.saveProxyHubs(
+      this.hubConfigs.filter((hub) => hub.id !== id),
+      false,
+    );
+  }
+
+  private saveProxyHubs(configs: ProxyHubConfig[], refresh: boolean): ProxyHubSettings[] {
+    saveSettings(this.proxyHubSettingsPath, configs);
+    this.hubConfigs = configs;
+    this.hubGeneration += 1;
+    const current = new Map(this.snapshot.proxy_hubs.map((hub) => [hub.id, hub]));
+    this.snapshot = {
+      ...this.snapshot,
+      proxy_hubs: configs
+        .filter(({ enabled }) => enabled)
+        .map((config) => current.get(config.id) ?? emptyProxyHubSnapshot(redact(config))),
+    };
+    this.publish(this.snapshot);
+    if (refresh) void this.refresh();
+    return this.proxyHubs();
   }
 }
 
@@ -89,10 +177,47 @@ export function applyReading(previous: ProviderUsage, reading: ProviderUsage | E
   };
 }
 
+export function applyHubReading(
+  previous: ProxyHubSnapshot,
+  settings: ProxyHubSettings,
+  reading: ProxyHubAccount[] | Error,
+): ProxyHubSnapshot {
+  if (reading instanceof Error) {
+    return {
+      ...previous,
+      label: settings.label,
+      status: previous.last_successful_update_epoch === null ? "error" : "stale",
+      error_message: "The hub could not list accounts.",
+    };
+  }
+  const previousAccounts = new Map(previous.accounts.map((account) => [`${account.provider}:${account.id}`, account]));
+  const accounts = reading.map((account) => {
+    const prior = previousAccounts.get(`${account.provider}:${account.id}`);
+    return account.usage.status === "error" && prior
+      ? { ...account, usage: applyReading(prior.usage, new Error(account.usage.error_message ?? "Could not refresh.")) }
+      : account;
+  });
+  return {
+    id: settings.id,
+    label: settings.label,
+    accounts,
+    last_successful_update_epoch: nowEpoch(),
+    status: "ready",
+    error_message: null,
+  };
+}
+
+const redact = ({ id, label, url, enabled }: ProxyHubConfig): ProxyHubSettings => ({ id, label, url, enabled });
+
 /** Every enabled provider holds a reading. A launch at login usually beats the network up, so the
  * first pass fails and the tray would otherwise sit on "Not refreshed yet" for a full interval. */
 export function settled(snapshot: UsageSnapshot): boolean {
-  return providerIds.every((id) => !snapshot.enabled[id] || snapshot[id].status === "ready");
+  return (
+    providerIds.every((id) => !snapshot.enabled[id] || snapshot[id].status === "ready") &&
+    snapshot.proxy_hubs.every(
+      (hub) => hub.status === "ready" && hub.accounts.every((account) => account.usage.status === "ready"),
+    )
+  );
 }
 
 /** The wait before the next attempt when it is not the normal interval. A failure backs off from

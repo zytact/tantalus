@@ -38,6 +38,7 @@ export type ProxyHubConfig = {
   managementKey: string;
   enabled: boolean;
 };
+export type ProxyHubSettings = Omit<ProxyHubConfig, "managementKey">;
 export type ProxyHubAccount = {
   id: string;
   email: string | null;
@@ -45,8 +46,20 @@ export type ProxyHubAccount = {
   provider: ProxyHubProviderId;
   usage: ProviderUsage;
 };
+export type ProxyHubStatus = "loading" | "ready" | "stale" | "error";
+export type ProxyHubSnapshot = {
+  id: string;
+  label: string;
+  accounts: ProxyHubAccount[];
+  last_successful_update_epoch: number | null;
+  status: ProxyHubStatus;
+  error_message: string | null;
+};
 export type ProviderSettings = Record<ProviderId, boolean>;
-export type UsageSnapshot = Record<ProviderId, ProviderUsage> & { enabled: ProviderSettings };
+export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
+  enabled: ProviderSettings;
+  proxy_hubs: ProxyHubSnapshot[];
+};
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {
@@ -79,6 +92,15 @@ export const emptyProviderUsage = (): ProviderUsage => ({
   reset_credits: [],
   reset_credit_count: null,
   extra_usage: null,
+  last_successful_update_epoch: null,
+  status: "loading",
+  error_message: null,
+});
+
+export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnapshot => ({
+  id: settings.id,
+  label: settings.label,
+  accounts: [],
   last_successful_update_epoch: null,
   status: "loading",
   error_message: null,
@@ -127,10 +149,14 @@ function paceStatus(used: number, expectedPercent: number): UsagePace["status"] 
 
 /** The newest successful reading among the enabled providers. */
 export function refreshedEpoch(snapshot: UsageSnapshot): number | null {
-  const epochs = providerIds
+  const direct = providerIds
     .filter((id) => snapshot.enabled[id])
-    .map((id) => snapshot[id].last_successful_update_epoch)
-    .filter((epoch) => epoch !== null);
+    .map((id) => snapshot[id].last_successful_update_epoch);
+  const hubs = snapshot.proxy_hubs.flatMap((hub) => [
+    hub.last_successful_update_epoch,
+    ...hub.accounts.map((account) => account.usage.last_successful_update_epoch),
+  ]);
+  const epochs = [...direct, ...hubs].filter((epoch) => epoch !== null);
   return epochs.length > 0 ? Math.max(...epochs) : null;
 }
 

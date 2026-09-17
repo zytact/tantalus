@@ -57,6 +57,7 @@ describe("tray menu", () => {
     claude: emptyProviderUsage(),
     opencode: emptyProviderUsage(),
     enabled,
+    proxy_hubs: [],
   });
 
   it("lists enabled providers, when they were read, then the actions led by an update", () => {
