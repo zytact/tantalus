@@ -219,6 +219,8 @@ describe("failed readings", () => {
     const failed = applyHubReading(previous, hubConfig, new Error("secret response"));
     expect(failed.status).toBe("stale");
     expect(failed.accounts).toHaveLength(1);
+    expect(failed.accounts[0]?.usage.status).toBe("stale");
+    expect(failed.accounts[0]?.usage.seven_day.used_percent).toBe(23);
     expect(failed.error_message).not.toContain("secret response");
 
     const empty = applyHubReading(previous, hubConfig, []);

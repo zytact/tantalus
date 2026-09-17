@@ -183,11 +183,16 @@ export function applyHubReading(
   reading: ProxyHubAccount[] | Error,
 ): ProxyHubSnapshot {
   if (reading instanceof Error) {
+    const error = new Error("The hub could not list accounts.");
     return {
       ...previous,
       label: settings.label,
+      accounts: previous.accounts.map((account) => ({
+        ...account,
+        usage: applyReading(account.usage, error),
+      })),
       status: previous.last_successful_update_epoch === null ? "error" : "stale",
-      error_message: "The hub could not list accounts.",
+      error_message: error.message,
     };
   }
   const previousAccounts = new Map(previous.accounts.map((account) => [`${account.provider}:${account.id}`, account]));

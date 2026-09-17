@@ -58,6 +58,7 @@ export class ProxyHubApi {
 
   private async readCodex(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
     const value = await this.apiCall(config, account, `${CODEX_BASE}/usage`);
+    if (!codexUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
     const now = nowEpoch();
     const credits = await this.apiCall(config, account, CREDITS_URL)
       .then((response) => availableCredits(response, now))
@@ -73,6 +74,7 @@ export class ProxyHubApi {
 
   private async readClaude(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
     const value = await this.apiCall(config, account, "https://api.anthropic.com/api/oauth/usage");
+    if (!claudeUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
     return ready(parseClaudeUsage(value), nowEpoch());
   }
 
@@ -178,6 +180,47 @@ function accountDetails(account: AuthFile): Omit<ProxyHubAccount, "usage"> {
     plan: account.provider === "claude" ? "Claude Subscription" : account.plan,
     provider: account.provider,
   };
+}
+
+function codexUsageResponse(value: unknown): boolean {
+  if (!record(value)) return false;
+  const rateLimit = value.rate_limit;
+  if (rateLimit === null) return true;
+  if (!record(rateLimit)) return false;
+  return [rateLimit.primary_window, rateLimit.secondary_window].every(
+    (window) => window === undefined || window === null || codexWindow(window),
+  );
+}
+
+function codexWindow(value: unknown): boolean {
+  if (!record(value) || typeof value.used_percent !== "number") return false;
+  const resetAt = value.reset_at;
+  const duration = value.limit_window_seconds;
+  return (
+    (resetAt === undefined || resetAt === null || typeof resetAt === "string" || typeof resetAt === "number") &&
+    (duration === undefined || scalarNumber(duration))
+  );
+}
+
+function claudeUsageResponse(value: unknown): boolean {
+  if (!record(value)) return false;
+  if (!Object.hasOwn(value, "five_hour") && !Object.hasOwn(value, "seven_day")) return false;
+  return [value.five_hour, value.seven_day].every(
+    (window) => window === undefined || window === null || claudeWindow(window),
+  );
+}
+
+function claudeWindow(value: unknown): boolean {
+  if (!record(value) || typeof value.utilization !== "number") return false;
+  return value.resets_at === null || typeof value.resets_at === "string";
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function scalarNumber(value: unknown): boolean {
+  return typeof value === "number" || (typeof value === "string" && /^\d+(?:\.\d*)?$/.test(value));
 }
 
 function ready(fields: Partial<ProviderUsage>, now: number): ProviderUsage {

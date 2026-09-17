@@ -141,6 +141,37 @@ describe("CLIProxyAPI usage", () => {
     expect(JSON.stringify(accounts)).not.toContain(config.managementKey);
   });
 
+  it.each(["null", "{}", JSON.stringify({ error: "upstream unavailable" })])(
+    "rejects malformed provider body %s instead of publishing empty ready usage",
+    async (body) => {
+      const request: typeof fetch = async (_input, init) => {
+        if (init?.method === "GET") {
+          return Response.json({ files: [{ id: "claude", auth_index: "claude", provider: "claude" }] });
+        }
+        return Response.json({ status_code: 200, body });
+      };
+      const accounts = await new ProxyHubApi(request).read(config);
+      expect(accounts[0]?.usage.status).toBe("error");
+      expect(accounts[0]?.usage.error_message).toBe("The hub could not read this account's usage.");
+    },
+  );
+
+  it("accepts the numeric strings supported by the shared Codex parser", async () => {
+    const request: typeof fetch = async (_input, init) => {
+      if (init?.method === "GET") {
+        return Response.json({ files: [{ id: "codex", auth_index: "codex", provider: "codex" }] });
+      }
+      const call = JSON.parse(requestBody(init)) as ManagementCall;
+      const body = call.url.endsWith("rate-limit-reset-credits")
+        ? { credits: [] }
+        : { rate_limit: { primary_window: { used_percent: 25, limit_window_seconds: "18000" } } };
+      return Response.json({ status_code: 200, body: JSON.stringify(body) });
+    };
+    const accounts = await new ProxyHubApi(request).read(config);
+    expect(accounts[0]?.usage.status).toBe("ready");
+    expect(accounts[0]?.usage.five_hour.used_percent).toBe(25);
+  });
+
   it("caps account reads across concurrent hubs", async () => {
     let active = 0;
     let maximum = 0;
