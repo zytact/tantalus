@@ -19,6 +19,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
     devDependencies:
       '@fontsource-variable/inter-tight':
         specifier: ^5.3.0

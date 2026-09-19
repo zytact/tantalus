@@ -1,4 +1,5 @@
-import { createHash, createPublicKey, verify } from "node:crypto";
+import { createPublicKey, verify } from "node:crypto";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { field } from "./parse";
 
 /** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
@@ -60,7 +61,7 @@ export function verifySignature(data: Buffer, signature: string, publicKey = PUB
       type: "spki",
     });
     const releaseSignature = signaturePacket.subarray(10);
-    const digest = createHash("blake2b512").update(data).digest();
+    const digest = Buffer.from(blake2b(data));
     const trustedComment = Buffer.from(signatureLines[2].slice("trusted comment: ".length));
     return (
       verify(null, digest, key, releaseSignature) &&

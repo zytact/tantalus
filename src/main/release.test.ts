@@ -1,5 +1,18 @@
+import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { build } from "vite";
 import { describe, expect, it } from "vite-plus/test";
 import { isNewer, parseManifest, verifySignature } from "./release";
+
+const run = promisify(execFile);
+const electronPackage = dirname(createRequire(import.meta.url).resolve("electron"));
+const electronPath = join(electronPackage, "dist", readFileSync(join(electronPackage, "path.txt"), "utf8").trim());
 
 const PUBLIC_KEY =
   "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxOERERkY3RTE3NTdDRTkKUldUcGZIWGg5OStOWVhnQnM3elBNOU00TTlXZW5IS2dzUExHb3dZS1VPY0IxU3JDZ21wKzh3QlMK";
@@ -33,5 +46,39 @@ describe("release manifest", () => {
     const lines = Buffer.from(SIGNATURE, "base64").toString("utf8").split("\n");
     lines[2] += " changed";
     expect(verifySignature(data, Buffer.from(lines.join("\n")).toString("base64"), PUBLIC_KEY)).toBe(false);
+  });
+
+  it("verifies signatures in Electron's runtime", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "tantalus-signature-test-"));
+    try {
+      await build({
+        configFile: false,
+        logLevel: "silent",
+        ssr: { noExternal: true },
+        build: {
+          ssr: join(import.meta.dirname, "release.ts"),
+          outDir: directory,
+          emptyOutDir: true,
+          rollupOptions: { output: { entryFileNames: "release.mjs" } },
+        },
+      });
+      const script =
+        'const { verifySignature } = await import(process.argv[1]); console.log(verifySignature(Buffer.from("release bundle"), process.argv[2], process.argv[3]));';
+      const { stdout } = await run(
+        electronPath,
+        [
+          "--input-type=module",
+          "--eval",
+          script,
+          pathToFileURL(join(directory, "release.mjs")).href,
+          SIGNATURE,
+          PUBLIC_KEY,
+        ],
+        { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } },
+      );
+      expect(stdout.trim()).toBe("true");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
