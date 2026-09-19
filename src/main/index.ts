@@ -185,6 +185,11 @@ function registerUsageHandlers(state: UsageState) {
     assertProxyHubInput(input);
     return state.addProxyHub(input);
   });
+  handle("updateProxyHub", (id, input) => {
+    if (typeof id !== "string") throw new Error("Unknown proxy hub setting.");
+    assertProxyHubInput(input);
+    return state.updateProxyHub(id, input);
+  });
   handle("setProxyHubEnabled", (id, enabled) => {
     if (typeof id !== "string" || typeof enabled !== "boolean") throw new Error("Unknown proxy hub setting.");
     return state.setProxyHubEnabled(id, enabled);
