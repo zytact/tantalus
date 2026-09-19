@@ -12,7 +12,7 @@ import type {
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { ProxyHubError } from "./proxy-hub-api";
+import { ProxyHubRejected } from "./proxy-hub-api";
 import { saveSettings } from "./settings";
 import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
 
@@ -166,7 +166,7 @@ describe("usage state", () => {
       hubs,
       async () => ready(1),
       async () => {
-        throw new ProxyHubError("The hub rejected the management key.", true);
+        throw new ProxyHubRejected("The hub rejected the management key.");
       },
       () => {},
     );
@@ -189,7 +189,7 @@ describe("usage state", () => {
       async () => ready(1),
       async () => {
         reads += 1;
-        throw new ProxyHubError("The hub rejected the management key.", true);
+        throw new ProxyHubRejected("The hub rejected the management key.");
       },
       () => {},
     );
@@ -228,6 +228,33 @@ describe("usage state", () => {
     expect(state.setProxyHubEnabled("hub", true)[0]?.enabled).toBe(true);
     await state.refresh();
     expect(state.snapshot.proxy_hubs[0]?.accounts).toHaveLength(1);
+  });
+
+  it("keeps a refusal that lands while another hub changes", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig, { ...hubConfig, id: "work", enabled: false }]);
+    let refuse = () => {};
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      (config) =>
+        config.id === "hub"
+          ? new Promise<ProxyHubAccount[]>((_resolve, reject) => {
+              refuse = () => reject(new ProxyHubRejected("The hub rejected the management key."));
+            })
+          : Promise.resolve([hubAccount(42)]),
+      () => {},
+    );
+    const refresh = state.refresh();
+    state.setProxyHubEnabled("work", true);
+    refuse();
+    await refresh;
+    expect(state.snapshot.proxy_hubs.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "hub", status: "rejected" },
+      { id: "work", status: "ready" },
+    ]);
   });
 
   it("does not restore a hub removed while its read is in flight", async () => {

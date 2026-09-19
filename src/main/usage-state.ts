@@ -9,11 +9,10 @@ import type {
   ProxyHubConfig,
   ProxyHubSettings,
   ProxyHubSnapshot,
-  ProxyHubStatus,
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { ProxyHubError } from "./proxy-hub-api";
+import { ProxyHubError, ProxyHubRejected } from "./proxy-hub-api";
 import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./settings";
 
 export const REFRESH_INTERVAL = 300_000;
@@ -26,7 +25,6 @@ export class UsageState {
   private running: Promise<UsageSnapshot> | null = null;
   private again = false;
   private hubConfigs: ProxyHubConfig[];
-  private hubGeneration = 0;
 
   constructor(
     private readonly providerSettingsPath: string,
@@ -61,8 +59,10 @@ export class UsageState {
   private async run(): Promise<UsageSnapshot> {
     for (;;) {
       this.again = false;
-      const hubGeneration = this.hubGeneration;
-      const hubConfigs = this.hubConfigs.filter(({ enabled }) => enabled);
+      const hubs = this.snapshot.proxy_hubs.flatMap((hub) => {
+        const config = this.hubConfigs.find(({ id }) => id === hub.id);
+        return config && hub.status !== "rejected" ? [{ hub, config }] : [];
+      });
       const [providerReadings, hubReadings] = await Promise.all([
         Promise.all(
           providerIds.map(async (id) => {
@@ -74,14 +74,12 @@ export class UsageState {
           }),
         ),
         Promise.all(
-          hubConfigs.map(async (config) => ({
+          hubs.map(async ({ hub, config }) => ({
+            hub,
             config,
-            reading:
-              this.snapshot.proxy_hubs.find((hub) => hub.id === config.id)?.status === "rejected"
-                ? null
-                : await this.readHub(config).catch((error: unknown) =>
-                    error instanceof Error ? error : new Error(String(error)),
-                  ),
+            reading: await this.readHub(config).catch((error: unknown) =>
+              error instanceof Error ? error : new Error(String(error)),
+            ),
           })),
         ),
       ]);
@@ -90,12 +88,13 @@ export class UsageState {
         // A provider switched off while its read was in flight keeps the reading it was cleared to.
         if (result && next.enabled[result.id]) next[result.id] = applyReading(next[result.id], result.reading);
       }
-      if (hubGeneration === this.hubGeneration) {
-        next.proxy_hubs = hubReadings.map(({ config, reading }) => {
-          const previous = next.proxy_hubs.find((hub) => hub.id === config.id) ?? emptyProxyHubSnapshot(redact(config));
-          return reading === null ? previous : applyHubReading(previous, redact(config), reading);
-        });
-      }
+      // A hub added, removed or switched off and on while its read was in flight holds a new
+      // snapshot, so the stale reading finds nothing to apply to.
+      const readings = new Map(hubReadings.map((result) => [result.hub, result]));
+      next.proxy_hubs = next.proxy_hubs.map((hub) => {
+        const result = readings.get(hub);
+        return result ? applyHubReading(hub, redact(result.config), result.reading) : hub;
+      });
       this.snapshot = next;
       if (!this.again) {
         this.running = null;
@@ -161,7 +160,6 @@ export class UsageState {
   ): ProxyHubSettings[] {
     saveSettings(this.proxyHubSettingsPath, configs);
     this.hubConfigs = configs;
-    this.hubGeneration += 1;
     const current = new Map(snapshots.map((hub) => [hub.id, hub]));
     this.snapshot = {
       ...this.snapshot,
@@ -193,10 +191,12 @@ export function applyHubReading(
   settings: ProxyHubSettings,
   reading: ProxyHubAccount[] | Error,
 ): ProxyHubSnapshot {
+  // Accounts from a hub that will not be read again would only go on showing old numbers.
+  if (reading instanceof ProxyHubRejected) {
+    return { ...previous, label: settings.label, accounts: [], status: "rejected", error_message: reading.message };
+  }
   if (reading instanceof Error) {
     const error = new Error(hubErrorMessage(reading));
-    let status: ProxyHubStatus = previous.last_successful_update_epoch === null ? "error" : "stale";
-    if (reading instanceof ProxyHubError && reading.rejected) status = "rejected";
     return {
       ...previous,
       label: settings.label,
@@ -204,7 +204,7 @@ export function applyHubReading(
         ...account,
         usage: applyReading(account.usage, error),
       })),
-      status,
+      status: previous.last_successful_update_epoch === null ? "error" : "stale",
       error_message: error.message,
     };
   }

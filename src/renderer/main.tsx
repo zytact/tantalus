@@ -268,7 +268,8 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
     ),
     rejected: (
       <p className="notice" role="status">
-        {hub.error_message} Tantalus stopped reading this hub. Switch it off and on in Settings to try again.
+        {hub.error_message} Tantalus stopped reading this hub. Remove it and add it again with the right key, or switch
+        it off and on once the hub allows access.
       </p>
     ),
   } satisfies Record<ProxyHubStatus, React.ReactNode>;
