@@ -53,7 +53,7 @@ describe("tray bar", () => {
 
 describe("tray menu", () => {
   const snapshot = (enabled: UsageSnapshot["enabled"]): UsageSnapshot => ({
-    codex: provider({ seven_day: window(sevenDaySeconds, 41), last_successful_update_epoch: 940 }),
+    codex: provider({ plan: "Plus", seven_day: window(sevenDaySeconds, 41), last_successful_update_epoch: 940 }),
     claude: emptyProviderUsage(),
     opencode: emptyProviderUsage(),
     enabled,
@@ -63,7 +63,7 @@ describe("tray menu", () => {
   it("lists enabled providers, when they were read, then the actions led by an update", () => {
     const items = trayItems(snapshot({ codex: true, claude: false, opencode: false }), { version: "0.1.0" }, 1000);
     expect(items).toEqual([
-      { label: "Codex", action: "show" },
+      { label: "Codex · Plus", action: "show" },
       { label: "   7d   ████▏░░░░░  41%", action: "show" },
       { label: "Refreshed 1 minute ago", action: null },
       "separator",
@@ -101,9 +101,9 @@ describe("tray menu", () => {
             usage: provider({ seven_day: window(sevenDaySeconds, 20) }),
           },
           {
-            id: "second.json",
+            id: "second@example.com.json",
             email: "second@example.com",
-            plan: "Max 5x",
+            plan: null,
             provider: "claude",
             usage: provider({ five_hour: window(18_000, 70) }),
           },
@@ -119,13 +119,13 @@ describe("tray menu", () => {
       },
     ];
     expect(trayItems(usage, null, 1000).slice(0, 12)).toEqual([
-      { label: "Codex", action: "show" },
+      { label: "Codex · Plus", action: "show" },
       { label: "   7d   ████▏░░░░░  41%", action: "show" },
       "separator",
       { label: "Home hub", action: "show" },
-      { label: "Codex · first@example.com · Pro", action: "show" },
+      { label: "Codex · Pro", action: "show" },
       { label: "   7d   ██░░░░░░░░  20%", action: "show" },
-      { label: "Claude · second@example.com · Max 5x", action: "show" },
+      { label: "Claude", action: "show" },
       { label: "   5h   ███████░░░  70%", action: "show" },
       "separator",
       { label: "Work hub", action: "show" },

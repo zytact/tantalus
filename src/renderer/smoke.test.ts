@@ -14,6 +14,8 @@ import {
 import type { Chord } from "./presentation";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
+  email: null,
+  plan: null,
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   seven_day: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   monthly: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },

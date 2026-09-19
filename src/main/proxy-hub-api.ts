@@ -1,4 +1,4 @@
-import { emptyProviderUsage, nowEpoch } from "../shared/usage";
+import { claudeSubscription, emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
 import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
 import { field, parseClaudeUsage, parseCodexUsage, parseCredits, stringAt } from "./parse";
 
@@ -68,7 +68,7 @@ export class ProxyHubApi {
   /** The hub decodes a Codex account's ID token, plan included. A Claude account's plan needs a
    * profile read, and an account whose plan cannot be read still shows its usage. */
   private async readPlan(config: ProxyHubConfig, account: AuthFile): Promise<string | null> {
-    if (account.provider === "codex") return account.plan ? planName(account.plan) : null;
+    if (account.provider === "codex") return account.plan ? subscriptionName(account.plan) : null;
     const profile = await this.apiCall(config, account, `${CLAUDE_BASE}/profile`).catch((error: unknown) => {
       if (error instanceof ProxyHubRejected) throw error;
       return null;
@@ -201,18 +201,10 @@ function authFileString(value: unknown, key: string): string {
 
 /** `claude_max` with a `default_claude_max_20x` rate limit tier reads as "Max 20x". */
 function claudePlan(profile: unknown): string | null {
-  const type = stringAt(profile, ["organization", "organization_type"]);
-  if (!type) return null;
-  const multiplier = stringAt(profile, ["organization", "rate_limit_tier"])?.match(/_(\d+x)$/)?.[1];
-  return [planName(type.replace(/^claude_/, "")), multiplier].filter((part) => part !== undefined).join(" ");
-}
-
-/** `plus` reads as "Plus" and `free_workspace` as "Free Workspace". */
-function planName(value: string): string {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+  return claudeSubscription(
+    stringAt(profile, ["organization", "organization_type"]),
+    stringAt(profile, ["organization", "rate_limit_tier"]),
+  );
 }
 
 function codexUsageResponse(value: unknown): boolean {

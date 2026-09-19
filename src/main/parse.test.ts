@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { monthlySeconds } from "../shared/usage";
-import { parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
+import { parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
 
 describe("codex usage", () => {
   it("maps windows by duration and parses a millisecond reset", () => {
@@ -99,6 +99,15 @@ describe("reset credits", () => {
 });
 
 describe("claude usage", () => {
+  it("reads the account email and subscription tier", () => {
+    expect(
+      parseClaudeProfile({
+        account: { email: "claude@example.com" },
+        organization: { organization_type: "claude_max", rate_limit_tier: "default_claude_max_5x" },
+      }),
+    ).toEqual({ email: "claude@example.com", plan: "Max 5x" });
+  });
+
   it("reads both windows and extra usage", () => {
     const usage = parseClaudeUsage({
       five_hour: { utilization: 65, resets_at: "2026-09-07T00:39:59.850576+00:00", locked_reason: null },

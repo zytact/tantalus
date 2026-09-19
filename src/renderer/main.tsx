@@ -4,7 +4,6 @@ import "@fontsource/newsreader/latin-500.css";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  accountDetail,
   fiveHourSeconds,
   clockEpoch,
   monthlySeconds,
@@ -183,12 +182,12 @@ function ProviderSection({
   id,
   provider,
   now,
-  detail,
+  account,
 }: {
   id: ProviderId;
   provider: ProviderUsage;
   now: number;
-  detail?: string;
+  account?: { email: string | null; plan: string | null; label?: string };
 }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
@@ -203,7 +202,7 @@ function ProviderSection({
         <ProviderIcon id={id} />
         <h2 className="provider-name">
           {name}
-          {detail && <small>{detail}</small>}
+          {account && <AccountDetail {...account} label={account.label ?? name} />}
         </h2>
         <span className="provider-status" data-tone={statusTone(provider)}>
           {statusLine(provider)}
@@ -219,6 +218,33 @@ function ProviderSection({
       ))}
       <Extras id={id} provider={provider} />
     </div>
+  );
+}
+
+function AccountDetail({ email, plan, label }: { email: string | null; plan: string | null; label: string }) {
+  if (!email && !plan) return null;
+  return (
+    <small className="account-detail">
+      {email && <Email email={email} label={label} />}
+      {email && plan && <span className="account-separator"> · </span>}
+      {plan && <span>{plan}</span>}
+    </small>
+  );
+}
+
+function Email({ email, label }: { email: string; label: string }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <button
+      className="account-email"
+      data-visible={visible}
+      aria-label={visible ? `${email}, hide email for ${label}` : `Show email for ${label}`}
+      aria-pressed={visible}
+      title={visible ? "Hide email" : "Show email"}
+      onClick={() => setVisible((shown) => !shown)}
+    >
+      <span aria-hidden={!visible}>{email}</span>
+    </button>
   );
 }
 
@@ -248,7 +274,7 @@ function HubSection({ hub, now }: { hub: ProxyHubSnapshot; now: number }) {
         </span>
       </div>
       <HubMessage hub={hub} />
-      <HubAccounts accounts={hub.accounts} now={now} />
+      <HubAccounts hub={hub.label} accounts={hub.accounts} now={now} />
     </section>
   );
 }
@@ -277,14 +303,18 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
   return messages[hub.status];
 }
 
-function HubAccounts({ accounts, now }: { accounts: ProxyHubAccount[]; now: number }) {
-  return accounts.map((account) => (
+function HubAccounts({ hub, accounts, now }: { hub: string; accounts: ProxyHubAccount[]; now: number }) {
+  return accounts.map((account, index) => (
     <ProviderSection
       key={`${account.provider}:${account.id}`}
       id={account.provider}
       provider={account.usage}
       now={now}
-      detail={accountDetail(account)}
+      account={{
+        email: account.email,
+        plan: account.plan,
+        label: `${hub} ${providerNames[account.provider]} account ${index + 1}`,
+      }}
     />
   ));
 }
@@ -409,7 +439,16 @@ function App() {
             <p className="empty">No providers are on. Turn one on in Settings.</p>
           )}
 
-          {snapshot && shown.map((id) => <ProviderSection key={id} id={id} provider={snapshot[id]} now={now} />)}
+          {snapshot &&
+            shown.map((id) => (
+              <ProviderSection
+                key={id}
+                id={id}
+                provider={snapshot[id]}
+                now={now}
+                account={{ email: snapshot[id].email, plan: snapshot[id].plan }}
+              />
+            ))}
 
           {snapshot && snapshot.proxy_hubs.map((hub) => <HubSection key={hub.id} hub={hub} now={now} />)}
 

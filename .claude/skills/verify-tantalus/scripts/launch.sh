@@ -82,8 +82,8 @@ preview_env=(env -u TANTALUS_USAGE_BASE_URL -u ELECTRON_RUN_AS_NODE DISPLAY="$di
 if [ "$MODE" = mock ] && [ "$RESTART" = 0 ]; then
   rm -rf "$MOCK_HOME"
   mkdir -p "$MOCK_HOME/codex" "$MOCK_HOME/claude" "$MOCK_HOME/data/opencode" "$MOCK_HOME/config" "$MOCK_HOME/home"
-  echo '{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account"}}' >"$MOCK_HOME/codex/auth.json"
-  echo '{"claudeAiOauth":{"accessToken":"fixture-claude"}}' >"$MOCK_HOME/claude/.credentials.json"
+  echo '{"tokens":{"access_token":"fixture-codex","account_id":"fixture-account","id_token":"e30.eyJlbWFpbCI6ImNvZGV4QGRpcmVjdC50ZXN0IiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicGx1cyJ9fQ.signature"}}' >"$MOCK_HOME/codex/auth.json"
+  echo '{"claudeAiOauth":{"accessToken":"fixture-claude","subscriptionType":"max","rateLimitTier":"default_claude_max_5x"}}' >"$MOCK_HOME/claude/.credentials.json"
   echo '{"opencode-go":{"key":"fixture-opencode"}}' >"$MOCK_HOME/data/opencode/auth.json"
   rm -f "$RUN_DIR/fixture.port"
   : >"$RUN_DIR/fixture-requests.log"

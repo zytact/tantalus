@@ -179,7 +179,7 @@ button:focus-visible {
   font-size: 1.1rem;
   font-weight: 500;
 }
-.provider-name small {
+.account-detail {
   display: block;
   margin-top: 2px;
   font-family: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
@@ -187,6 +187,33 @@ button:focus-visible {
   font-size: 0.7rem;
   font-weight: 450;
   overflow-wrap: anywhere;
+}
+.account-email {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+.account-email:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.account-email span {
+  display: inline-block;
+  filter: blur(4px);
+  user-select: none;
+  transition: filter 120ms ease-out;
+}
+.account-email[data-visible="true"] span {
+  filter: none;
+  user-select: text;
+}
+.account-email:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 2px;
 }
 .hub {
   padding-top: 18px;

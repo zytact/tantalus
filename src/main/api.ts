@@ -2,13 +2,14 @@ import { emptyProviderUsage, nowEpoch } from "../shared/usage";
 import type { ProviderId, ProviderUsage } from "../shared/usage";
 import type { Credentials } from "./auth";
 import { ReadFailure } from "./failure";
-import { parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
+import { parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
 
 const endpoints = {
   whamUsage: { origin: "https://chatgpt.com", path: "/backend-api/wham/usage" },
   codexUsage: { origin: "https://chatgpt.com", path: "/backend-api/codex/usage" },
   resetCredits: { origin: "https://chatgpt.com", path: "/backend-api/wham/rate-limit-reset-credits" },
   claudeUsage: { origin: "https://api.anthropic.com", path: "/api/oauth/usage" },
+  claudeProfile: { origin: "https://api.anthropic.com", path: "/api/oauth/profile" },
   opencodeUsage: { origin: "https://opencode.ai", path: "/zen/go/v1/usage" },
 } as const;
 type Endpoint = keyof typeof endpoints;
@@ -31,12 +32,28 @@ export class UsageApi {
         const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
         const credits = await this.json("resetCredits", credentials, codexResetHeaders);
         const now = nowEpoch();
-        return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits) }, now);
+        return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits), ...identity(credentials) }, now);
       }
-      case "claude":
-        return ready(parseClaudeUsage(await this.json("claudeUsage", credentials, claudeHeaders)), nowEpoch());
+      case "claude": {
+        const [usage, profile] = await Promise.all([
+          this.json("claudeUsage", credentials, claudeHeaders),
+          this.json("claudeProfile", credentials, claudeHeaders).catch(() => null),
+        ]);
+        const details = parseClaudeProfile(profile);
+        return ready(
+          {
+            ...parseClaudeUsage(usage),
+            email: details.email ?? credentials.email,
+            plan: details.plan ?? credentials.plan,
+          },
+          nowEpoch(),
+        );
+      }
       case "opencode":
-        return ready(parseOpencodeUsage(await this.json("opencodeUsage", credentials, userAgent)), nowEpoch());
+        return ready(
+          { ...parseOpencodeUsage(await this.json("opencodeUsage", credentials, userAgent)), ...identity(credentials) },
+          nowEpoch(),
+        );
     }
   }
 
@@ -61,6 +78,10 @@ export class UsageApi {
       throw new ReadFailure("response");
     });
   }
+}
+
+function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {
+  return { email: credentials.email, plan: credentials.plan };
 }
 
 function ready(fields: Partial<ProviderUsage>, now: number): ProviderUsage {
