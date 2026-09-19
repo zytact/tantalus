@@ -215,6 +215,9 @@ button:focus-visible {
   outline: 1px solid var(--ink);
   outline-offset: 2px;
 }
+.account-plan:empty {
+  display: none;
+}
 .hub {
   padding-top: 18px;
   border-bottom: 2px solid var(--border-strong);

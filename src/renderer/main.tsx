@@ -222,12 +222,14 @@ function ProviderSection({
 }
 
 function AccountDetail({ email, plan, label }: { email: string | null; plan: string | null; label: string }) {
-  if (!email && !plan) return null;
+  const separator = email !== null && plan !== null ? " · " : "";
   return (
     <small className="account-detail">
-      {email && <Email key={email} email={email} label={label} />}
-      {email && plan && <span className="account-separator"> · </span>}
-      {plan && <span>{plan}</span>}
+      {email === null ? null : <Email key={email} email={email} label={label} />}
+      <span className="account-plan">
+        {separator}
+        {plan}
+      </span>
     </small>
   );
 }

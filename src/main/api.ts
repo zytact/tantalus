@@ -28,33 +28,41 @@ export class UsageApi {
 
   async fetch(provider: ProviderId, credentials: Credentials): Promise<ProviderUsage> {
     switch (provider) {
-      case "codex": {
-        const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
-        const credits = await this.json("resetCredits", credentials, codexResetHeaders);
-        const now = nowEpoch();
-        return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits), ...identity(credentials) }, now);
-      }
-      case "claude": {
-        const [usage, profile] = await Promise.all([
-          this.json("claudeUsage", credentials, claudeHeaders),
-          this.json("claudeProfile", credentials, claudeHeaders).catch(() => null),
-        ]);
-        const details = parseClaudeProfile(profile);
-        return ready(
-          {
-            ...parseClaudeUsage(usage),
-            email: details.email ?? credentials.email,
-            plan: details.plan ?? credentials.plan,
-          },
-          nowEpoch(),
-        );
-      }
+      case "codex":
+        return this.fetchCodex(credentials);
+      case "claude":
+        return this.fetchClaude(credentials);
       case "opencode":
-        return ready(
-          { ...parseOpencodeUsage(await this.json("opencodeUsage", credentials, userAgent)), ...identity(credentials) },
-          nowEpoch(),
-        );
+        return this.fetchOpencode(credentials);
     }
+  }
+
+  private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
+    const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
+    const credits = await this.json("resetCredits", credentials, codexResetHeaders);
+    const now = nowEpoch();
+    return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits), ...identity(credentials) }, now);
+  }
+
+  private async fetchClaude(credentials: Credentials): Promise<ProviderUsage> {
+    const [usage, profile] = await Promise.all([
+      this.json("claudeUsage", credentials, claudeHeaders),
+      this.json("claudeProfile", credentials, claudeHeaders).catch(() => null),
+    ]);
+    const details = parseClaudeProfile(profile);
+    return ready(
+      {
+        ...parseClaudeUsage(usage),
+        email: details.email ?? credentials.email,
+        plan: details.plan ?? credentials.plan,
+      },
+      nowEpoch(),
+    );
+  }
+
+  private async fetchOpencode(credentials: Credentials): Promise<ProviderUsage> {
+    const usage = await this.json("opencodeUsage", credentials, userAgent);
+    return ready({ ...parseOpencodeUsage(usage), ...identity(credentials) }, nowEpoch());
   }
 
   private async json(
