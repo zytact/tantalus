@@ -13,6 +13,7 @@ type AuthFile = {
 
 const CODEX_BASE = "https://chatgpt.com/backend-api/wham";
 const CREDITS_URL = `${CODEX_BASE}/rate-limit-reset-credits`;
+const CLAUDE_BASE = "https://api.anthropic.com/api/oauth";
 const TIMEOUT_MILLISECONDS = 12_000;
 
 /** A failure whose message is safe to show. */
@@ -45,21 +46,34 @@ export class ProxyHubApi {
   }
 
   private async readAccount(config: ProxyHubConfig, account: AuthFile): Promise<ProxyHubAccount> {
-    try {
-      const usage =
-        account.provider === "codex" ? await this.readCodex(config, account) : await this.readClaude(config, account);
-      return { ...accountDetails(account), usage };
-    } catch (error) {
+    const usage = await (
+      account.provider === "codex" ? this.readCodex(config, account) : this.readClaude(config, account)
+    ).catch((error: unknown): ProviderUsage => {
       if (error instanceof ProxyHubRejected) throw error;
       return {
-        ...accountDetails(account),
-        usage: {
-          ...emptyProviderUsage(),
-          status: "error",
-          error_message: "The hub could not read this account's usage.",
-        },
+        ...emptyProviderUsage(),
+        status: "error",
+        error_message: "The hub could not read this account's usage.",
       };
-    }
+    });
+    return {
+      id: account.id,
+      email: account.email,
+      plan: await this.readPlan(config, account),
+      provider: account.provider,
+      usage,
+    };
+  }
+
+  /** The hub decodes a Codex account's ID token, plan included. A Claude account's plan needs a
+   * profile read, and an account whose plan cannot be read still shows its usage. */
+  private async readPlan(config: ProxyHubConfig, account: AuthFile): Promise<string | null> {
+    if (account.provider === "codex") return account.plan ? planName(account.plan) : null;
+    const profile = await this.apiCall(config, account, `${CLAUDE_BASE}/profile`).catch((error: unknown) => {
+      if (error instanceof ProxyHubRejected) throw error;
+      return null;
+    });
+    return claudePlan(profile);
   }
 
   private async readCodex(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
@@ -79,7 +93,7 @@ export class ProxyHubApi {
   }
 
   private async readClaude(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
-    const value = await this.apiCall(config, account, "https://api.anthropic.com/api/oauth/usage");
+    const value = await this.apiCall(config, account, `${CLAUDE_BASE}/usage`);
     if (!claudeUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
     return ready(parseClaudeUsage(value), nowEpoch());
   }
@@ -161,7 +175,7 @@ function authFile(value: unknown): AuthFile | null {
     provider,
     email: stringAt(value, ["email"]),
     accountId: stringAt(value, ["id_token", "chatgpt_account_id"]),
-    plan: stringAt(value, ["id_token", "chatgpt_plan_type"]),
+    plan: stringAt(value, ["id_token", "plan_type"]),
   };
 }
 
@@ -185,13 +199,20 @@ function authFileString(value: unknown, key: string): string {
   return found;
 }
 
-function accountDetails(account: AuthFile): Omit<ProxyHubAccount, "usage"> {
-  return {
-    id: account.id,
-    email: account.email,
-    plan: account.provider === "claude" ? "Claude Subscription" : account.plan,
-    provider: account.provider,
-  };
+/** `claude_max` with a `default_claude_max_20x` rate limit tier reads as "Max 20x". */
+function claudePlan(profile: unknown): string | null {
+  const type = stringAt(profile, ["organization", "organization_type"]);
+  if (!type) return null;
+  const multiplier = stringAt(profile, ["organization", "rate_limit_tier"])?.match(/_(\d+x)$/)?.[1];
+  return [planName(type.replace(/^claude_/, "")), multiplier].filter((part) => part !== undefined).join(" ");
+}
+
+/** `plus` reads as "Plus" and `free_workspace` as "Free Workspace". */
+function planName(value: string): string {
+  return value
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function codexUsageResponse(value: unknown): boolean {

@@ -155,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
                         "auth_index": "hub-codex",
                         "provider": "codex",
                         "email": "codex@hub.test",
-                        "id_token": {"chatgpt_account_id": "fixture-hub-account", "chatgpt_plan_type": "pro"},
+                        "id_token": {"chatgpt_account_id": "fixture-hub-account", "plan_type": "pro"},
                     },
                     {
                         "id": "hub-claude.json",
@@ -195,6 +195,9 @@ class Handler(BaseHTTPRequestHandler):
             key = ROUTES.get(urlparse(request["url"]).path)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return self.send_json(400, {"error": "invalid management request"})
+        if urlparse(request.get("url", "")).path == "/api/oauth/profile":
+            profile = {"organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"}}
+            return self.send_json(200, {"status_code": 200, "body": json.dumps(profile)})
         if request.get("header", {}).get("Authorization") != "Bearer $TOKEN$" or key is None:
             return self.send_json(400, {"error": "invalid upstream request"})
         build = SCENARIOS[Handler.scenario]
