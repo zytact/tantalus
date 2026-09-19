@@ -47,7 +47,8 @@ export type ProxyHubAccount = {
   provider: ProxyHubProviderId;
   usage: ProviderUsage;
 };
-export type ProxyHubStatus = "loading" | "ready" | "stale" | "error";
+/** A `rejected` hub refused the management key and is not read again until switched off and on. */
+export type ProxyHubStatus = "loading" | "ready" | "stale" | "error" | "rejected";
 export type ProxyHubSnapshot = {
   id: string;
   label: string;

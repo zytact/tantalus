@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProxyHubConfig } from "../shared/usage";
-import { ProxyHubApi } from "./proxy-hub-api";
+import { ProxyHubApi, ProxyHubRejected } from "./proxy-hub-api";
 
 const config = {
   id: "home",
@@ -170,6 +170,24 @@ describe("CLIProxyAPI usage", () => {
     const accounts = await new ProxyHubApi(request).read(config);
     expect(accounts[0]?.usage.status).toBe("ready");
     expect(accounts[0]?.usage.five_hour.used_percent).toBe(25);
+  });
+
+  it.each([
+    [401, "The hub rejected the management key."],
+    [403, "The hub refused management access."],
+  ])("treats a %i from the hub as a refusal", async (status, message) => {
+    const request: typeof fetch = async () => Response.json({ error: "invalid management key" }, { status });
+    const reading = new ProxyHubApi(request).read(config);
+    await expect(reading).rejects.toThrow(ProxyHubRejected);
+    await expect(reading).rejects.toThrow(message);
+  });
+
+  it("treats a refusal while reading an account as a refusal of the whole hub", async () => {
+    const request: typeof fetch = async (_input, init) =>
+      init?.method === "GET"
+        ? Response.json({ files: [{ id: "a", auth_index: "a", provider: "claude" }] })
+        : Response.json({ error: "invalid management key" }, { status: 401 });
+    await expect(new ProxyHubApi(request).read(config)).rejects.toThrow(ProxyHubRejected);
   });
 
   it("caps account reads across concurrent hubs", async () => {

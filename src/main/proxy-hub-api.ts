@@ -15,7 +15,12 @@ const CODEX_BASE = "https://chatgpt.com/backend-api/wham";
 const CREDITS_URL = `${CODEX_BASE}/rate-limit-reset-credits`;
 const TIMEOUT_MILLISECONDS = 12_000;
 
-class ProxyHubError extends Error {}
+/** A failure whose message is safe to show. */
+export class ProxyHubError extends Error {}
+
+/** The hub refused the management key. CLIProxyAPI bans an address after five refusals, so a hub
+ * that refused must not be read again with the same key. */
+export class ProxyHubRejected extends ProxyHubError {}
 
 export class ProxyHubApi {
   private readonly accountReads = new ConcurrencyLimit(4);
@@ -28,8 +33,8 @@ export class ProxyHubApi {
   }
 
   private async authFiles(config: ProxyHubConfig): Promise<AuthFile[]> {
-    const value = await this.management(config, "auth-files").catch((): never => {
-      throw new ProxyHubError("The hub could not list accounts.");
+    const value = await this.management(config, "auth-files").catch((error: unknown): never => {
+      throw error instanceof ProxyHubRejected ? error : new ProxyHubError("The hub could not list accounts.");
     });
     const files = field(value, "files");
     if (!Array.isArray(files)) throw new ProxyHubError("The hub could not list accounts.");
@@ -44,7 +49,8 @@ export class ProxyHubApi {
       const usage =
         account.provider === "codex" ? await this.readCodex(config, account) : await this.readClaude(config, account);
       return { ...accountDetails(account), usage };
-    } catch {
+    } catch (error) {
+      if (error instanceof ProxyHubRejected) throw error;
       return {
         ...accountDetails(account),
         usage: {
@@ -130,13 +136,19 @@ export class ProxyHubApi {
     } catch {
       throw new ProxyHubError("The hub management request failed.");
     }
-    if (!response.ok) throw new ProxyHubError("The hub management request failed.");
+    if (!response.ok) throw managementFailure(response.status);
     try {
       return await response.json();
     } catch {
       throw new ProxyHubError("The hub management request failed.");
     }
   }
+}
+
+function managementFailure(status: number): ProxyHubError {
+  if (status === 401) return new ProxyHubRejected("The hub rejected the management key.");
+  if (status === 403) return new ProxyHubRejected("The hub refused management access.");
+  return new ProxyHubError("The hub management request failed.");
 }
 
 function authFile(value: unknown): AuthFile | null {
