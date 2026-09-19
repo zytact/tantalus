@@ -12,6 +12,7 @@ import type {
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
+import { ProxyHubError } from "./proxy-hub-api";
 import { saveSettings } from "./settings";
 import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
 
@@ -132,21 +133,76 @@ describe("usage state", () => {
     expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
   });
 
-  it("persists a hub before reading it and returns only redacted settings", async () => {
+  it("reads a hub before saving it and returns only redacted settings", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    let reads = 0;
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async () => {
+        reads += 1;
+        return [hubAccount(42)];
+      },
+      () => {},
+    );
+    const settings = await state.addProxyHub({
+      label: "Home hub",
+      url: "http://hub.test:8317",
+      managementKey: "secret",
+    });
+    expect(JSON.stringify(settings)).not.toContain("secret");
+    expect(readFileSync(hubs, "utf8")).toContain("secret");
+    expect(reads).toBe(1);
+    expect(state.snapshot.proxy_hubs[0]?.accounts[0]?.usage.seven_day.used_percent).toBe(42);
+  });
+
+  it("does not save a hub that rejects the management key", async () => {
     const providers = settingsPath();
     const hubs = join(providers, "..", "proxy-hubs.json");
     const state = new UsageState(
       providers,
       hubs,
       async () => ready(1),
-      async () => [hubAccount(42)],
+      async () => {
+        throw new ProxyHubError("The hub rejected the management key.", true);
+      },
       () => {},
     );
-    const settings = state.addProxyHub({ label: "Home hub", url: "http://hub.test:8317", managementKey: "secret" });
-    expect(JSON.stringify(settings)).not.toContain("secret");
-    expect(readFileSync(hubs, "utf8")).toContain("secret");
+    await expect(
+      state.addProxyHub({ label: "Home hub", url: "http://hub.test:8317", managementKey: "wrong" }),
+    ).rejects.toThrow("The hub rejected the management key.");
+    expect(() => readFileSync(hubs)).toThrow();
+    expect(state.proxyHubs()).toEqual([]);
+    expect(state.snapshot.proxy_hubs).toEqual([]);
+  });
+
+  it("stops reading a hub that rejected its key until it is switched back on", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig]);
+    let reads = 0;
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async () => {
+        reads += 1;
+        throw new ProxyHubError("The hub rejected the management key.", true);
+      },
+      () => {},
+    );
     await state.refresh();
-    expect(state.snapshot.proxy_hubs[0]?.accounts[0]?.usage.seven_day.used_percent).toBe(42);
+    const snapshot = await state.refresh();
+    expect(reads).toBe(1);
+    expect(snapshot.proxy_hubs[0]?.status).toBe("rejected");
+    expect(snapshot.proxy_hubs[0]?.error_message).toBe("The hub rejected the management key.");
+    expect(settled(snapshot)).toBe(true);
+    state.setProxyHubEnabled("hub", false);
+    state.setProxyHubEnabled("hub", true);
+    await state.refresh();
+    expect(reads).toBe(2);
   });
 
   it("enables and disables the whole hub without individual provider settings", async () => {

@@ -226,6 +226,7 @@ const hubStatusLabels = {
   ready: "Live",
   stale: "Cached",
   error: "Could not refresh",
+  rejected: "Access refused",
 } satisfies Record<ProxyHubStatus, string>;
 
 const hubStatusTones = {
@@ -233,6 +234,7 @@ const hubStatusTones = {
   ready: "ok",
   stale: "warn",
   error: "danger",
+  rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
 function HubSection({ hub, now }: { hub: ProxyHubSnapshot; now: number }) {
@@ -262,6 +264,11 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
     error: (
       <p className="notice" role="status">
         {hub.error_message}
+      </p>
+    ),
+    rejected: (
+      <p className="notice" role="status">
+        {hub.error_message} Tantalus stopped reading this hub. Switch it off and on in Settings to try again.
       </p>
     ),
   } satisfies Record<ProxyHubStatus, React.ReactNode>;

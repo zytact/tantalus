@@ -172,6 +172,14 @@ describe("CLIProxyAPI usage", () => {
     expect(accounts[0]?.usage.five_hour.used_percent).toBe(25);
   });
 
+  it.each([
+    [401, "The hub rejected the management key."],
+    [403, "The hub refused management access."],
+  ])("marks a %i from the hub as a rejected key", async (status, message) => {
+    const request: typeof fetch = async () => Response.json({ error: "invalid management key" }, { status });
+    await expect(new ProxyHubApi(request).read(config)).rejects.toMatchObject({ message, rejected: true });
+  });
+
   it("caps account reads across concurrent hubs", async () => {
     let active = 0;
     let maximum = 0;

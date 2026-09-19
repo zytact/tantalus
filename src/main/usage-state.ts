@@ -9,9 +9,11 @@ import type {
   ProxyHubConfig,
   ProxyHubSettings,
   ProxyHubSnapshot,
+  ProxyHubStatus,
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
+import { ProxyHubError } from "./proxy-hub-api";
 import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./settings";
 
 export const REFRESH_INTERVAL = 300_000;
@@ -74,9 +76,12 @@ export class UsageState {
         Promise.all(
           hubConfigs.map(async (config) => ({
             config,
-            reading: await this.readHub(config).catch((error: unknown) =>
-              error instanceof Error ? error : new Error(String(error)),
-            ),
+            reading:
+              this.snapshot.proxy_hubs.find((hub) => hub.id === config.id)?.status === "rejected"
+                ? null
+                : await this.readHub(config).catch((error: unknown) =>
+                    error instanceof Error ? error : new Error(String(error)),
+                  ),
           })),
         ),
       ]);
@@ -86,13 +91,10 @@ export class UsageState {
         if (result && next.enabled[result.id]) next[result.id] = applyReading(next[result.id], result.reading);
       }
       if (hubGeneration === this.hubGeneration) {
-        next.proxy_hubs = hubReadings.map(({ config, reading }) =>
-          applyHubReading(
-            next.proxy_hubs.find((hub) => hub.id === config.id) ?? emptyProxyHubSnapshot(redact(config)),
-            redact(config),
-            reading,
-          ),
-        );
+        next.proxy_hubs = hubReadings.map(({ config, reading }) => {
+          const previous = next.proxy_hubs.find((hub) => hub.id === config.id) ?? emptyProxyHubSnapshot(redact(config));
+          return reading === null ? previous : applyHubReading(previous, redact(config), reading);
+        });
       }
       this.snapshot = next;
       if (!this.again) {
@@ -119,16 +121,21 @@ export class UsageState {
     return this.hubConfigs.map(redact);
   }
 
-  addProxyHub(input: ProxyHubInput): ProxyHubSettings[] {
+  /** Reads the hub before saving it, so a hub the key does not open is never saved. */
+  async addProxyHub(input: ProxyHubInput): Promise<ProxyHubSettings[]> {
     const url = input.url.trim();
     const managementKey = input.managementKey.trim();
     if (!httpUrl(url)) throw new Error("Enter an HTTP or HTTPS hub URL.");
     if (managementKey.length === 0) throw new Error("Enter the hub management key.");
     const label = input.label.trim() || new URL(url).host;
-    return this.saveProxyHubs(
-      [...this.hubConfigs, { id: randomUUID(), label, url, managementKey, enabled: true }],
-      true,
-    );
+    const config: ProxyHubConfig = { id: randomUUID(), label, url, managementKey, enabled: true };
+    const accounts = await this.readHub(config).catch((error: unknown): never => {
+      throw new Error(hubErrorMessage(error));
+    });
+    return this.saveProxyHubs([...this.hubConfigs, config], false, [
+      ...this.snapshot.proxy_hubs,
+      applyHubReading(emptyProxyHubSnapshot(redact(config)), redact(config), accounts),
+    ]);
   }
 
   setProxyHubEnabled(id: string, enabled: boolean): ProxyHubSettings[] {
@@ -147,11 +154,15 @@ export class UsageState {
     );
   }
 
-  private saveProxyHubs(configs: ProxyHubConfig[], refresh: boolean): ProxyHubSettings[] {
+  private saveProxyHubs(
+    configs: ProxyHubConfig[],
+    refresh: boolean,
+    snapshots = this.snapshot.proxy_hubs,
+  ): ProxyHubSettings[] {
     saveSettings(this.proxyHubSettingsPath, configs);
     this.hubConfigs = configs;
     this.hubGeneration += 1;
-    const current = new Map(this.snapshot.proxy_hubs.map((hub) => [hub.id, hub]));
+    const current = new Map(snapshots.map((hub) => [hub.id, hub]));
     this.snapshot = {
       ...this.snapshot,
       proxy_hubs: configs
@@ -183,7 +194,9 @@ export function applyHubReading(
   reading: ProxyHubAccount[] | Error,
 ): ProxyHubSnapshot {
   if (reading instanceof Error) {
-    const error = new Error("The hub could not list accounts.");
+    const error = new Error(hubErrorMessage(reading));
+    let status: ProxyHubStatus = previous.last_successful_update_epoch === null ? "error" : "stale";
+    if (reading instanceof ProxyHubError && reading.rejected) status = "rejected";
     return {
       ...previous,
       label: settings.label,
@@ -191,7 +204,7 @@ export function applyHubReading(
         ...account,
         usage: applyReading(account.usage, error),
       })),
-      status: previous.last_successful_update_epoch === null ? "error" : "stale",
+      status,
       error_message: error.message,
     };
   }
@@ -212,15 +225,23 @@ export function applyHubReading(
   };
 }
 
+/** Only a `ProxyHubError` carries a message written to be shown. */
+function hubErrorMessage(error: unknown): string {
+  return error instanceof ProxyHubError ? error.message : "The hub could not list accounts.";
+}
+
 const redact = ({ id, label, url, enabled }: ProxyHubConfig): ProxyHubSettings => ({ id, label, url, enabled });
 
-/** Every enabled provider holds a reading. A launch at login usually beats the network up, so the
- * first pass fails and the tray would otherwise sit on "Not refreshed yet" for a full interval. */
+/** Every enabled provider holds a reading, or refused the key and will not be read again. A launch at
+ * login usually beats the network up, so the first pass fails and the tray would otherwise sit on
+ * "Not refreshed yet" for a full interval. */
 export function settled(snapshot: UsageSnapshot): boolean {
   return (
     providerIds.every((id) => !snapshot.enabled[id] || snapshot[id].status === "ready") &&
     snapshot.proxy_hubs.every(
-      (hub) => hub.status === "ready" && hub.accounts.every((account) => account.usage.status === "ready"),
+      (hub) =>
+        hub.status === "rejected" ||
+        (hub.status === "ready" && hub.accounts.every((account) => account.usage.status === "ready")),
     )
   );
 }
