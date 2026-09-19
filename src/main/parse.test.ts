@@ -109,7 +109,20 @@ describe("claude usage", () => {
     expect(usage.five_hour).toEqual({ used_percent: 65, limit_window_seconds: 18_000, reset_at_epoch: 1_788_741_599 });
     expect(usage.seven_day.reset_at_epoch).toBe(1_788_739_799);
     expect(usage.limit_reached).toBe(false);
-    expect(usage.extra_usage).toEqual({ enabled: true, used_credits: 12.5, monthly_limit: 50, currency: "USD" });
+    expect(usage.extra_usage).toEqual({
+      enabled: true,
+      used_credits: 12.5,
+      monthly_limit: 50,
+      currency: "USD",
+      decimal_places: 2,
+    });
+  });
+
+  it("scales extra usage by the reported decimal places", () => {
+    const limit = (extra_usage: object) => parseClaudeUsage({ extra_usage }).extra_usage?.monthly_limit;
+    expect(limit({ monthly_limit: 700, decimal_places: 0 })).toBe(700);
+    expect(limit({ monthly_limit: 700 })).toBe(7);
+    expect(limit({ monthly_limit: 700, decimal_places: -2 })).toBe(7);
   });
 
   it("keeps absent windows unavailable", () => {

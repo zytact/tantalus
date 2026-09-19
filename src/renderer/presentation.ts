@@ -1,5 +1,5 @@
 import { percent } from "../shared/usage";
-import type { ProviderId, ProviderUsage } from "../shared/usage";
+import type { ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
 
 /** What a provider banks beyond its windows. Opencode reports neither, so it shows no extras. */
 export const providerExtras = {
@@ -61,9 +61,12 @@ export function creditExpiry(epoch: number | null): string {
   return `Expires ${date}`;
 }
 
-export function creditAmount(value: number | null, currency: string | null): string {
+export function creditAmount(
+  value: number | null,
+  { currency, decimal_places }: Pick<ExtraUsage, "currency" | "decimal_places">,
+): string {
   if (value === null) return "Unavailable";
-  const amount = value.toFixed(2);
+  const amount = value.toFixed(decimal_places);
   return currency ? `${amount} ${currency}` : amount;
 }
 

@@ -117,12 +117,12 @@ function Spend({ extra }: { extra: ExtraUsage }) {
         <h3>
           Extra usage<i>{extra.enabled ? "enabled" : "off"}</i>
         </h3>
-        <strong className="figure">{creditAmount(extra.used_credits, extra.currency)}</strong>
+        <strong className="figure">{creditAmount(extra.used_credits, extra)}</strong>
       </div>
       <ol className="credits">
         <li>
           <span>Monthly limit</span>
-          <span className="credit-value">{creditAmount(extra.monthly_limit, extra.currency)}</span>
+          <span className="credit-value">{creditAmount(extra.monthly_limit, extra)}</span>
         </li>
       </ol>
     </section>

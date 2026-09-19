@@ -10,6 +10,7 @@ export type ExtraUsage = {
   used_credits: number | null;
   monthly_limit: number | null;
   currency: string | null;
+  decimal_places: number;
 };
 export type SnapshotStatus = "ready" | "loading" | "stale" | "auth_missing" | "error";
 /** One provider's reading. Each provider succeeds or fails on its own, so status and freshness live
