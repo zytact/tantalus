@@ -134,7 +134,6 @@ function start() {
 function menuTemplate(items: TrayItem[], actions: Record<TrayAction, () => void>): MenuItemConstructorOptions[] {
   return items.map((item) => {
     if (item === "separator") return { type: "separator" };
-    if ("submenu" in item) return { label: item.label, submenu: menuTemplate(item.submenu, actions) };
     return {
       label: item.label,
       enabled: item.action !== null,

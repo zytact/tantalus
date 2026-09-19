@@ -83,8 +83,8 @@ describe("tray menu", () => {
     ]);
   });
 
-  it("keeps every pooled account inside its hub submenu", () => {
-    const usage = snapshot({ codex: false, claude: false, opencode: false });
+  it("lists every pooled account inline, after the direct providers", () => {
+    const usage = snapshot({ codex: true, claude: false, opencode: false });
     usage.proxy_hubs = [
       {
         id: "home",
@@ -109,16 +109,46 @@ describe("tray menu", () => {
           },
         ],
       },
+      {
+        id: "work",
+        label: "Work hub",
+        last_successful_update_epoch: null,
+        status: "error",
+        error_message: "The hub could not list accounts.",
+        accounts: [],
+      },
     ];
-    expect(trayItems(usage, null, 1000)[0]).toEqual({
-      label: "Home hub",
-      submenu: [
-        { label: "Codex · first@example.com", action: "show" },
-        { label: "   7d   ██░░░░░░░░  20%", action: "show" },
-        "separator",
-        { label: "Claude · second@example.com", action: "show" },
-        { label: "   5h   ███████░░░  70%", action: "show" },
-      ],
-    });
+    expect(trayItems(usage, null, 1000).slice(0, 12)).toEqual([
+      { label: "Codex", action: "show" },
+      { label: "   7d   ████▏░░░░░  41%", action: "show" },
+      "separator",
+      { label: "Home hub", action: "show" },
+      { label: "Codex · first@example.com", action: "show" },
+      { label: "   7d   ██░░░░░░░░  20%", action: "show" },
+      { label: "Claude · second@example.com", action: "show" },
+      { label: "   5h   ███████░░░  70%", action: "show" },
+      "separator",
+      { label: "Work hub", action: "show" },
+      { label: "   The hub could not list accounts.", action: null },
+      { label: "Refreshed 1 minute ago", action: null },
+    ]);
+  });
+
+  it("does not lead with a separator when only hubs are shown", () => {
+    const usage = snapshot({ codex: false, claude: false, opencode: false });
+    usage.proxy_hubs = [
+      {
+        id: "home",
+        label: "Home hub",
+        last_successful_update_epoch: null,
+        status: "loading",
+        error_message: null,
+        accounts: [],
+      },
+    ];
+    expect(trayItems(usage, null, 1000).slice(0, 2)).toEqual([
+      { label: "Home hub", action: "show" },
+      { label: "   Loading", action: null },
+    ]);
   });
 });
