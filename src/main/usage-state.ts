@@ -122,23 +122,30 @@ export class UsageState {
 
   /** Reads the hub before saving it, so a hub the key does not open is never saved. */
   async addProxyHub(input: ProxyHubInput): Promise<ProxyHubSettings[]> {
-    const url = input.url.trim();
-    const managementKey = input.managementKey.trim();
-    if (!httpUrl(url)) throw new Error("Enter an HTTP or HTTPS hub URL.");
-    if (managementKey.length === 0) throw new Error("Enter the hub management key.");
-    const label = input.label.trim() || new URL(url).host;
-    const config: ProxyHubConfig = { id: randomUUID(), label, url, managementKey, enabled: true };
-    const accounts = await this.readHub(config).catch((error: unknown): never => {
-      throw new Error(hubErrorMessage(error));
-    });
-    return this.saveProxyHubs([...this.hubConfigs, config], false, [
-      ...this.snapshot.proxy_hubs,
-      applyHubReading(emptyProxyHubSnapshot(redact(config)), redact(config), accounts),
-    ]);
+    const config: ProxyHubConfig = { id: randomUUID(), ...hubFields(input, null), enabled: true };
+    const snapshot = await this.readHubSnapshot(config);
+    return this.saveProxyHubs([...this.hubConfigs, config], false, [...this.snapshot.proxy_hubs, snapshot]);
+  }
+
+  /** A new URL or key is read before it is saved, like a new hub. A new label alone is saved without
+   * a read, so renaming a hub that refused its key does not spend another attempt on it. */
+  async updateProxyHub(id: string, input: ProxyHubInput): Promise<ProxyHubSettings[]> {
+    const saved = this.hubConfig(id);
+    const fields = hubFields(input, saved);
+    const reconnected =
+      new URL(fields.url).href !== new URL(saved.url).href || fields.managementKey !== saved.managementKey;
+    const snapshot = reconnected ? await this.readHubSnapshot({ ...saved, ...fields }) : null;
+    // Merges onto the current config, since the hub may have been switched off or on during the read.
+    const config = { ...this.hubConfig(id), ...fields };
+    return this.saveProxyHubs(
+      this.hubConfigs.map((hub) => (hub.id === id ? config : hub)),
+      false,
+      this.snapshot.proxy_hubs.map((hub) => (hub.id === id ? (snapshot ?? { ...hub, label: config.label }) : hub)),
+    );
   }
 
   setProxyHubEnabled(id: string, enabled: boolean): ProxyHubSettings[] {
-    if (!this.hubConfigs.some((hub) => hub.id === id)) throw new Error("Unknown proxy hub.");
+    this.hubConfig(id);
     return this.saveProxyHubs(
       this.hubConfigs.map((hub) => (hub.id === id ? { ...hub, enabled } : hub)),
       enabled,
@@ -146,11 +153,24 @@ export class UsageState {
   }
 
   removeProxyHub(id: string): ProxyHubSettings[] {
-    if (!this.hubConfigs.some((hub) => hub.id === id)) throw new Error("Unknown proxy hub.");
+    this.hubConfig(id);
     return this.saveProxyHubs(
       this.hubConfigs.filter((hub) => hub.id !== id),
       false,
     );
+  }
+
+  private hubConfig(id: string): ProxyHubConfig {
+    const config = this.hubConfigs.find((hub) => hub.id === id);
+    if (!config) throw new Error("Unknown proxy hub.");
+    return config;
+  }
+
+  private async readHubSnapshot(config: ProxyHubConfig): Promise<ProxyHubSnapshot> {
+    const accounts = await this.readHub(config).catch((error: unknown): never => {
+      throw new Error(hubErrorMessage(error));
+    });
+    return applyHubReading(emptyProxyHubSnapshot(redact(config)), redact(config), accounts);
   }
 
   private saveProxyHubs(
@@ -223,6 +243,24 @@ export function applyHubReading(
     status: "ready",
     error_message: null,
   };
+}
+
+/** Trims what the form sent. A blank label falls back to the host. A blank key falls back to the
+ * saved one only while the hub stays on the same origin, so a saved key never goes to another server. */
+function hubFields(
+  input: ProxyHubInput,
+  saved: ProxyHubConfig | null,
+): Pick<ProxyHubConfig, "label" | "url" | "managementKey"> {
+  const url = input.url.trim();
+  if (!httpUrl(url)) throw new Error("Enter an HTTP or HTTPS hub URL.");
+  const sameOrigin = saved !== null && new URL(url).origin === new URL(saved.url).origin;
+  const managementKey = input.managementKey.trim() || (sameOrigin ? saved.managementKey : "");
+  if (managementKey.length === 0) {
+    throw new Error(
+      saved ? "Enter the management key again for the new hub address." : "Enter the hub management key.",
+    );
+  }
+  return { label: input.label.trim() || new URL(url).host, url, managementKey };
 }
 
 /** Only a `ProxyHubError` carries a message written to be shown. */

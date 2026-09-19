@@ -326,6 +326,7 @@ button:focus-visible {
 .hub-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: end;
   gap: 14px;
   padding: 18px 0;
   border-bottom: 1px solid var(--hairline);
@@ -339,8 +340,25 @@ button:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.hub-form label:last-of-type {
+.hub-form-wide {
   grid-column: 1 / -1;
+}
+.hub-key {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.key-field {
+  display: flex;
+}
+.key-field input {
+  flex: 1;
+  width: 0;
+}
+.key-field button {
+  min-height: 36px;
+  margin-left: -1px;
+  padding: 0 12px;
 }
 .optional-label {
   color: var(--text-faint);
@@ -535,7 +553,7 @@ footer {
   .hub-form {
     grid-template-columns: 1fr;
   }
-  .hub-form label:last-of-type {
+  .hub-form-wide {
     grid-column: auto;
   }
   .hub-controls {

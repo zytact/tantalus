@@ -178,6 +178,47 @@ describe("usage state", () => {
     expect(state.snapshot.proxy_hubs).toEqual([]);
   });
 
+  it("edits a hub, reading it only when the URL or key changes and keeping the key on its own server", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig]);
+    const keys: string[] = [];
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async (config) => {
+        keys.push(config.managementKey);
+        if (config.managementKey === "wrong") throw new ProxyHubRejected("The hub rejected the management key.");
+        return [hubAccount(42)];
+      },
+      () => {},
+    );
+    await state.refresh();
+
+    const renamed = await state.updateProxyHub("hub", { label: "Work hub", url: hubConfig.url, managementKey: "" });
+    expect(renamed).toEqual([{ id: "hub", label: "Work hub", url: hubConfig.url, enabled: true }]);
+    expect(state.snapshot.proxy_hubs[0]?.label).toBe("Work hub");
+    expect(keys).toEqual(["management-secret"]);
+
+    await state.updateProxyHub("hub", { label: "Work hub", url: `${hubConfig.url}/`, managementKey: "" });
+    expect(keys).toEqual(["management-secret"]);
+
+    await expect(
+      state.updateProxyHub("hub", { label: "Work hub", url: "http://elsewhere.test:8317", managementKey: "" }),
+    ).rejects.toThrow("Enter the management key again for the new hub address.");
+
+    await expect(
+      state.updateProxyHub("hub", { label: "Work hub", url: hubConfig.url, managementKey: "wrong" }),
+    ).rejects.toThrow("The hub rejected the management key.");
+    expect(readFileSync(hubs, "utf8")).toContain("management-secret");
+
+    await state.updateProxyHub("hub", { label: "Work hub", url: hubConfig.url, managementKey: "rotated" });
+    expect(keys).toEqual(["management-secret", "wrong", "rotated"]);
+    expect(readFileSync(hubs, "utf8")).toContain("rotated");
+    expect(state.snapshot.proxy_hubs[0]?.status).toBe("ready");
+  });
+
   it("stops reading a hub that rejected its key until it is switched back on", async () => {
     const providers = settingsPath();
     const hubs = join(providers, "..", "proxy-hubs.json");

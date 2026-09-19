@@ -18,6 +18,7 @@ export type Commands = {
   setProviderEnabled: (provider: ProviderId, enabled: boolean) => UsageSnapshot;
   proxyHubs: () => ProxyHubSettings[];
   addProxyHub: (input: ProxyHubInput) => ProxyHubSettings[];
+  updateProxyHub: (id: string, input: ProxyHubInput) => ProxyHubSettings[];
   setProxyHubEnabled: (id: string, enabled: boolean) => ProxyHubSettings[];
   removeProxyHub: (id: string) => ProxyHubSettings[];
   checkForUpdate: () => AvailableUpdate | null;
