@@ -1,6 +1,6 @@
-import { claudeSubscription, emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
+import { emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
 import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
-import { field, parseClaudeUsage, parseCodexUsage, parseCredits, stringAt } from "./parse";
+import { field, parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, stringAt } from "./parse";
 
 type AuthFile = {
   id: string;
@@ -73,7 +73,7 @@ export class ProxyHubApi {
       if (error instanceof ProxyHubRejected) throw error;
       return null;
     });
-    return claudePlan(profile);
+    return parseClaudeProfile(profile).plan;
   }
 
   private async readCodex(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
@@ -197,14 +197,6 @@ function authFileString(value: unknown, key: string): string {
     throw new ProxyHubError("The hub returned an unexpected account list.");
   }
   return found;
-}
-
-/** `claude_max` with a `default_claude_max_20x` rate limit tier reads as "Max 20x". */
-function claudePlan(profile: unknown): string | null {
-  return claudeSubscription(
-    stringAt(profile, ["organization", "organization_type"]),
-    stringAt(profile, ["organization", "rate_limit_tier"]),
-  );
 }
 
 function codexUsageResponse(value: unknown): boolean {

@@ -225,7 +225,7 @@ function AccountDetail({ email, plan, label }: { email: string | null; plan: str
   if (!email && !plan) return null;
   return (
     <small className="account-detail">
-      {email && <Email email={email} label={label} />}
+      {email && <Email key={email} email={email} label={label} />}
       {email && plan && <span className="account-separator"> · </span>}
       {plan && <span>{plan}</span>}
     </small>
