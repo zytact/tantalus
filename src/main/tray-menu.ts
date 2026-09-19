@@ -3,24 +3,21 @@ import { percent, providerIds, providerNames, refreshedAgo, refreshedEpoch, usag
 import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
 
 export type TrayAction = "show" | "refresh" | "quit";
-export type TrayItem =
-  | { label: string; action: TrayAction | null }
-  | { label: string; submenu: TrayItem[] }
-  | "separator";
+export type TrayItem = { label: string; action: TrayAction | null } | "separator";
 
-/** A heading and one row per window for every enabled provider, a dimmed row saying when they were
- * refreshed, then a separator and the actions, led by the pending update when there is one. The
- * readings stay enabled so the menu renders them at full contrast rather than dimming the numbers
- * the app exists to show; clicking one opens the window, like Open Tantalus. The window carries the
- * install button, so the update item opens it too. */
+/** A heading and one row per window for every enabled provider, then a block per proxy hub listing
+ * its accounts the same way, a dimmed row saying when they were refreshed, then a separator and the
+ * actions, led by the pending update when there is one. Separators split the direct providers and
+ * each hub. The readings stay enabled so the menu renders them at full contrast rather than dimming
+ * the numbers the app exists to show; clicking one opens the window, like Open Tantalus. The window
+ * carries the install button, so the update item opens it too. */
 export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | null, now: number): TrayItem[] {
   const direct = providerIds
     .filter((id) => snapshot.enabled[id])
-    .flatMap((id): TrayItem[] => [
-      { label: providerNames[id], action: "show" },
-      ...trayRows(snapshot[id], now).map((label) => ({ label, action: "show" as const })),
-    ]);
-  const readings: TrayItem[] = [...direct, ...snapshot.proxy_hubs.map((hub) => hubTrayItem(hub, now))];
+    .flatMap((id) => readingItems(providerNames[id], snapshot[id], now));
+  const readings = [direct, ...snapshot.proxy_hubs.map((hub) => hubItems(hub, now))]
+    .filter((block) => block.length > 0)
+    .flatMap((block, index): TrayItem[] => (index === 0 ? block : ["separator", ...block]));
   const refreshed: TrayItem[] =
     readings.length > 0 ? [{ label: refreshedAgo(refreshedEpoch(snapshot), now), action: null }, "separator"] : [];
   return [
@@ -33,28 +30,23 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
   ];
 }
 
-function hubTrayItem(hub: ProxyHubSnapshot, now: number): TrayItem {
-  const accounts = hub.accounts.flatMap((account, index): TrayItem[] => {
-    const separator: TrayItem[] = index === 0 ? [] : ["separator"];
-    return [
-      ...separator,
-      {
-        label: `${providerNames[account.provider]} · ${account.email ?? account.plan ?? account.id}`,
-        action: "show",
-      },
-      ...trayRows(account.usage, now).map((label) => ({ label, action: "show" as const })),
-    ];
-  });
-  const submenu =
-    accounts.length > 0
-      ? accounts
-      : [
-          {
-            label: hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts"),
-            action: null,
-          },
-        ];
-  return { label: hub.label, submenu };
+function hubItems(hub: ProxyHubSnapshot, now: number): TrayItem[] {
+  const accounts = hub.accounts.flatMap((account) =>
+    readingItems(
+      `${providerNames[account.provider]} · ${account.email ?? account.plan ?? account.id}`,
+      account.usage,
+      now,
+    ),
+  );
+  const status = hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts");
+  return [
+    { label: hub.label, action: "show" },
+    ...(accounts.length > 0 ? accounts : [{ label: `${ROW_INDENT}${status}`, action: null }]),
+  ];
+}
+
+function readingItems(heading: string, usage: ProviderUsage, now: number): TrayItem[] {
+  return [heading, ...trayRows(usage, now)].map((label) => ({ label, action: "show" }));
 }
 
 /** A row per window the reading actually carries. Which windows an account has depends on its plan,
