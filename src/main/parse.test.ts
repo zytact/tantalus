@@ -104,7 +104,7 @@ describe("claude usage", () => {
       five_hour: { utilization: 65, resets_at: "2026-09-07T00:39:59.850576+00:00", locked_reason: null },
       seven_day: { utilization: 74, resets_at: "2026-09-07T05:39:59+05:30" },
       seven_day_opus: null,
-      extra_usage: { is_enabled: true, used_credits: 12.5, monthly_limit: 50, currency: "USD" },
+      extra_usage: { is_enabled: true, used_credits: 1250, monthly_limit: 5000, currency: "USD", decimal_places: 2 },
     });
     expect(usage.five_hour).toEqual({ used_percent: 65, limit_window_seconds: 18_000, reset_at_epoch: 1_788_741_599 });
     expect(usage.seven_day.reset_at_epoch).toBe(1_788_739_799);

@@ -94,10 +94,15 @@ function namedWindow(value: unknown, seconds: number, percent: string, resets: s
 function extraUsage(value: unknown): ExtraUsage | null {
   if (value === undefined || value === null) return null;
   const currency = field(value, "currency");
+  const scale = 10 ** (float(field(value, "decimal_places")) ?? 2);
+  const amount = (key: string) => {
+    const minor = float(field(value, key));
+    return minor === null ? null : minor / scale;
+  };
   return {
     enabled: bool(field(value, "is_enabled")) ?? false,
-    used_credits: float(field(value, "used_credits")),
-    monthly_limit: float(field(value, "monthly_limit")),
+    used_credits: amount("used_credits"),
+    monthly_limit: amount("monthly_limit"),
     currency: typeof currency === "string" ? currency : null,
   };
 }
