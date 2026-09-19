@@ -4,6 +4,7 @@ import "@fontsource/newsreader/latin-500.css";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  accountDetail,
   fiveHourSeconds,
   clockEpoch,
   monthlySeconds,
@@ -286,11 +287,6 @@ function HubAccounts({ accounts, now }: { accounts: ProxyHubAccount[]; now: numb
       detail={accountDetail(account)}
     />
   ));
-}
-
-function accountDetail(account: ProxyHubAccount): string {
-  const details = [account.email, account.plan].filter((value) => value !== null).join(" · ");
-  return details.length > 0 ? details : account.id;
 }
 
 /** The current epoch in seconds, re-read often enough that a minute-grained label is never more

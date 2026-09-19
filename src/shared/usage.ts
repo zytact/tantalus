@@ -108,6 +108,12 @@ export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnaps
   error_message: null,
 });
 
+/** A pooled account's email and plan, or its auth file name when the hub knows neither. */
+export function accountDetail(account: ProxyHubAccount): string {
+  const details = [account.email, account.plan].filter((value) => value !== null);
+  return details.length > 0 ? details.join(" · ") : account.id;
+}
+
 export const nowEpoch = () => Math.floor(Date.now() / 1000);
 
 /** Advances a server-supplied epoch by monotonic elapsed time. */

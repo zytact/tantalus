@@ -24,7 +24,7 @@ function fixture(
       auth_index: "codex-auth",
       provider: "codex",
       email: "codex@example.com",
-      id_token: { chatgpt_account_id: "account-a", chatgpt_plan_type: "pro" },
+      id_token: { chatgpt_account_id: "account-a", plan_type: "pro" },
     },
     { id: "claude.json", auth_index: "claude-auth", provider: "claude", email: "claude@example.com" },
     { id: "off.json", auth_index: "off", provider: "codex", disabled: true },
@@ -55,6 +55,8 @@ function fixture(
           },
         ],
       };
+    } else if (call.url.endsWith("/profile")) {
+      body = { organization: { organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x" } };
     } else if (call.auth_index === "claude-auth") {
       body = { five_hour: { utilization: 31, resets_at: "2099-01-01T00:00:00Z" } };
     } else {
@@ -78,21 +80,53 @@ describe("CLIProxyAPI usage", () => {
         id: "codex.json",
         provider: "codex",
         email: "codex@example.com",
-        plan: "pro",
+        plan: "Pro",
       },
       {
         id: "claude.json",
         provider: "claude",
         email: "claude@example.com",
-        plan: "Claude Subscription",
+        plan: "Max 20x",
       },
     ]);
     expect(accounts[0]?.usage.seven_day.used_percent).toBe(72);
     expect(accounts[0]?.usage.reset_credit_count).toBe(1);
     expect(accounts[1]?.usage.five_hour.used_percent).toBe(31);
-    expect(test.calls.map((call) => call.auth_index).sort()).toEqual(["claude-auth", "codex-auth", "codex-auth"]);
+    expect(test.calls.map((call) => call.auth_index).sort()).toEqual([
+      "claude-auth",
+      "claude-auth",
+      "codex-auth",
+      "codex-auth",
+    ]);
     expect(test.calls.every((call) => call.header.Authorization === "Bearer $TOKEN$")).toBe(true);
     expect(test.calls.find((call) => call.auth_index === "codex-auth")?.header["Chatgpt-Account-Id"]).toBe("account-a");
+  });
+
+  it("reads each Claude plan without letting a failed profile cost the usage reading", async () => {
+    const request: typeof fetch = async (_input, init) => {
+      if (init?.method === "GET") {
+        return Response.json({
+          files: [
+            { id: "pro", auth_index: "pro", provider: "claude" },
+            { id: "unknown", auth_index: "unknown", provider: "claude" },
+          ],
+        });
+      }
+      const call = JSON.parse(requestBody(init)) as ManagementCall;
+      if (!call.url.endsWith("/profile")) {
+        return Response.json({ status_code: 200, body: JSON.stringify({ five_hour: null }) });
+      }
+      const profile = { organization: { organization_type: "claude_pro", rate_limit_tier: "default_claude_ai" } };
+      return Response.json({
+        status_code: call.auth_index === "pro" ? 200 : 500,
+        body: JSON.stringify(call.auth_index === "pro" ? profile : { error: "unavailable" }),
+      });
+    };
+    const accounts = await new ProxyHubApi(request).read(config);
+    expect(accounts.map(({ plan, usage }) => ({ plan, status: usage.status }))).toEqual([
+      { plan: "Pro", status: "ready" },
+      { plan: null, status: "ready" },
+    ]);
   });
 
   it("keeps a successful usage reading when reset credits fail", async () => {
@@ -182,12 +216,19 @@ describe("CLIProxyAPI usage", () => {
     await expect(reading).rejects.toThrow(message);
   });
 
-  it("treats a refusal while reading an account as a refusal of the whole hub", async () => {
-    const request: typeof fetch = async (_input, init) =>
-      init?.method === "GET"
-        ? Response.json({ files: [{ id: "a", auth_index: "a", provider: "claude" }] })
-        : Response.json({ error: "invalid management key" }, { status: 401 });
-    await expect(new ProxyHubApi(request).read(config)).rejects.toThrow(ProxyHubRejected);
+  it("treats a refusal while reading an account or its plan as a refusal of the whole hub", async () => {
+    const refusing =
+      (refused: (call: ManagementCall) => boolean): typeof fetch =>
+      async (_input, init) => {
+        if (init?.method === "GET") return Response.json({ files: [{ id: "a", auth_index: "a", provider: "claude" }] });
+        const call = JSON.parse(requestBody(init)) as ManagementCall;
+        return refused(call)
+          ? Response.json({ error: "invalid management key" }, { status: 401 })
+          : Response.json({ status_code: 200, body: JSON.stringify({ five_hour: null }) });
+      };
+    await expect(new ProxyHubApi(refusing(() => true)).read(config)).rejects.toThrow(ProxyHubRejected);
+    const profileRefused = refusing((call) => call.url.endsWith("/profile"));
+    await expect(new ProxyHubApi(profileRefused).read(config)).rejects.toThrow(ProxyHubRejected);
   });
 
   it("caps account reads across concurrent hubs", async () => {

@@ -1,5 +1,13 @@
 import type { AvailableUpdate } from "../shared/ipc";
-import { percent, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import {
+  accountDetail,
+  percent,
+  providerIds,
+  providerNames,
+  refreshedAgo,
+  refreshedEpoch,
+  usagePace,
+} from "../shared/usage";
 import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
 
 export type TrayAction = "show" | "refresh" | "quit";
@@ -32,11 +40,7 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
 
 function hubItems(hub: ProxyHubSnapshot, now: number): TrayItem[] {
   const accounts = hub.accounts.flatMap((account) =>
-    readingItems(
-      `${providerNames[account.provider]} · ${account.email ?? account.plan ?? account.id}`,
-      account.usage,
-      now,
-    ),
+    readingItems(`${providerNames[account.provider]} · ${accountDetail(account)}`, account.usage, now),
   );
   const status = hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts");
   return [

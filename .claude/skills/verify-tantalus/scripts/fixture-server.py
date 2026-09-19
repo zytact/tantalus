@@ -5,10 +5,12 @@ import sys
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
 
 HOUR = 3600
 DAY = 86_400
 TOKENS = {"Bearer fixture-codex", "Bearer fixture-claude", "Bearer fixture-opencode"}
+MANAGEMENT_TOKEN = "Bearer fixture-management"
 
 
 def rfc3339(epoch):
@@ -141,6 +143,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/__fixture/health":
             return self.send_json(200, {"scenario": Handler.scenario})
+        if self.path == "/v0/management/auth-files":
+            with open(Handler.request_log, "a") as log:
+                log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
+            if self.headers.get("authorization") != MANAGEMENT_TOKEN:
+                return self.send_json(401, {"error": "fixture management key required"})
+            return self.send_json(200, {
+                "files": [
+                    {
+                        "id": "hub-codex.json",
+                        "auth_index": "hub-codex",
+                        "provider": "codex",
+                        "email": "codex@hub.test",
+                        "id_token": {"chatgpt_account_id": "fixture-hub-account", "plan_type": "pro"},
+                    },
+                    {
+                        "id": "hub-claude.json",
+                        "auth_index": "hub-claude",
+                        "provider": "claude",
+                        "email": "claude@hub.test",
+                    },
+                ]
+            })
         key = ROUTES.get(self.path)
         with open(Handler.request_log, "a") as log:
             log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
@@ -156,10 +180,42 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         prefix = "/__fixture/scenario/"
         name = self.path[len(prefix):] if self.path.startswith(prefix) else None
-        if name not in SCENARIOS:
-            return self.send_json(404, {"error": "unknown scenario", "scenarios": sorted(SCENARIOS)})
-        Handler.scenario = name
-        self.send_json(200, {"scenario": name})
+        if name in SCENARIOS:
+            Handler.scenario = name
+            return self.send_json(200, {"scenario": name})
+        if self.path != "/v0/management/api-call":
+            return self.send_json(404, {"error": "unknown path"})
+        with open(Handler.request_log, "a") as log:
+            log.write(f"{int(time.time())} {Handler.scenario} POST {self.path}\n")
+        if self.headers.get("authorization") != MANAGEMENT_TOKEN:
+            return self.send_json(401, {"error": "fixture management key required"})
+        try:
+            size = int(self.headers.get("content-length", "0"))
+            request = json.loads(self.rfile.read(size))
+            key = ROUTES.get(urlparse(request["url"]).path)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return self.send_json(400, {"error": "invalid management request"})
+        if urlparse(request.get("url", "")).path == "/api/oauth/profile":
+            profile = {"organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"}}
+            return self.send_json(200, {"status_code": 200, "body": json.dumps(profile)})
+        if request.get("header", {}).get("Authorization") != "Bearer $TOKEN$" or key is None:
+            return self.send_json(400, {"error": "invalid upstream request"})
+        build = SCENARIOS[Handler.scenario]
+        status = 500 if build is None else 200
+        body = {"error": "fixture error scenario"} if build is None else build()[key]
+        if build is not None and key == "codex_credits":
+            body = {
+                "credits": [
+                    {
+                        **credit,
+                        "id": f"fixture-credit-{index}",
+                        "status": "available",
+                        "reset_type": "codex_rate_limits",
+                    }
+                    for index, credit in enumerate(body.get("credits", []))
+                ]
+            }
+        self.send_json(200, {"status_code": status, "body": json.dumps(body)})
 
     def log_message(self, *_):
         pass

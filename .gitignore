@@ -4,3 +4,4 @@ dist-electron/
 release/
 .fallow/
 .vite-hooks/_/
+__pycache__/
