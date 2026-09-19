@@ -1,4 +1,10 @@
-import { fiveHourSeconds, monthlySeconds, sevenDaySeconds, unreportedWindow } from "../shared/usage";
+import {
+  claudeSubscription,
+  fiveHourSeconds,
+  monthlySeconds,
+  sevenDaySeconds,
+  unreportedWindow,
+} from "../shared/usage";
 import type { ExtraUsage, ProviderUsage, ResetCredit, WindowUsage } from "../shared/usage";
 
 /** The part of a provider's reading its usage response carries. */
@@ -58,6 +64,16 @@ export function parseClaudeUsage(value: unknown): ParsedUsage {
     allowed: !locked,
     limit_reached: locked,
     extra_usage: extraUsage(field(value, "extra_usage")),
+  };
+}
+
+export function parseClaudeProfile(value: unknown): Pick<ProviderUsage, "email" | "plan"> {
+  return {
+    email: stringAt(value, ["account", "email"]),
+    plan: claudeSubscription(
+      stringAt(value, ["organization", "organization_type"]),
+      stringAt(value, ["organization", "rate_limit_tier"]),
+    ),
   };
 }
 

@@ -2,13 +2,14 @@ import { emptyProviderUsage, nowEpoch } from "../shared/usage";
 import type { ProviderId, ProviderUsage } from "../shared/usage";
 import type { Credentials } from "./auth";
 import { ReadFailure } from "./failure";
-import { parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
+import { parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
 
 const endpoints = {
   whamUsage: { origin: "https://chatgpt.com", path: "/backend-api/wham/usage" },
   codexUsage: { origin: "https://chatgpt.com", path: "/backend-api/codex/usage" },
   resetCredits: { origin: "https://chatgpt.com", path: "/backend-api/wham/rate-limit-reset-credits" },
   claudeUsage: { origin: "https://api.anthropic.com", path: "/api/oauth/usage" },
+  claudeProfile: { origin: "https://api.anthropic.com", path: "/api/oauth/profile" },
   opencodeUsage: { origin: "https://opencode.ai", path: "/zen/go/v1/usage" },
 } as const;
 type Endpoint = keyof typeof endpoints;
@@ -27,17 +28,41 @@ export class UsageApi {
 
   async fetch(provider: ProviderId, credentials: Credentials): Promise<ProviderUsage> {
     switch (provider) {
-      case "codex": {
-        const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
-        const credits = await this.json("resetCredits", credentials, codexResetHeaders);
-        const now = nowEpoch();
-        return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits) }, now);
-      }
+      case "codex":
+        return this.fetchCodex(credentials);
       case "claude":
-        return ready(parseClaudeUsage(await this.json("claudeUsage", credentials, claudeHeaders)), nowEpoch());
+        return this.fetchClaude(credentials);
       case "opencode":
-        return ready(parseOpencodeUsage(await this.json("opencodeUsage", credentials, userAgent)), nowEpoch());
+        return this.fetchOpencode(credentials);
     }
+  }
+
+  private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
+    const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
+    const credits = await this.json("resetCredits", credentials, codexResetHeaders);
+    const now = nowEpoch();
+    return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits), ...identity(credentials) }, now);
+  }
+
+  private async fetchClaude(credentials: Credentials): Promise<ProviderUsage> {
+    const [usage, profile] = await Promise.all([
+      this.json("claudeUsage", credentials, claudeHeaders),
+      this.json("claudeProfile", credentials, claudeHeaders).catch(() => null),
+    ]);
+    const details = parseClaudeProfile(profile);
+    return ready(
+      {
+        ...parseClaudeUsage(usage),
+        email: details.email ?? credentials.email,
+        plan: details.plan ?? credentials.plan,
+      },
+      nowEpoch(),
+    );
+  }
+
+  private async fetchOpencode(credentials: Credentials): Promise<ProviderUsage> {
+    const usage = await this.json("opencodeUsage", credentials, userAgent);
+    return ready({ ...parseOpencodeUsage(usage), ...identity(credentials) }, nowEpoch());
   }
 
   private async json(
@@ -61,6 +86,10 @@ export class UsageApi {
       throw new ReadFailure("response");
     });
   }
+}
+
+function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {
+  return { email: credentials.email, plan: credentials.plan };
 }
 
 function ready(fields: Partial<ProviderUsage>, now: number): ProviderUsage {

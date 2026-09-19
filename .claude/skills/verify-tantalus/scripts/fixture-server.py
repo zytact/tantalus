@@ -54,6 +54,10 @@ def ready():
             "seven_day": claude_window(55, 3 * DAY),
             "extra_usage": {"is_enabled": True, "used_credits": 1250, "monthly_limit": 5000, "currency": "USD", "decimal_places": 2},
         },
+        "claude_profile": {
+            "account": {"email": "claude@direct.test"},
+            "organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"},
+        },
         "opencode_usage": {
             "usage": {
                 "rolling": opencode_window(5, 4 * HOUR),
@@ -93,6 +97,10 @@ def blocked():
             "seven_day": claude_window(80, 2 * DAY),
             "extra_usage": None,
         },
+        "claude_profile": {
+            "account": {"email": "claude@direct.test"},
+            "organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"},
+        },
         "opencode_usage": {
             "usage": {
                 "rolling": opencode_window(100, 2 * HOUR),
@@ -108,6 +116,10 @@ def no_windows():
         "codex_usage": {"rate_limit": {}},
         "codex_credits": {},
         "claude_usage": {},
+        "claude_profile": {
+            "account": {"email": "claude@direct.test"},
+            "organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"},
+        },
         "opencode_usage": {"usage": {}},
     }
 
@@ -124,6 +136,7 @@ ROUTES = {
     "/backend-api/codex/usage": "codex_usage",
     "/backend-api/wham/rate-limit-reset-credits": "codex_credits",
     "/api/oauth/usage": "claude_usage",
+    "/api/oauth/profile": "claude_profile",
     "/zen/go/v1/usage": "opencode_usage",
 }
 
@@ -195,9 +208,6 @@ class Handler(BaseHTTPRequestHandler):
             key = ROUTES.get(urlparse(request["url"]).path)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return self.send_json(400, {"error": "invalid management request"})
-        if urlparse(request.get("url", "")).path == "/api/oauth/profile":
-            profile = {"organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"}}
-            return self.send_json(200, {"status_code": 200, "body": json.dumps(profile)})
         if request.get("header", {}).get("Authorization") != "Bearer $TOKEN$" or key is None:
             return self.send_json(400, {"error": "invalid upstream request"})
         build = SCENARIOS[Handler.scenario]

@@ -2,11 +2,17 @@ import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, win32 } from "node:path";
+import { claudeSubscription, subscriptionName } from "../shared/usage";
 import type { ProviderId } from "../shared/usage";
 import { ReadFailure } from "./failure";
 import { stringAt } from "./parse";
 
-export type Credentials = { accessToken: string; accountId: string | null };
+export type Credentials = {
+  accessToken: string;
+  accountId: string | null;
+  email: string | null;
+  plan: string | null;
+};
 
 /** Where each login keeps its credentials. The variable relocates the store: Codex and Claude point
  * theirs straight at the directory holding the file, while Opencode follows XDG, so its variable
@@ -30,25 +36,25 @@ const locations = {
 export async function readCredentials(provider: ProviderId): Promise<Credentials> {
   const { variable, underVariable, underHome } = locations[provider];
   const directory = process.env[variable];
-  if (directory) return readFrom(join(directory, ...underVariable));
+  if (directory) return readFrom(provider, join(directory, ...underVariable));
   try {
     // Node reads HOME only on POSIX, but a Windows shell that sets it relocates the logins too.
-    return await firstReadable([join(process.env.HOME || homedir(), ...underHome)]);
+    return await firstReadable(provider, [join(process.env.HOME || homedir(), ...underHome)]);
   } catch (error) {
     if (!(error instanceof ReadFailure) || error.reason !== "missingFile") throw error;
   }
   // Touching the WSL share starts the distribution behind it, so it is only scanned once the home
   // directory has turned up nothing.
-  return firstReadable(await wslAuthPaths(underHome));
+  return firstReadable(provider, await wslAuthPaths(underHome));
 }
 
 /** The first path holding credentials. A file that exists but cannot be used outranks a missing one
  * in the failure. */
-async function firstReadable(paths: string[]): Promise<Credentials> {
+async function firstReadable(provider: ProviderId, paths: string[]): Promise<Credentials> {
   let failure = new ReadFailure("missingFile");
   for (const path of paths) {
     try {
-      return await readFrom(path);
+      return await readFrom(provider, path);
     } catch (error) {
       if (error instanceof ReadFailure && error.reason !== "missingFile") failure = error;
     }
@@ -56,11 +62,11 @@ async function firstReadable(paths: string[]): Promise<Credentials> {
   throw failure;
 }
 
-async function readFrom(path: string): Promise<Credentials> {
+async function readFrom(provider: ProviderId, path: string): Promise<Credentials> {
   const raw = await readFile(path, "utf8").catch(() => {
     throw new ReadFailure("missingFile");
   });
-  return parseCredentials(raw);
+  return parseCredentials(provider, raw);
 }
 
 const tokenPaths = [
@@ -85,7 +91,7 @@ const accountPaths = [
 const firstString = (value: unknown, paths: string[][]) =>
   paths.map((path) => stringAt(value, path)).find((found) => found !== null) || null;
 
-export function parseCredentials(raw: string): Credentials {
+export function parseCredentials(provider: ProviderId, raw: string): Credentials {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -94,7 +100,33 @@ export function parseCredentials(raw: string): Credentials {
   }
   const accessToken = firstString(value, tokenPaths);
   if (!accessToken) throw new ReadFailure("missingToken");
-  return { accessToken, accountId: firstString(value, accountPaths) };
+  return { accessToken, accountId: firstString(value, accountPaths), ...credentialIdentity(provider, value) };
+}
+
+function credentialIdentity(provider: ProviderId, value: unknown): Pick<Credentials, "email" | "plan"> {
+  if (provider === "opencode") return { email: null, plan: "Go" };
+  if (provider === "claude") {
+    return {
+      email: null,
+      plan: claudeSubscription(
+        stringAt(value, ["claudeAiOauth", "subscriptionType"]),
+        stringAt(value, ["claudeAiOauth", "rateLimitTier"]),
+      ),
+    };
+  }
+  const token = stringAt(value, ["tokens", "id_token"]);
+  const payload = token ? jwtPayload(token) : null;
+  const plan = stringAt(payload, ["https://api.openai.com/auth", "chatgpt_plan_type"]);
+  return { email: stringAt(payload, ["email"]), plan: plan ? subscriptionName(plan) : null };
+}
+
+function jwtPayload(token: string): unknown {
+  try {
+    const payload = token.split(".")[1];
+    return payload ? JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) : null;
+  } catch {
+    return null;
+  }
 }
 
 const SHARE_ROOTS = ["\\\\wsl.localhost", "\\\\wsl$"];

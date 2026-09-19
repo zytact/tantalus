@@ -1,13 +1,5 @@
 import type { AvailableUpdate } from "../shared/ipc";
-import {
-  accountDetail,
-  percent,
-  providerIds,
-  providerNames,
-  refreshedAgo,
-  refreshedEpoch,
-  usagePace,
-} from "../shared/usage";
+import { percent, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
 
 export type TrayAction = "show" | "refresh" | "quit";
@@ -22,7 +14,7 @@ export type TrayItem = { label: string; action: TrayAction | null } | "separator
 export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | null, now: number): TrayItem[] {
   const direct = providerIds
     .filter((id) => snapshot.enabled[id])
-    .flatMap((id) => readingItems(providerNames[id], snapshot[id], now));
+    .flatMap((id) => readingItems(accountHeading(providerNames[id], snapshot[id].plan), snapshot[id], now));
   const readings = [direct, ...snapshot.proxy_hubs.map((hub) => hubItems(hub, now))]
     .filter((block) => block.length > 0)
     .flatMap((block, index): TrayItem[] => (index === 0 ? block : ["separator", ...block]));
@@ -40,13 +32,17 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
 
 function hubItems(hub: ProxyHubSnapshot, now: number): TrayItem[] {
   const accounts = hub.accounts.flatMap((account) =>
-    readingItems(`${providerNames[account.provider]} · ${accountDetail(account)}`, account.usage, now),
+    readingItems(accountHeading(providerNames[account.provider], account.plan), account.usage, now),
   );
   const status = hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts");
   return [
     { label: hub.label, action: "show" },
     ...(accounts.length > 0 ? accounts : [{ label: `${ROW_INDENT}${status}`, action: null }]),
   ];
+}
+
+function accountHeading(provider: string, detail: string | null): string {
+  return detail ? `${provider} · ${detail}` : provider;
 }
 
 function readingItems(heading: string, usage: ProviderUsage, now: number): TrayItem[] {

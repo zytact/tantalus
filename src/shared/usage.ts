@@ -16,6 +16,8 @@ export type SnapshotStatus = "ready" | "loading" | "stale" | "auth_missing" | "e
 /** One provider's reading. Each provider succeeds or fails on its own, so status and freshness live
  * here rather than on the snapshot. */
 export type ProviderUsage = {
+  email: string | null;
+  plan: string | null;
   five_hour: WindowUsage;
   seven_day: WindowUsage;
   /** Opencode reports this alongside the other two, and it is the only window a Codex Go or free
@@ -86,6 +88,8 @@ export const unreportedWindow = (): WindowUsage => ({
 
 /** A provider nothing has been read for yet. */
 export const emptyProviderUsage = (): ProviderUsage => ({
+  email: null,
+  plan: null,
   five_hour: unreportedWindow(),
   seven_day: unreportedWindow(),
   monthly: unreportedWindow(),
@@ -108,10 +112,18 @@ export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnaps
   error_message: null,
 });
 
-/** A pooled account's email and plan, or its auth file name when the hub knows neither. */
-export function accountDetail(account: ProxyHubAccount): string {
-  const details = [account.email, account.plan].filter((value) => value !== null);
-  return details.length > 0 ? details.join(" · ") : account.id;
+export function subscriptionName(value: string): string {
+  return value
+    .replace(/^claude_/, "")
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export function claudeSubscription(type: string | null, tier: string | null): string | null {
+  if (!type) return null;
+  const multiplier = tier?.match(/_(\d+x)$/)?.[1];
+  return [subscriptionName(type), multiplier].filter((part) => part !== undefined).join(" ");
 }
 
 export const nowEpoch = () => Math.floor(Date.now() / 1000);
