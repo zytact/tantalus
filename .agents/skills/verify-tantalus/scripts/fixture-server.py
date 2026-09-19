@@ -52,7 +52,7 @@ def ready():
         "claude_usage": {
             "five_hour": claude_window(91, 1 * HOUR),
             "seven_day": claude_window(55, 3 * DAY),
-            "extra_usage": {"is_enabled": True, "used_credits": 12.5, "monthly_limit": 50, "currency": "USD"},
+            "extra_usage": {"is_enabled": True, "used_credits": 1250, "monthly_limit": 5000, "currency": "USD", "decimal_places": 2},
         },
         "opencode_usage": {
             "usage": {
