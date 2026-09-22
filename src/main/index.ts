@@ -30,7 +30,7 @@ app.setPath("userData", join(app.getPath("appData"), identity.appId));
 
 /** The window shell paints before the page does, so it carries the same canvas color the stylesheet
  * uses. Without it a dark desktop gets a cream flash on every open. */
-const canvas = () => (nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#fbf8f1");
+const canvas = () => (nativeTheme.shouldUseDarkColors ? "#0b0b0b" : "#fff");
 
 /** Refreshes the time-derived tray labels without rebuilding, and so closing, an open menu when
  * nothing on it changed. */
