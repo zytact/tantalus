@@ -53,9 +53,9 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 .agents/skills/verify-tantalus/scripts/mock-scenario.sh ready
 ```
 
-- `ready`: Codex 5h and 7d with two credits, Claude 5h and 7d with extra usage, Opencode 5h, 7d, and 30d. Windows sit below, at, and above the elapsed share, so every pace label the build has appears.
+- `ready`: Codex 5h and 7d with two credits, Claude 5h and 7d with one banked reset and extra usage, Opencode 5h, 7d, and 30d. Windows sit below, at, and above the elapsed share, so every pace label the build has appears.
 - `monthly-only`: Codex reports only a 30-day window and an empty credit list.
-- `blocked`: Codex limit reached, Claude locked, Opencode rolling window at 100%.
+- `blocked`: Codex limit reached, Claude locked with no banked resets, Opencode rolling window at 100%.
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
 

@@ -140,6 +140,26 @@ export function parseCredits(value: unknown): Pick<ProviderUsage, "reset_credits
   };
 }
 
+/** Claude tells only its own CLI about banked resets, and recognises it by the `cli` entrypoint and a
+ * minimum version in this agent. 2.1.280 is a release that reads them. */
+export const claudeCliAgent = { "User-Agent": "claude-cli/2.1.280 (external, cli)" };
+
+/** A grant claiming more resets than this is malformed rather than generous. */
+const MAX_GRANT_RESETS = 100;
+
+/** Claude banks resets as grants, and every reset left in a grant expires with it. The usage
+ * response carries them in `cedar_ember` only when asked for, and leaves the block out otherwise. */
+export function parseClaudeResets(value: unknown): Pick<ProviderUsage, "reset_credits" | "reset_credit_count"> {
+  const grants = field(field(value, "cedar_ember"), "grants");
+  if (!Array.isArray(grants)) return { reset_credits: [], reset_credit_count: null };
+  const reset_credits = grants.flatMap((grant: unknown): ResetCredit[] => {
+    const left = exactInteger(field(grant, "resets_left")) ?? 0;
+    const count = left > 0 && left <= MAX_GRANT_RESETS ? left : 0;
+    return Array.from({ length: count }, () => ({ expires_at_epoch: epoch(field(grant, "ends_at")) }));
+  });
+  return { reset_credits, reset_credit_count: reset_credits.length };
+}
+
 function codexWindow(value: unknown, now: number): WindowUsage {
   const resetAfter = number(field(value, "reset_after_seconds"));
   return {

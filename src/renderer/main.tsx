@@ -129,7 +129,7 @@ function Spend({ extra }: { extra: ExtraUsage }) {
   );
 }
 
-/** Codex banks credits that reset a spent window early. */
+/** Codex and Claude bank credits that reset a spent window early. */
 function Credits({ provider }: { provider: ProviderUsage }) {
   return (
     <section className="entry" aria-label="Reset credits">
@@ -157,14 +157,13 @@ function Credits({ provider }: { provider: ProviderUsage }) {
 
 /** Which extras a provider has is fixed per provider, not inferred from what the last read held. */
 function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
-  switch (providerExtras[id]) {
-    case "spend":
-      return provider.extra_usage && <Spend extra={provider.extra_usage} />;
-    case "credits":
-      return <Credits provider={provider} />;
-    default:
-      return null;
-  }
+  return providerExtras[id].map((extra) =>
+    extra === "spend" ? (
+      provider.extra_usage && <Spend key={extra} extra={provider.extra_usage} />
+    ) : (
+      <Credits key={extra} provider={provider} />
+    ),
+  );
 }
 
 /** Every window a provider can report, in the order they are shown. Which of them a reading

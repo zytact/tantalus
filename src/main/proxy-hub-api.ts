@@ -1,6 +1,15 @@
 import { emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
 import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
-import { field, parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, stringAt } from "./parse";
+import {
+  claudeCliAgent,
+  field,
+  parseClaudeProfile,
+  parseClaudeResets,
+  parseClaudeUsage,
+  parseCodexUsage,
+  parseCredits,
+  stringAt,
+} from "./parse";
 
 type AuthFile = {
   id: string;
@@ -93,9 +102,9 @@ export class ProxyHubApi {
   }
 
   private async readClaude(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
-    const value = await this.apiCall(config, account, `${CLAUDE_BASE}/usage`);
+    const value = await this.apiCall(config, account, `${CLAUDE_BASE}/usage?cedar_ember=1`);
     if (!claudeUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
-    return ready(parseClaudeUsage(value), nowEpoch());
+    return ready({ ...parseClaudeUsage(value), ...parseClaudeResets(value) }, nowEpoch());
   }
 
   private async apiCall(config: ProxyHubConfig, account: AuthFile, url: string): Promise<unknown> {
@@ -108,7 +117,7 @@ export class ProxyHubApi {
             Originator: "Codex Desktop",
             ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
           }
-        : { Authorization: "Bearer $TOKEN$", "anthropic-beta": "oauth-2025-04-20" };
+        : { Authorization: "Bearer $TOKEN$", "anthropic-beta": "oauth-2025-04-20", ...claudeCliAgent };
     const response = await this.management(config, "api-call", {
       auth_index: account.authIndex,
       method: "GET",

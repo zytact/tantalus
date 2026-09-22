@@ -28,6 +28,12 @@ def claude_window(used, resets_in, locked=False):
     return window
 
 
+def claude_resets(*days_left):
+    grants = [{"id": f"fixture-grant-{index}", "resets_left": 1, "ends_at": rfc3339(time.time() + days * DAY)}
+              for index, days in enumerate(days_left)]
+    return {"eligible": True, "grants": grants}
+
+
 def opencode_window(used, resets_in):
     return {"percent": used, "resetsAt": int((time.time() + resets_in) * 1000), "status": "ok"}
 
@@ -52,6 +58,7 @@ def ready():
         "claude_usage": {
             "five_hour": claude_window(91, 1 * HOUR),
             "seven_day": claude_window(55, 3 * DAY),
+            "cedar_ember": claude_resets(30),
             "extra_usage": {"is_enabled": True, "used_credits": 1250, "monthly_limit": 5000, "currency": "USD", "decimal_places": 2},
         },
         "claude_profile": {
@@ -95,6 +102,7 @@ def blocked():
         "claude_usage": {
             "five_hour": claude_window(100, 1 * HOUR, locked=True),
             "seven_day": claude_window(80, 2 * DAY),
+            "cedar_ember": claude_resets(),
             "extra_usage": None,
         },
         "claude_profile": {
@@ -178,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 ]
             })
-        key = ROUTES.get(self.path)
+        key = ROUTES.get(urlparse(self.path).path)
         with open(Handler.request_log, "a") as log:
             log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
         if key is None:

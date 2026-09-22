@@ -82,7 +82,7 @@ The release workflow signs every bundle with the existing Tauri Minisign key in 
 - On Windows, if no credential file sits in the Windows home directory, the app looks inside every installed WSL distribution over the `\\wsl.localhost` share, covering `/root` and each `/home` user. Reaching that share starts the distribution, so the logins are found without signing in again on Windows.
 - The main process owns the five-minute polling schedule. The window receives token-free snapshot events and only asks the main process to refresh when the user presses Refresh.
 - Network requests time out after 12 seconds. Refreshes do not overlap.
-- For Codex the app tries WHAM usage first, then Codex usage, and fetches reset credits separately. Claude usage comes from `api.anthropic.com/api/oauth/usage`, Opencode Go usage from `opencode.ai/zen/go/v1/usage`.
+- For Codex the app tries WHAM usage first, then Codex usage, and fetches reset credits separately. Claude usage and banked resets come from `api.anthropic.com/api/oauth/usage?cedar_ember=1`, Opencode Go usage from `opencode.ai/zen/go/v1/usage`.
 - The providers are fetched together and fail independently, so a missing Claude login leaves the Codex reading intact.
 - A switched-off provider is skipped everywhere: the five-minute poll, the Refresh button, and the tray menu. Switching it off also drops the figures it last read.
 - Tokens and account IDs remain in main process memory only. They are never sent to the window, written to disk, or logged.

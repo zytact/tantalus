@@ -2,13 +2,21 @@ import { emptyProviderUsage, nowEpoch } from "../shared/usage";
 import type { ProviderId, ProviderUsage } from "../shared/usage";
 import type { Credentials } from "./auth";
 import { ReadFailure } from "./failure";
-import { parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
+import {
+  claudeCliAgent,
+  parseClaudeProfile,
+  parseClaudeResets,
+  parseClaudeUsage,
+  parseCodexUsage,
+  parseCredits,
+  parseOpencodeUsage,
+} from "./parse";
 
 const endpoints = {
   whamUsage: { origin: "https://chatgpt.com", path: "/backend-api/wham/usage" },
   codexUsage: { origin: "https://chatgpt.com", path: "/backend-api/codex/usage" },
   resetCredits: { origin: "https://chatgpt.com", path: "/backend-api/wham/rate-limit-reset-credits" },
-  claudeUsage: { origin: "https://api.anthropic.com", path: "/api/oauth/usage" },
+  claudeUsage: { origin: "https://api.anthropic.com", path: "/api/oauth/usage?cedar_ember=1" },
   claudeProfile: { origin: "https://api.anthropic.com", path: "/api/oauth/profile" },
   opencodeUsage: { origin: "https://opencode.ai", path: "/zen/go/v1/usage" },
 } as const;
@@ -53,6 +61,7 @@ export class UsageApi {
     return ready(
       {
         ...parseClaudeUsage(usage),
+        ...parseClaudeResets(usage),
         email: details.email ?? credentials.email,
         plan: details.plan ?? credentials.plan,
       },
@@ -98,4 +107,4 @@ function ready(fields: Partial<ProviderUsage>, now: number): ProviderUsage {
 
 const userAgent = { "User-Agent": "tantalus/0.1" };
 const codexResetHeaders = { "OpenAI-Beta": "codex-1", originator: "Codex Desktop", ...userAgent };
-const claudeHeaders = { "anthropic-beta": "oauth-2025-04-20", ...userAgent };
+const claudeHeaders = { "anthropic-beta": "oauth-2025-04-20", ...claudeCliAgent };
