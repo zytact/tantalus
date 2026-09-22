@@ -5,12 +5,14 @@ import { basename, dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { app } from "electron";
-import type { AvailableUpdate } from "../shared/ipc";
-import { isNewer, parseManifest, verifySignature } from "./release";
+import type { AvailableUpdate, ReleaseNotes } from "../shared/ipc";
+import { isNewer, parseManifest, parseReleases, verifySignature } from "./release";
 import type { ReleaseAsset } from "./release";
 import { nextBackoff } from "./usage-state";
 
 const MANIFEST_URL = "https://github.com/zytact/tantalus/releases/latest/download/latest.json";
+/** GitHub lists releases newest first, so one page reaches back 100 releases. */
+const RELEASES_URL = "https://api.github.com/repos/zytact/tantalus/releases?per_page=100";
 const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 /** A launch at login usually beats the network up, so a failed check comes back well before the
  * next interval. */
@@ -53,6 +55,17 @@ export class Updater {
     this.pending = { version: manifest.version, ...asset };
     this.announce({ version: manifest.version });
     return { version: manifest.version };
+  }
+
+  async releaseNotes(): Promise<ReleaseNotes[]> {
+    const update = this.pending;
+    if (!update) throw new Error("No update is ready.");
+    const response = await fetch(RELEASES_URL, {
+      headers: { accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Could not load the release notes: GitHub returned ${response.status}`);
+    return parseReleases(await response.json(), app.getVersion(), update.version);
   }
 
   /** Checks at launch and every `CHECK_INTERVAL`, backing off after a failure. */

@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { describe, expect, it } from "vite-plus/test";
-import { isNewer, parseManifest, verifySignature } from "./release";
+import { isNewer, parseManifest, parseReleases, verifySignature } from "./release";
 
 const run = promisify(execFile);
 const electronPackage = dirname(createRequire(import.meta.url).resolve("electron"));
@@ -35,6 +35,51 @@ describe("release manifest", () => {
     expect(isNewer("0.1.0", "0.0.99")).toBe(true);
     expect(isNewer("0.0.13", "0.0.13")).toBe(false);
     expect(isNewer("0.0.9", "0.0.13")).toBe(false);
+  });
+
+  it("reads the notes of each published release after the running build, up to the update", () => {
+    const release = (tag: string, body: string | null = "", fields = {}) => ({
+      tag_name: tag,
+      body,
+      published_at: "2026-09-22T17:42:16Z",
+      draft: false,
+      prerelease: false,
+      ...fields,
+    });
+    const listing = [
+      release("v0.0.18"),
+      release("v0.0.17", "", { prerelease: true }),
+      release(
+        "v0.0.16",
+        [
+          "## What's Changed",
+          "* feat(tray): show hub accounts in the tray by @zytact in https://github.com/zytact/tantalus/pull/56",
+          "* fix: stop a wrong key from banning your IP by @zytact in https://github.com/zytact/tantalus/pull/55",
+          "- chore(deps)!: upgrade Electron",
+          "* Bump the version",
+          "## New Contributors",
+          "* @someone made their first contribution in https://github.com/zytact/tantalus/pull/59",
+          "**Full Changelog**: https://github.com/zytact/tantalus/compare/v0.0.15...v0.0.16",
+        ].join("\r\n"),
+      ),
+      release("v0.0.15", null, { published_at: null }),
+      release("v0.0.14"),
+    ];
+
+    expect(parseReleases(listing, "0.0.14", "0.0.17")).toEqual([
+      {
+        version: "0.0.16",
+        publishedAt: "2026-09-22T17:42:16Z",
+        changes: [
+          { kind: "new", scope: "tray", summary: "show hub accounts in the tray" },
+          { kind: "fixed", scope: null, summary: "stop a wrong key from banning your IP" },
+          { kind: "changed", scope: "deps", summary: "upgrade Electron" },
+          { kind: "changed", scope: null, summary: "Bump the version" },
+        ],
+      },
+      { version: "0.0.15", publishedAt: null, changes: [] },
+    ]);
+    expect(() => parseReleases({ message: "rate limited" }, "0.0.14", "0.0.17")).toThrow();
   });
 
   it("accepts only a download signed with the release key", () => {

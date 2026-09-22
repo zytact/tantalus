@@ -3,6 +3,11 @@ import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 /** A signed release newer than the running build, as the window and tray show it. */
 export type AvailableUpdate = { version: string };
 
+/** One line of a release's notes. `new` and `fixed` come from `feat` and `fix` titles; every other
+ * line is `changed`. */
+export type ReleaseChange = { kind: "new" | "fixed" | "changed"; scope: string | null; summary: string };
+export type ReleaseNotes = { version: string; publishedAt: string | null; changes: ReleaseChange[] };
+
 /** The ways another device can open the allowance page, and whether each is switched on. */
 export const remoteRoutes = ["localNetwork", "tailscale"] as const;
 export type RemoteRoute = (typeof remoteRoutes)[number];
@@ -23,6 +28,8 @@ export type Commands = {
   removeProxyHub: (id: string) => ProxyHubSettings[];
   checkForUpdate: () => AvailableUpdate | null;
   installUpdate: () => void;
+  /** The notes of every release after the running build, up to the available update, newest first. */
+  releaseNotes: () => ReleaseNotes[];
   openAtLogin: () => boolean;
   setOpenAtLogin: (enabled: boolean) => void;
   remoteAccess: () => RemoteAccess;

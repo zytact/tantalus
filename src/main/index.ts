@@ -116,6 +116,7 @@ function start() {
     });
   });
   handle("installUpdate", () => updater.install());
+  handle("releaseNotes", () => updater.releaseNotes());
   handle("openAtLogin", () => openAtLogin(identity));
   handle("setOpenAtLogin", (enabled) => setOpenAtLogin(identity, enabled === true));
   handle("remoteAccess", () => remote.read());

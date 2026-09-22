@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
+import type { ReleaseChange, ReleaseNotes } from "../shared/ipc";
 import { field } from "./parse";
 
 /** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
@@ -32,6 +33,50 @@ export function isNewer(candidate: string, current: string): boolean {
     if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) > (b[index] ?? 0);
   }
   return false;
+}
+
+/** Keeps the published releases in `(after, through]` from a GitHub releases listing. */
+export function parseReleases(value: unknown, after: string, through: string): ReleaseNotes[] {
+  if (!Array.isArray(value)) throw new Error("the release list is malformed");
+  return value.flatMap((release) => {
+    const tag = field(release, "tag_name");
+    if (typeof tag !== "string" || field(release, "draft") !== false || field(release, "prerelease") !== false) {
+      return [];
+    }
+    const version = tag.replace(/^v/, "");
+    if (!isNewer(version, after) || isNewer(version, through)) return [];
+    const body = field(release, "body");
+    const publishedAt = field(release, "published_at");
+    return [
+      {
+        version,
+        publishedAt: typeof publishedAt === "string" ? publishedAt : null,
+        changes: typeof body === "string" ? parseChanges(body) : [],
+      },
+    ];
+  });
+}
+
+const kinds = new Map<string, ReleaseChange["kind"]>([
+  ["feat", "new"],
+  ["fix", "fixed"],
+]);
+
+/** Reads the bullets of a release body, as GitHub's generated notes write them:
+ * `* feat(scope): summary by @author in https://github.com/owner/repo/pull/1`. Bullets under
+ * New Contributors credit people rather than describe changes, so they are left out. */
+function parseChanges(body: string): ReleaseChange[] {
+  let credits = false;
+  return body.split(/\r?\n/).flatMap((line): ReleaseChange[] => {
+    const heading = /^#+\s+(.*)$/.exec(line);
+    if (heading) credits = heading[1].trim() === "New Contributors";
+    const bullet = /^\s*[-*]\s+(.+)$/.exec(line);
+    if (credits || !bullet) return [];
+    const text = bullet[1].replace(/ by @\S+ in \S+$/, "").trim();
+    const title = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(text);
+    if (!title) return [{ kind: "changed", scope: null, summary: text }];
+    return [{ kind: kinds.get(title[1]) ?? "changed", scope: title[2] || null, summary: title[3] }];
+  });
 }
 
 export function verifySignature(data: Buffer, signature: string, publicKey = PUBLIC_KEY): boolean {
