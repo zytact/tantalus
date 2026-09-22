@@ -139,6 +139,7 @@ button:focus-visible {
 }
 
 .update {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -151,6 +152,35 @@ button:focus-visible {
 }
 .update p {
   margin: 0;
+}
+.update-detail {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* While an install runs, the strip's bottom edge is its progress bar. */
+.update-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  overflow: hidden;
+}
+.update-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 160ms linear;
+}
+.update-progress[data-indeterminate] span {
+  width: 30%;
+  animation: update-slide 1.1s ease-in-out infinite;
+}
+@keyframes update-slide {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
 }
 .update-actions {
   display: flex;
@@ -207,6 +237,9 @@ button.quiet {
 }
 .release-notes-footer .notice {
   margin: 0 0 12px;
+}
+.release-notes-footer .update {
+  margin: 0;
 }
 .release-notes-install {
   display: flex;
@@ -671,5 +704,11 @@ footer {
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
+  }
+  .update-progress[data-indeterminate] span {
+    left: 0;
+    width: 100%;
+    animation: none;
+    opacity: 0.4;
   }
 }

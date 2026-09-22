@@ -3,6 +3,9 @@ import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 /** A signed release newer than the running build, as the window and tray show it. */
 export type AvailableUpdate = { version: string };
 
+/** How far an update install has come. `total` is null when the download does not state its size. */
+export type InstallProgress = { stage: "download"; received: number; total: number | null } | { stage: "install" };
+
 export type ReleaseChange = { kind: "new" | "fixed" | "changed"; scope: string | null; summary: string };
 export type ReleaseNotes = { version: string; publishedAt: string | null; changes: ReleaseChange[] };
 
@@ -39,6 +42,8 @@ export type Commands = {
 export type Events = {
   usageSnapshot: UsageSnapshot;
   updateAvailable: AvailableUpdate;
+  /** Null once an install ends without relaunching. */
+  installProgress: InstallProgress | null;
   serverEpoch: number;
 };
 

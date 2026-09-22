@@ -5,8 +5,8 @@ import { basename, dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { app } from "electron";
-import type { AvailableUpdate, ReleaseNotes } from "../shared/ipc";
-import { isNewer, parseManifest, parseReleases, verifySignature } from "./release";
+import type { AvailableUpdate, InstallProgress, ReleaseNotes } from "../shared/ipc";
+import { isNewer, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
 import type { ReleaseAsset } from "./release";
 import { nextBackoff } from "./usage-state";
 
@@ -37,12 +37,19 @@ export function platformKey(): string | null {
  * stays on offer through an install, so a failed one leaves nothing to put back. */
 export class Updater {
   private pending: (ReleaseAsset & AvailableUpdate) | null = null;
-  private installing = false;
+  private progress: InstallProgress | null = null;
 
-  constructor(private readonly announce: (update: AvailableUpdate) => void) {}
+  constructor(
+    private readonly announce: (update: AvailableUpdate) => void,
+    private readonly report: (progress: InstallProgress | null) => void,
+  ) {}
 
   available(): AvailableUpdate | null {
     return this.pending && { version: this.pending.version };
+  }
+
+  installing(): InstallProgress | null {
+    return this.progress;
   }
 
   async check(): Promise<AvailableUpdate | null> {
@@ -91,15 +98,18 @@ export class Updater {
   async install() {
     const update = this.pending;
     if (!update) throw new Error("No update is ready to install.");
-    if (this.installing) throw new Error("The update is already installing.");
-    this.installing = true;
+    if (this.progress) throw new Error("The update is already installing.");
+    this.setProgress({ stage: "download", received: 0, total: null });
     let directory: string | null = null;
     try {
       directory = await mkdtemp(join(app.getPath("temp"), "tantalus-update-"));
       // A stalled download would otherwise hold the install open, and every retry refused, for good.
       const response = await fetch(update.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT) });
       if (!response.ok) throw new Error(`the download returned ${response.status}`);
-      const data = Buffer.from(await response.arrayBuffer());
+      const data = await readDownload(response, (received, total) =>
+        this.setProgress({ stage: "download", received, total }),
+      );
+      this.setProgress({ stage: "install" });
       if (!verifySignature(data, update.signature)) throw new Error("the download failed its signature check");
       const file = join(directory, basename(new URL(update.url).pathname));
       await writeFile(file, data);
@@ -112,8 +122,13 @@ export class Updater {
       }
       throw new Error(`Could not install the update: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      this.installing = false;
+      this.setProgress(null);
     }
+  }
+
+  private setProgress(progress: InstallProgress | null) {
+    this.progress = progress;
+    this.report(progress);
   }
 }
 

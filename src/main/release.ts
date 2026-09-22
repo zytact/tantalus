@@ -80,6 +80,32 @@ function parseChanges(body: string): ReleaseChange[] {
   });
 }
 
+/** Reads a download whole, reporting progress at most once per `interval` ms so a fast connection does
+ * not flood the window. `total` is null when the response does not state its size. */
+export async function readDownload(
+  response: Response,
+  onProgress: (received: number, total: number | null) => void,
+  interval = 100,
+): Promise<Buffer> {
+  if (!response.body) throw new Error("the download was empty");
+  // A compressed response states its compressed size, which the decoded bytes would overshoot.
+  const total = response.headers.has("content-encoding")
+    ? null
+    : Number(response.headers.get("content-length")) || null;
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  let reportedAt = -Infinity;
+  for await (const chunk of response.body) {
+    chunks.push(chunk);
+    received += chunk.length;
+    if (performance.now() - reportedAt >= interval) {
+      reportedAt = performance.now();
+      onProgress(received, total);
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
 export function verifySignature(data: Buffer, signature: string, publicKey = PUBLIC_KEY): boolean {
   try {
     const publicKeyLines = Buffer.from(publicKey, "base64").toString("utf8").trimEnd().split(/\r?\n/);

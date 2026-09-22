@@ -4,6 +4,7 @@ import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import {
   countdown,
   creditExpiry,
+  installStatus,
   isRefreshShortcut,
   remainingPercent,
   statusLine,
@@ -157,5 +158,29 @@ describe("refresh shortcut", () => {
     expect(isRefreshShortcut(chord({ key: "t", ctrlKey: true }))).toBe(false);
     expect(isRefreshShortcut(chord({ ctrlKey: true, shiftKey: true }))).toBe(false);
     expect(isRefreshShortcut(chord({ metaKey: true, altKey: true }))).toBe(false);
+  });
+});
+
+describe("install status", () => {
+  it("measures a download of stated size, and never past done", () => {
+    expect(installStatus("0.0.18", { stage: "download", received: 36.6e6, total: 96.4e6 })).toEqual({
+      label: "Downloading",
+      detail: "v0.0.18 · 36.6 of 96.4 MB",
+      percent: 37,
+    });
+    expect(installStatus("0.0.18", { stage: "download", received: 2e6, total: 1e6 }).percent).toBe(100);
+  });
+
+  it("leaves a download of unstated size, and the install after it, unmeasured", () => {
+    expect(installStatus("0.0.18", { stage: "download", received: 36.6e6, total: null })).toEqual({
+      label: "Downloading",
+      detail: "v0.0.18 · 36.6 MB",
+      percent: null,
+    });
+    expect(installStatus("0.0.18", { stage: "install" })).toEqual({
+      label: "Installing",
+      detail: "v0.0.18",
+      percent: null,
+    });
   });
 });

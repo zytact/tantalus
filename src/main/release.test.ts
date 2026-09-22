@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { describe, expect, it } from "vite-plus/test";
-import { isNewer, parseManifest, parseReleases, verifySignature } from "./release";
+import { isNewer, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
 
 const run = promisify(execFile);
 const electronPackage = dirname(createRequire(import.meta.url).resolve("electron"));
@@ -18,6 +18,51 @@ const PUBLIC_KEY =
   "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxOERERkY3RTE3NTdDRTkKUldUcGZIWGg5OStOWVhnQnM3elBNOU00TTlXZW5IS2dzUExHb3dZS1VPY0IxU3JDZ21wKzh3QlMK";
 const SIGNATURE =
   "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUcGZIWGg5OStOWVFTL1EzaGUvdWpQSUhrN3BSdmFpSXRSYXM5UHhTcmhCNkRxSzhFK1liM0ZhYlZYZjFwcE5zTUtNSFMwTC9wbEpsd1RwV1U3YlloZ2dBSGxwMjl5a2c0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NDA0ODMzCWZpbGU6YnVuZGxlCnFZVXp0MnJWdkZxS0ozdUVqMG90czRnQlMrMVllMkp1MHFGRzNBeVo1T2FkaEV5dldjWU4wWXlTQkc5YTlHeEJFUFYyK2xVUnU2cFM3cGhZN0h4YkFRPT0K";
+
+const download = (chunks: string[], headers: Record<string, string>) =>
+  new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));
+        controller.close();
+      },
+    }),
+    { headers },
+  );
+
+describe("release download", () => {
+  it("reports each chunk against the stated size and returns the whole body", async () => {
+    const reports: [number, number | null][] = [];
+    const data = await readDownload(
+      download(["rele", "ase ", "bundle"], { "content-length": "14" }),
+      (...report) => reports.push(report),
+      0,
+    );
+    expect(data.toString()).toBe("release bundle");
+    expect(reports).toEqual([
+      [4, 14],
+      [8, 14],
+      [14, 14],
+    ]);
+  });
+
+  it("leaves the size unknown when the response does not state it, or states it compressed", async () => {
+    const reports: (number | null)[] = [];
+    await readDownload(download(["bundle"], {}), (_, total) => reports.push(total), 0);
+    await readDownload(
+      download(["bundle"], { "content-length": "3", "content-encoding": "gzip" }),
+      (_, total) => reports.push(total),
+      0,
+    );
+    expect(reports).toEqual([null, null]);
+  });
+
+  it("reports at most once per interval", async () => {
+    const reports: number[] = [];
+    await readDownload(download(["a", "b", "c"], {}), (received) => reports.push(received), 60_000);
+    expect(reports).toEqual([1]);
+  });
+});
 
 describe("release manifest", () => {
   it("keeps the platforms that name both a download and a signature", () => {
