@@ -160,8 +160,10 @@ describe("claude usage", () => {
     expect(resets.reset_credits).toEqual([{ expires_at_epoch: 1_792_684_800 }, { expires_at_epoch: 1_792_684_800 }]);
   });
 
-  it("tells no banked resets apart from an unreported block", () => {
-    expect(parseClaudeResets({ cedar_ember: { eligible: false, grants: [] } }).reset_credit_count).toBe(0);
+  it("tells no banked resets apart from an ineligible or unreported block", () => {
+    expect(parseClaudeResets({ cedar_ember: { eligible: true, grants: [] } }).reset_credit_count).toBe(0);
+    const ineligible = { eligible: false, ineligible_reason: "cli_version", grants: [] };
+    expect(parseClaudeResets({ cedar_ember: ineligible }).reset_credit_count).toBeNull();
     expect(parseClaudeResets({ cedar_ember: null }).reset_credit_count).toBeNull();
   });
 

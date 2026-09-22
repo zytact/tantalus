@@ -157,13 +157,14 @@ function Credits({ provider }: { provider: ProviderUsage }) {
 
 /** Which extras a provider has is fixed per provider, not inferred from what the last read held. */
 function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
-  return providerExtras[id].map((extra) =>
-    extra === "spend" ? (
-      provider.extra_usage && <Spend key={extra} extra={provider.extra_usage} />
-    ) : (
-      <Credits key={extra} provider={provider} />
-    ),
-  );
+  return providerExtras[id].map((extra) => {
+    switch (extra) {
+      case "spend":
+        return provider.extra_usage && <Spend key={extra} extra={provider.extra_usage} />;
+      case "credits":
+        return <Credits key={extra} provider={provider} />;
+    }
+  });
 }
 
 /** Every window a provider can report, in the order they are shown. Which of them a reading

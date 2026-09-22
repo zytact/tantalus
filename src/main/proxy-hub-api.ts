@@ -1,7 +1,7 @@
 import { emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
 import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
+import { claudeHeaders } from "./api";
 import {
-  claudeCliAgent,
   field,
   parseClaudeProfile,
   parseClaudeResets,
@@ -117,7 +117,7 @@ export class ProxyHubApi {
             Originator: "Codex Desktop",
             ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
           }
-        : { Authorization: "Bearer $TOKEN$", "anthropic-beta": "oauth-2025-04-20", ...claudeCliAgent };
+        : { Authorization: "Bearer $TOKEN$", ...claudeHeaders };
     const response = await this.management(config, "api-call", {
       auth_index: account.authIndex,
       method: "GET",

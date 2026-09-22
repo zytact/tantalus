@@ -3,7 +3,6 @@ import type { ProviderId, ProviderUsage } from "../shared/usage";
 import type { Credentials } from "./auth";
 import { ReadFailure } from "./failure";
 import {
-  claudeCliAgent,
   parseClaudeProfile,
   parseClaudeResets,
   parseClaudeUsage,
@@ -107,4 +106,9 @@ function ready(fields: Partial<ProviderUsage>, now: number): ProviderUsage {
 
 const userAgent = { "User-Agent": "tantalus/0.1" };
 const codexResetHeaders = { "OpenAI-Beta": "codex-1", originator: "Codex Desktop", ...userAgent };
-const claudeHeaders = { "anthropic-beta": "oauth-2025-04-20", ...claudeCliAgent };
+/** Claude tells only its own CLI about banked resets, and recognises it by the `cli` entrypoint and a
+ * minimum version in the agent. 2.1.280 is a release that reads them. */
+export const claudeHeaders = {
+  "anthropic-beta": "oauth-2025-04-20",
+  "User-Agent": "claude-cli/2.1.280 (external, cli)",
+};

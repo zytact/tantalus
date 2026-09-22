@@ -60,7 +60,7 @@ function fixture(
     } else if (call.auth_index === "claude-auth") {
       body = {
         five_hour: { utilization: 31, resets_at: "2099-01-01T00:00:00Z" },
-        cedar_ember: { grants: [{ resets_left: 1, ends_at: "2099-01-01T00:00:00Z" }] },
+        cedar_ember: { eligible: true, grants: [{ resets_left: 1, ends_at: "2099-01-01T00:00:00Z" }] },
       };
     } else {
       body = {
