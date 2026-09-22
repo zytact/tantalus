@@ -152,6 +152,73 @@ button:focus-visible {
 .update p {
   margin: 0;
 }
+.update-actions {
+  display: flex;
+  gap: 6px;
+}
+button.quiet {
+  border-color: transparent;
+}
+
+/* The release notes page covers the whole window, with the install action pinned below it. */
+.release-notes {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.release-notes[open] {
+  display: flex;
+  flex-direction: column;
+}
+.release-notes-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 26px 16px;
+  scrollbar-width: none;
+}
+.release-notes-state {
+  display: block;
+  margin-top: 16px;
+}
+.release {
+  padding: 16px 0 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+.release h2 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.release-group h3 {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+}
+.release-group .credits {
+  margin-top: 6px;
+}
+.release-notes-footer {
+  padding: 14px 26px;
+  border-top: 2px solid var(--border-strong);
+}
+.release-notes-footer .notice {
+  margin: 0 0 12px;
+}
+.release-notes-install {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.release-notes-install p {
+  margin: 0;
+}
 
 .provider {
   border-bottom: 2px solid var(--border-strong);
@@ -242,7 +309,9 @@ button:focus-visible {
   border-bottom-color: var(--hairline);
 }
 .provider-status,
-.facts dt {
+.facts dt,
+.release-date,
+.release-group h3 {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -582,6 +651,12 @@ footer {
   }
   .hub-form {
     grid-template-columns: 1fr;
+  }
+  .release-notes-body {
+    padding: 20px 20px 16px;
+  }
+  .release-notes-footer {
+    padding: 14px 20px;
   }
   .hub-form-wide {
     grid-column: auto;
