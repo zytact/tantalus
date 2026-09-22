@@ -75,10 +75,13 @@ function start() {
     },
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
-  const updater = new Updater((update) => {
-    renderTray();
-    publish("updateAvailable", update);
-  });
+  const updater = new Updater(
+    (update) => {
+      renderTray();
+      publish("updateAvailable", update);
+    },
+    (progress) => publish("installProgress", progress),
+  );
   // A dev build has no bundle to replace, and a preview installs under its own name, so a release
   // would land beside it rather than update it.
   const updatesEnabled = app.isPackaged && !preview;
@@ -105,6 +108,7 @@ function start() {
   const current: { [E in keyof Events]: () => Events[E] | null } = {
     usageSnapshot: () => state.snapshot,
     updateAvailable: () => updater.available(),
+    installProgress: () => updater.installProgress(),
     serverEpoch: nowEpoch,
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);

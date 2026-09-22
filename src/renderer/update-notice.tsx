@@ -1,4 +1,7 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
+import type { InstallProgress } from "../shared/ipc";
+import { installStatus } from "./presentation";
 import { BusyButton } from "./busy";
 import { usePublishedState } from "./published-state";
 import { ReleaseNotesPage } from "./release-notes";
@@ -7,6 +10,7 @@ import { ReleaseNotesPage } from "./release-notes";
  * a success never comes back here; only a failure, such as a cancelled password prompt, does. */
 export function UpdateNotice() {
   const [update] = usePublishedState("updateAvailable");
+  const [progress] = usePublishedState("installProgress");
   const { installing, error, install } = useInstall();
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -19,15 +23,17 @@ export function UpdateNotice() {
 
   return (
     <>
-      <section className="update" aria-label="Update available">
-        <p>Version {update.version} is available.</p>
-        <div className="update-actions">
-          <button className="quiet" onClick={() => setNotesOpen(true)}>
-            What's new
-          </button>
-          {installButton}
-        </div>
-      </section>
+      <InstallProgressStrip version={update.version} progress={progress}>
+        <section className="update" aria-label="Update available">
+          <p>Version {update.version} is available.</p>
+          <div className="update-actions">
+            <button className="quiet" onClick={() => setNotesOpen(true)}>
+              What's new
+            </button>
+            {installButton}
+          </div>
+        </section>
+      </InstallProgressStrip>
       {!notesOpen && alert}
       {notesOpen && (
         <ReleaseNotesPage
@@ -36,15 +42,53 @@ export function UpdateNotice() {
           footer={
             <>
               {alert}
-              <div className="release-notes-install">
-                <p>Tantalus relaunches after installing.</p>
-                {installButton}
-              </div>
+              <InstallProgressStrip version={update.version} progress={progress}>
+                <div className="release-notes-install">
+                  <p>Tantalus relaunches after installing.</p>
+                  {installButton}
+                </div>
+              </InstallProgressStrip>
             </>
           }
         />
       )}
     </>
+  );
+}
+
+/** Stands in for `children` while an install runs. Only the download can be measured, so the steps
+ * after it, and a download of unstated size, slide a bar instead of filling it. */
+function InstallProgressStrip({
+  version,
+  progress,
+  children,
+}: {
+  version: string;
+  progress: InstallProgress | null;
+  children: ReactNode;
+}) {
+  if (!progress) return children;
+  const { label, detail, percent } = installStatus(version, progress);
+  return (
+    <section className="update" aria-label="Installing update">
+      <p>
+        <strong>{label}</strong> <span className="update-detail">{detail}</span>
+      </p>
+      {percent !== null && <span className="update-detail">{percent}%</span>}
+      <ProgressBar percent={percent} />
+    </section>
+  );
+}
+
+function ProgressBar({ percent }: { percent: number | null }) {
+  return percent === null ? (
+    <div className="update-progress" role="progressbar" aria-label="Update progress" data-indeterminate>
+      <span />
+    </div>
+  ) : (
+    <div className="update-progress" role="progressbar" aria-label="Update progress" aria-valuenow={percent}>
+      <span style={{ width: `${percent}%` }} />
+    </div>
   );
 }
 
