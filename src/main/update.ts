@@ -13,6 +13,7 @@ import { nextBackoff } from "./usage-state";
 const MANIFEST_URL = "https://github.com/zytact/tantalus/releases/latest/download/latest.json";
 /** GitHub lists releases newest first, so one page reaches back 100 releases. */
 const RELEASES_URL = "https://api.github.com/repos/zytact/tantalus/releases?per_page=100";
+const REQUEST_TIMEOUT = 30_000;
 const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
 /** A launch at login usually beats the network up, so a failed check comes back well before the
  * next interval. */
@@ -45,7 +46,7 @@ export class Updater {
   }
 
   async check(): Promise<AvailableUpdate | null> {
-    const response = await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
     if (!response.ok) throw new Error(`the release manifest returned ${response.status}`);
     const manifest = parseManifest(await response.json());
     if (!isNewer(manifest.version, app.getVersion())) return null;
@@ -62,7 +63,7 @@ export class Updater {
     if (!update) throw new Error("No update is ready.");
     const response = await fetch(RELEASES_URL, {
       headers: { accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT),
     });
     if (!response.ok) throw new Error(`Could not load the release notes: GitHub returned ${response.status}`);
     return parseReleases(await response.json(), app.getVersion(), update.version);

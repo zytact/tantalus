@@ -35,10 +35,10 @@ export function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
-/** Keeps the published releases in `(after, through]` from a GitHub releases listing. */
+/** Keeps the published releases in `(after, through]` from a GitHub releases listing, newest first. */
 export function parseReleases(value: unknown, after: string, through: string): ReleaseNotes[] {
   if (!Array.isArray(value)) throw new Error("the release list is malformed");
-  return value.flatMap((release) => {
+  const releases = value.flatMap((release) => {
     const tag = field(release, "tag_name");
     if (typeof tag !== "string" || field(release, "draft") !== false || field(release, "prerelease") !== false) {
       return [];
@@ -55,6 +55,7 @@ export function parseReleases(value: unknown, after: string, through: string): R
       },
     ];
   });
+  return releases.sort((a, b) => (isNewer(a.version, b.version) ? -1 : isNewer(b.version, a.version) ? 1 : 0));
 }
 
 const kinds = new Map<string, ReleaseChange["kind"]>([

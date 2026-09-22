@@ -37,7 +37,7 @@ describe("release manifest", () => {
     expect(isNewer("0.0.9", "0.0.13")).toBe(false);
   });
 
-  it("reads the notes of each published release after the running build, up to the update", () => {
+  it("reads the notes of each published release after the running build, up to the update, newest first", () => {
     const release = (tag: string, body: string | null = "", fields = {}) => ({
       tag_name: tag,
       body,
@@ -48,6 +48,7 @@ describe("release manifest", () => {
     });
     const listing = [
       release("v0.0.18"),
+      release("v0.0.15", null, { published_at: null }),
       release("v0.0.17", "", { prerelease: true }),
       release(
         "v0.0.16",
@@ -62,7 +63,6 @@ describe("release manifest", () => {
           "**Full Changelog**: https://github.com/zytact/tantalus/compare/v0.0.15...v0.0.16",
         ].join("\r\n"),
       ),
-      release("v0.0.15", null, { published_at: null }),
       release("v0.0.14"),
     ];
 

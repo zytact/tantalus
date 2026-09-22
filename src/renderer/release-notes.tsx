@@ -5,8 +5,9 @@ import type { ReleaseChange, ReleaseNotes } from "../shared/ipc";
 import { PendingLabel } from "./busy";
 import type { Loadable } from "./busy";
 
-/** The groups a release's changes fall into, in the order they are shown. */
 const kindLabels = { new: "New", fixed: "Fixed", changed: "Changed" } satisfies Record<ReleaseChange["kind"], string>;
+/** The groups a release's changes fall into, in the order they are shown. */
+const kindOrder: ReleaseChange["kind"][] = ["new", "fixed", "changed"];
 
 /** A full-window page listing what changed between the running build and `target`. It reads the
  * notes when it opens, and `footer` holds the install action. */
@@ -58,8 +59,8 @@ export function ReleaseNotesPage({
 }
 
 function Release({ release }: { release: ReleaseNotes }) {
-  const groups = Object.entries(kindLabels)
-    .map(([kind, label]) => ({ label, changes: release.changes.filter((change) => change.kind === kind) }))
+  const groups = kindOrder
+    .map((kind) => ({ label: kindLabels[kind], changes: release.changes.filter((change) => change.kind === kind) }))
     .filter(({ changes }) => changes.length > 0);
   return (
     <section className="release" aria-label={`Version ${release.version}`}>

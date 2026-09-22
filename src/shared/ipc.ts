@@ -3,8 +3,6 @@ import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 /** A signed release newer than the running build, as the window and tray show it. */
 export type AvailableUpdate = { version: string };
 
-/** One line of a release's notes. `new` and `fixed` come from `feat` and `fix` titles; every other
- * line is `changed`. */
 export type ReleaseChange = { kind: "new" | "fixed" | "changed"; scope: string | null; summary: string };
 export type ReleaseNotes = { version: string; publishedAt: string | null; changes: ReleaseChange[] };
 
