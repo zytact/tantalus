@@ -63,7 +63,7 @@ function Entry({
   const pace = reported ? usagePace(usage, now) : null;
   const entryLabel = reported ? label : "Window unavailable";
   return (
-    <section className="entry" aria-label={entryLabel}>
+    <section className="entry" aria-label={entryLabel} data-reported={reported}>
       <div className="entry-head">
         <div className="entry-title">
           <h3>
