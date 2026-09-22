@@ -58,7 +58,10 @@ function fixture(
     } else if (call.url.endsWith("/profile")) {
       body = { organization: { organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x" } };
     } else if (call.auth_index === "claude-auth") {
-      body = { five_hour: { utilization: 31, resets_at: "2099-01-01T00:00:00Z" } };
+      body = {
+        five_hour: { utilization: 31, resets_at: "2099-01-01T00:00:00Z" },
+        cedar_ember: { eligible: true, grants: [{ resets_left: 1, ends_at: "2099-01-01T00:00:00Z" }] },
+      };
     } else {
       body = {
         plan_type: "pro",
@@ -92,6 +95,7 @@ describe("CLIProxyAPI usage", () => {
     expect(accounts[0]?.usage.seven_day.used_percent).toBe(72);
     expect(accounts[0]?.usage.reset_credit_count).toBe(1);
     expect(accounts[1]?.usage.five_hour.used_percent).toBe(31);
+    expect(accounts[1]?.usage.reset_credit_count).toBe(1);
     expect(test.calls.map((call) => call.auth_index).sort()).toEqual([
       "claude-auth",
       "claude-auth",
@@ -100,6 +104,9 @@ describe("CLIProxyAPI usage", () => {
     ]);
     expect(test.calls.every((call) => call.header.Authorization === "Bearer $TOKEN$")).toBe(true);
     expect(test.calls.find((call) => call.auth_index === "codex-auth")?.header["Chatgpt-Account-Id"]).toBe("account-a");
+    const claudeUsage = test.calls.find((call) => call.auth_index === "claude-auth" && call.url.includes("/usage"));
+    expect(claudeUsage?.url).toMatch(/\?cedar_ember=1$/);
+    expect(claudeUsage?.header["User-Agent"]).toMatch(/^claude-cli\//);
   });
 
   it("reads each Claude plan without letting a failed profile cost the usage reading", async () => {

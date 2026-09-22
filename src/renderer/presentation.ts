@@ -1,12 +1,12 @@
 import { percent } from "../shared/usage";
 import type { ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
 
-/** What a provider banks beyond its windows. Opencode reports neither, so it shows no extras. */
+/** What a provider banks beyond its windows, in the order shown. Opencode reports neither. */
 export const providerExtras = {
-  codex: "credits",
-  claude: "spend",
-  opencode: null,
-} as const satisfies Record<ProviderId, "credits" | "spend" | null>;
+  codex: ["credits"],
+  claude: ["credits", "spend"],
+  opencode: [],
+} as const satisfies Record<ProviderId, readonly ("credits" | "spend")[]>;
 
 export function statusLine(provider: ProviderUsage): string {
   switch (provider.status) {

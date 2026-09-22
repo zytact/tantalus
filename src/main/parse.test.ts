@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import { monthlySeconds } from "../shared/usage";
-import { parseClaudeProfile, parseClaudeUsage, parseCodexUsage, parseCredits, parseOpencodeUsage } from "./parse";
+import {
+  parseClaudeProfile,
+  parseClaudeResets,
+  parseClaudeUsage,
+  parseCodexUsage,
+  parseCredits,
+  parseOpencodeUsage,
+} from "./parse";
 
 describe("codex usage", () => {
   it("maps windows by duration and parses a millisecond reset", () => {
@@ -139,6 +146,25 @@ describe("claude usage", () => {
     expect(usage.five_hour.limit_window_seconds).toBeNull();
     expect(usage.seven_day.used_percent).toBeNull();
     expect(usage.extra_usage).toBeNull();
+  });
+
+  it("counts every reset left in each grant, expiring with its grant", () => {
+    const grant = (resets_left: unknown, ends_at: string) => ({ id: "launch", resets_left, ends_at });
+    const resets = parseClaudeResets({
+      cedar_ember: {
+        eligible: true,
+        grants: [grant(2, "2026-10-22T16:00:00+00:00"), grant(0, "2026-11-01T00:00:00Z"), grant(-1, "")],
+      },
+    });
+    expect(resets.reset_credit_count).toBe(2);
+    expect(resets.reset_credits).toEqual([{ expires_at_epoch: 1_792_684_800 }, { expires_at_epoch: 1_792_684_800 }]);
+  });
+
+  it("tells no banked resets apart from an ineligible or unreported block", () => {
+    expect(parseClaudeResets({ cedar_ember: { eligible: true, grants: [] } }).reset_credit_count).toBe(0);
+    const ineligible = { eligible: false, ineligible_reason: "cli_version", grants: [] };
+    expect(parseClaudeResets({ cedar_ember: ineligible }).reset_credit_count).toBeNull();
+    expect(parseClaudeResets({ cedar_ember: null }).reset_credit_count).toBeNull();
   });
 
   it("reports a locked window as the limit reached", () => {

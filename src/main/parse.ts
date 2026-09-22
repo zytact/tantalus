@@ -140,6 +140,25 @@ export function parseCredits(value: unknown): Pick<ProviderUsage, "reset_credits
   };
 }
 
+/** A grant claiming more resets than this is malformed rather than generous. */
+const MAX_GRANT_RESETS = 100;
+
+/** Claude banks resets as grants, and every reset left in a grant expires with it. The usage
+ * response carries them in `cedar_ember` only when asked for. An ineligible block says nothing about
+ * what the account holds, since the server also answers that way to a client it does not recognise. */
+export function parseClaudeResets(value: unknown): Pick<ProviderUsage, "reset_credits" | "reset_credit_count"> {
+  const block = field(value, "cedar_ember");
+  const grants = field(block, "grants");
+  if (field(block, "eligible") !== true || !Array.isArray(grants))
+    return { reset_credits: [], reset_credit_count: null };
+  const reset_credits = grants.flatMap((grant: unknown): ResetCredit[] => {
+    const left = exactInteger(field(grant, "resets_left")) ?? 0;
+    const count = left > 0 && left <= MAX_GRANT_RESETS ? left : 0;
+    return Array.from({ length: count }, () => ({ expires_at_epoch: epoch(field(grant, "ends_at")) }));
+  });
+  return { reset_credits, reset_credit_count: reset_credits.length };
+}
+
 function codexWindow(value: unknown, now: number): WindowUsage {
   const resetAfter = number(field(value, "reset_after_seconds"));
   return {
