@@ -22,6 +22,8 @@ const DOWNLOAD_TIMEOUT = 10 * 60 * 1000;
 
 const run = promisify(execFile);
 
+class ManualInstallRequired extends Error {}
+
 /** The manifest key for the bundle this app was installed from, so an rpm install never downloads
  * the deb. electron-builder records a Linux package's format beside the app. */
 export function platformKey(): string | null {
@@ -113,7 +115,7 @@ export class Updater {
       await writeFile(file, data);
       await installBundle(file, directory);
     } catch (error) {
-      if (directory) {
+      if (directory && !(error instanceof ManualInstallRequired)) {
         await rm(directory, { recursive: true, force: true }).catch((cleanupError: unknown) =>
           console.error("Failed to remove the update directory:", cleanupError),
         );
@@ -140,13 +142,27 @@ async function installBundle(file: string, directory: string) {
       await replaceAppBundle(file);
       break;
     default:
-      await run("pkexec", platformKey()?.endsWith("-rpm") ? ["rpm", "-U", file] : ["dpkg", "-i", file]);
+      await installLinuxPackage(file);
   }
   await rm(directory, { recursive: true, force: true }).catch((error: unknown) =>
     console.error("Failed to remove the update directory:", error),
   );
   app.relaunch();
   app.exit(0);
+}
+
+async function installLinuxPackage(file: string) {
+  const [command, option] = platformKey()?.endsWith("-rpm") ? ["rpm", "-U"] : ["dpkg", "-i"];
+  try {
+    await run("pkexec", [command, option, file]);
+  } catch (error) {
+    if (String(error).includes("pkexec must be setuid root")) {
+      throw new ManualInstallRequired(
+        `Your system's pkexec cannot request administrator access. The verified update is saved at ${file}. Install it with sudo ${command} ${option} '${file.replaceAll("'", "'\\''")}', then restart Tantalus.`,
+      );
+    }
+    throw error;
+  }
 }
 
 async function launchWindowsInstaller(file: string) {
