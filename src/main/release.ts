@@ -1,6 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
-import type { ReleaseChange, ReleaseNotes } from "../shared/ipc";
+import type { DownloadProgress, ReleaseChange, ReleaseNotes } from "../shared/ipc";
 import { field } from "./parse";
 
 /** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
@@ -81,10 +81,11 @@ function parseChanges(body: string): ReleaseChange[] {
 }
 
 /** Reads a download whole, reporting progress at most once per `interval` ms so a fast connection does
- * not flood the window. `total` is null when the response does not state its size. */
+ * not flood the window, and always once at the end. `total` is null when the response does not state
+ * its size. */
 export async function readDownload(
   response: Response,
-  onProgress: (received: number, total: number | null) => void,
+  onProgress: (progress: DownloadProgress) => void,
   interval = 100,
 ): Promise<Buffer> {
   if (!response.body) throw new Error("the download was empty");
@@ -94,15 +95,18 @@ export async function readDownload(
     : Number(response.headers.get("content-length")) || null;
   const chunks: Uint8Array[] = [];
   let received = 0;
+  let reported = 0;
   let reportedAt = -Infinity;
   for await (const chunk of response.body) {
     chunks.push(chunk);
     received += chunk.length;
     if (performance.now() - reportedAt >= interval) {
       reportedAt = performance.now();
-      onProgress(received, total);
+      reported = received;
+      onProgress({ received, total });
     }
   }
+  if (reported !== received) onProgress({ received, total });
   return Buffer.concat(chunks);
 }
 

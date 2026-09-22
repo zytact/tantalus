@@ -48,7 +48,7 @@ export class Updater {
     return this.pending && { version: this.pending.version };
   }
 
-  installing(): InstallProgress | null {
+  installProgress(): InstallProgress | null {
     return this.progress;
   }
 
@@ -106,9 +106,7 @@ export class Updater {
       // A stalled download would otherwise hold the install open, and every retry refused, for good.
       const response = await fetch(update.url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT) });
       if (!response.ok) throw new Error(`the download returned ${response.status}`);
-      const data = await readDownload(response, (received, total) =>
-        this.setProgress({ stage: "download", received, total }),
-      );
+      const data = await readDownload(response, (progress) => this.setProgress({ stage: "download", ...progress }));
       this.setProgress({ stage: "install" });
       if (!verifySignature(data, update.signature)) throw new Error("the download failed its signature check");
       const file = join(directory, basename(new URL(update.url).pathname));

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
+import type { InstallProgress } from "../shared/ipc";
 import { installStatus } from "./presentation";
 import { BusyButton } from "./busy";
 import { usePublishedState } from "./published-state";
@@ -9,6 +10,7 @@ import { ReleaseNotesPage } from "./release-notes";
  * a success never comes back here; only a failure, such as a cancelled password prompt, does. */
 export function UpdateNotice() {
   const [update] = usePublishedState("updateAvailable");
+  const [progress] = usePublishedState("installProgress");
   const { installing, error, install } = useInstall();
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -21,7 +23,7 @@ export function UpdateNotice() {
 
   return (
     <>
-      <InstallProgressStrip version={update.version}>
+      <InstallProgressStrip version={update.version} progress={progress}>
         <section className="update" aria-label="Update available">
           <p>Version {update.version} is available.</p>
           <div className="update-actions">
@@ -40,7 +42,7 @@ export function UpdateNotice() {
           footer={
             <>
               {alert}
-              <InstallProgressStrip version={update.version}>
+              <InstallProgressStrip version={update.version} progress={progress}>
                 <div className="release-notes-install">
                   <p>Tantalus relaunches after installing.</p>
                   {installButton}
@@ -56,8 +58,15 @@ export function UpdateNotice() {
 
 /** Stands in for `children` while an install runs. Only the download can be measured, so the steps
  * after it, and a download of unstated size, slide a bar instead of filling it. */
-function InstallProgressStrip({ version, children }: { version: string; children: ReactNode }) {
-  const [progress] = usePublishedState("installProgress");
+function InstallProgressStrip({
+  version,
+  progress,
+  children,
+}: {
+  version: string;
+  progress: InstallProgress | null;
+  children: ReactNode;
+}) {
   if (!progress) return children;
   const { label, detail, percent } = installStatus(version, progress);
   return (

@@ -108,7 +108,7 @@ function start() {
   const current: { [E in keyof Events]: () => Events[E] | null } = {
     usageSnapshot: () => state.snapshot,
     updateAvailable: () => updater.available(),
-    installProgress: () => updater.installing(),
+    installProgress: () => updater.installProgress(),
     serverEpoch: nowEpoch,
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);

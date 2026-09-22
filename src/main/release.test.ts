@@ -35,7 +35,7 @@ describe("release download", () => {
     const reports: [number, number | null][] = [];
     const data = await readDownload(
       download(["rele", "ase ", "bundle"], { "content-length": "14" }),
-      (...report) => reports.push(report),
+      ({ received, total }) => reports.push([received, total]),
       0,
     );
     expect(data.toString()).toBe("release bundle");
@@ -48,19 +48,19 @@ describe("release download", () => {
 
   it("leaves the size unknown when the response does not state it, or states it compressed", async () => {
     const reports: (number | null)[] = [];
-    await readDownload(download(["bundle"], {}), (_, total) => reports.push(total), 0);
+    await readDownload(download(["bundle"], {}), ({ total }) => reports.push(total), 0);
     await readDownload(
       download(["bundle"], { "content-length": "3", "content-encoding": "gzip" }),
-      (_, total) => reports.push(total),
+      ({ total }) => reports.push(total),
       0,
     );
     expect(reports).toEqual([null, null]);
   });
 
-  it("reports at most once per interval", async () => {
+  it("reports at most once per interval, and always the finished download", async () => {
     const reports: number[] = [];
-    await readDownload(download(["a", "b", "c"], {}), (received) => reports.push(received), 60_000);
-    expect(reports).toEqual([1]);
+    await readDownload(download(["a", "b", "c"], {}), ({ received }) => reports.push(received), 60_000);
+    expect(reports).toEqual([1, 3]);
   });
 });
 
