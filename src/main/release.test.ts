@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "vite";
 import { describe, expect, it } from "vite-plus/test";
-import { isNewer, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
+import { releasePolicy } from "../../scripts/release-policy";
+import { isNewer, matchingNotices, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
 
 const run = promisify(execFile);
 const electronPackage = dirname(createRequire(import.meta.url).resolve("electron"));
@@ -71,8 +72,61 @@ describe("release manifest", () => {
         version: "0.1.0",
         platforms: { "windows-x86_64": { url: "https://x/setup.exe", signature: "c2ln" }, "linux-x86_64-deb": {} },
       }),
-    ).toEqual({ version: "0.1.0", platforms: { "windows-x86_64": { url: "https://x/setup.exe", signature: "c2ln" } } });
+    ).toEqual({
+      version: "0.1.0",
+      minimumVersion: null,
+      notices: [],
+      platforms: { "windows-x86_64": { url: "https://x/setup.exe", signature: "c2ln" } },
+    });
     expect(() => parseManifest({ platforms: {} })).toThrow();
+  });
+
+  it("matches notices to the running version and platform", () => {
+    const notice = {
+      id: "restart",
+      message: "Quit and reopen before installing.",
+      fromVersion: "0.0.18",
+      throughVersion: "0.0.20",
+      platforms: ["linux" as const],
+    };
+    const manifest = parseManifest({
+      version: "0.0.25",
+      minimumVersion: "0.0.10",
+      notices: [notice],
+      platforms: {},
+    });
+    expect(matchingNotices(manifest.notices, "0.0.20", "linux")).toEqual([notice]);
+    expect(matchingNotices(manifest.notices, "0.0.21", "linux")).toEqual([]);
+    expect(matchingNotices(manifest.notices, "0.0.20", "darwin")).toEqual([]);
+    expect(() =>
+      parseManifest({ version: "0.0.25", platforms: {}, notices: [{ ...notice, message: null }] }),
+    ).toThrow();
+    expect(() => releasePolicy("0.0.25", [], [{ ...notice, id: 123 }])).toThrow();
+  });
+
+  it("keeps a 15-release direct update window and notices for versions inside it", () => {
+    const releases = Array.from({ length: 24 }, (_, index) => ({
+      tag_name: `v0.0.${index + 1}`,
+      draft: false,
+      prerelease: false,
+    }));
+    const notice = (id: string, version: string) => ({
+      id,
+      message: "Read before installing.",
+      fromVersion: version,
+      throughVersion: version,
+    });
+    expect(releasePolicy("0.0.25", releases, [notice("old", "0.0.9"), notice("kept", "0.0.10")])).toEqual({
+      minimumVersion: "0.0.10",
+      notices: [notice("kept", "0.0.10")],
+    });
+    expect(
+      releasePolicy(
+        "0.0.26",
+        [...releases, { tag_name: "v0.0.25", draft: false, prerelease: false }],
+        [notice("old", "0.0.10")],
+      ).notices,
+    ).toEqual([]);
   });
 
   it("offers only a later version", () => {

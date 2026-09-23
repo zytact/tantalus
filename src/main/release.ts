@@ -1,7 +1,11 @@
 import { createPublicKey, verify } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
-import type { DownloadProgress, ReleaseChange, ReleaseNotes } from "../shared/ipc";
+import type { DownloadProgress, ReleaseChange, ReleaseNotes, ReleaseNotice } from "../shared/ipc";
+import { parseReleaseNotices } from "../shared/release-notice";
+import { isNewer, validVersion } from "../shared/version";
 import { field } from "./parse";
+
+export { isNewer } from "../shared/version";
 
 /** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
 const PUBLIC_KEY =
@@ -9,7 +13,12 @@ const PUBLIC_KEY =
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 export type ReleaseAsset = { url: string; signature: string };
-export type Manifest = { version: string; platforms: Record<string, ReleaseAsset> };
+export type Manifest = {
+  version: string;
+  minimumVersion: string | null;
+  notices: ReleaseNotice[];
+  platforms: Record<string, ReleaseAsset>;
+};
 
 export function parseManifest(value: unknown): Manifest {
   const version = field(value, "version");
@@ -23,16 +32,26 @@ export function parseManifest(value: unknown): Manifest {
     const signature = field(asset, "signature");
     if (typeof url === "string" && typeof signature === "string") assets[key] = { url, signature };
   }
-  return { version, platforms: assets };
+  const minimumVersion = field(value, "minimumVersion");
+  const notices = field(value, "notices");
+  if (minimumVersion !== undefined && (typeof minimumVersion !== "string" || !validVersion(minimumVersion))) {
+    throw new Error("the release manifest has an invalid minimum version");
+  }
+  return {
+    version,
+    minimumVersion: minimumVersion ?? null,
+    notices: parseReleaseNotices(notices ?? []),
+    platforms: assets,
+  };
 }
 
-/** Releases are plain `major.minor.patch`. */
-export function isNewer(candidate: string, current: string): boolean {
-  const [a, b] = [candidate, current].map((version) => version.split(".").map(Number));
-  for (let index = 0; index < 3; index++) {
-    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) > (b[index] ?? 0);
-  }
-  return false;
+export function matchingNotices(notices: ReleaseNotice[], version: string, platform: string): ReleaseNotice[] {
+  return notices.filter(
+    (notice) =>
+      !isNewer(notice.fromVersion, version) &&
+      !isNewer(version, notice.throughVersion) &&
+      (!notice.platforms || notice.platforms.some((supported) => supported === platform)),
+  );
 }
 
 /** Keeps the published releases in `(after, through]` from a GitHub releases listing, newest first. */

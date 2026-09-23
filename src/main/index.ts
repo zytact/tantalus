@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
@@ -119,7 +119,8 @@ function start() {
       throw new Error(`Could not check for updates: ${message(error)}`);
     });
   });
-  handle("installUpdate", () => updater.install());
+  handle("installUpdate", (acknowledgedNoticeIds) => updater.install(acknowledgedNoticeIds));
+  handle("openLatestRelease", () => shell.openExternal("https://github.com/zytact/tantalus/releases/latest"));
   handle("releaseNotes", () => updater.releaseNotes());
   handle("openAtLogin", () => openAtLogin(identity));
   handle("setOpenAtLogin", (enabled) => setOpenAtLogin(identity, enabled === true));

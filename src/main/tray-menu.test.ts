@@ -61,7 +61,11 @@ describe("tray menu", () => {
   });
 
   it("lists enabled providers, when they were read, then the actions led by an update", () => {
-    const items = trayItems(snapshot({ codex: true, claude: false, opencode: false }), { version: "0.1.0" }, 1000);
+    const items = trayItems(
+      snapshot({ codex: true, claude: false, opencode: false }),
+      { version: "0.1.0", manualInstall: false, notices: [] },
+      1000,
+    );
     expect(items).toEqual([
       { label: "Codex · Plus", action: "show" },
       { label: "   7d   ████▏░░░░░  41%", action: "show" },

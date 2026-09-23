@@ -184,6 +184,34 @@ button:focus-visible {
 .update p {
   margin: 0;
 }
+.update-content {
+  width: 100%;
+}
+.update-notices {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--danger);
+  border-radius: 7px;
+  background: var(--danger-surface);
+  color: var(--danger-ink);
+  line-height: 1.4;
+}
+.update-notices p {
+  margin: 6px 0;
+}
+.update-notices label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.update-notices input {
+  accent-color: var(--danger);
+}
+.update-manual p {
+  max-width: 38rem;
+}
 .update-detail {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -215,7 +243,9 @@ button:focus-visible {
 }
 .update-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 6px;
+  margin-top: 6px;
 }
 button.quiet {
   border-color: transparent;

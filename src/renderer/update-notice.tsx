@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import type { InstallProgress } from "../shared/ipc";
+import type { AvailableUpdate, InstallProgress, ReleaseNotice } from "../shared/ipc";
 import { installStatus } from "./presentation";
 import { BusyButton } from "./busy";
 import { usePublishedState } from "./published-state";
@@ -11,48 +11,126 @@ import { ReleaseNotesPage } from "./release-notes";
 export function UpdateNotice() {
   const [update] = usePublishedState("updateAvailable");
   const [progress] = usePublishedState("installProgress");
+  if (!update) return null;
+  return update.manualInstall ? (
+    <ManualUpdate version={update.version} />
+  ) : (
+    <InstallableUpdate update={update} progress={progress} />
+  );
+}
+
+function ManualUpdate({ version }: { version: string }) {
+  return (
+    <section className="update update-manual" aria-label="Update available">
+      <p>Version {version} is available. Quit Tantalus, then download and install the latest release.</p>
+      <button onClick={() => void window.tantalus.invoke("openLatestRelease")}>Open latest release</button>
+    </section>
+  );
+}
+
+function InstallableUpdate({ update, progress }: { update: AvailableUpdate; progress: InstallProgress | null }) {
   const { installing, error, install } = useInstall();
   const [notesOpen, setNotesOpen] = useState(false);
-
-  if (!update) return null;
-
+  const [acknowledged, setAcknowledged] = useState<string | null>(null);
+  const noticeKey = `${update.version}:${update.notices.map(({ id }) => id).join(",")}`;
+  const accepted = update.notices.length === 0 || acknowledged === noticeKey;
+  const noticeContent = (
+    <NoticeAcknowledgement
+      notices={update.notices}
+      accepted={accepted}
+      onChange={(checked) => setAcknowledged(checked ? noticeKey : null)}
+    />
+  );
   const installButton = (
-    <BusyButton label="Install update" busyLabel="Installing" busy={installing} onClick={() => void install()} />
+    <BusyButton
+      label="Install update"
+      busyLabel="Installing"
+      busy={installing}
+      disabled={!accepted}
+      onClick={() => void install(update.notices.map(({ id }) => id))}
+    />
   );
   const alert = <InstallError error={error} />;
+  const footer = (
+    <>
+      {alert}
+      {noticeContent}
+      <InstallProgressStrip version={update.version} progress={progress}>
+        <div className="release-notes-install">
+          <p>Tantalus relaunches after installing.</p>
+          {installButton}
+        </div>
+      </InstallProgressStrip>
+    </>
+  );
 
   return (
     <>
-      <InstallProgressStrip version={update.version} progress={progress}>
-        <section className="update" aria-label="Update available">
-          <p>Version {update.version} is available.</p>
+      <UpdateBanner
+        version={update.version}
+        progress={progress}
+        notice={noticeContent}
+        installButton={installButton}
+        onNotes={() => setNotesOpen(true)}
+      />
+      {alert}
+      {notesOpen && <ReleaseNotesPage target={update.version} onClose={() => setNotesOpen(false)} footer={footer} />}
+    </>
+  );
+}
+
+function UpdateBanner({
+  version,
+  progress,
+  notice,
+  installButton,
+  onNotes,
+}: {
+  version: string;
+  progress: InstallProgress | null;
+  notice: ReactNode;
+  installButton: ReactNode;
+  onNotes: () => void;
+}) {
+  return (
+    <InstallProgressStrip version={version} progress={progress}>
+      <section className="update" aria-label="Update available">
+        <div className="update-content">
+          <p>Version {version} is available.</p>
+          {notice}
           <div className="update-actions">
-            <button className="quiet" onClick={() => setNotesOpen(true)}>
+            <button className="quiet" onClick={onNotes}>
               What's new
             </button>
             {installButton}
           </div>
-        </section>
-      </InstallProgressStrip>
-      {!notesOpen && alert}
-      {notesOpen && (
-        <ReleaseNotesPage
-          target={update.version}
-          onClose={() => setNotesOpen(false)}
-          footer={
-            <>
-              {alert}
-              <InstallProgressStrip version={update.version} progress={progress}>
-                <div className="release-notes-install">
-                  <p>Tantalus relaunches after installing.</p>
-                  {installButton}
-                </div>
-              </InstallProgressStrip>
-            </>
-          }
-        />
-      )}
-    </>
+        </div>
+      </section>
+    </InstallProgressStrip>
+  );
+}
+
+function NoticeAcknowledgement({
+  notices,
+  accepted,
+  onChange,
+}: {
+  notices: ReleaseNotice[];
+  accepted: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  if (notices.length === 0) return null;
+  return (
+    <div className="update-notices" role="alert">
+      <strong>Before you update</strong>
+      {notices.map(({ id, message }) => (
+        <p key={id}>{message}</p>
+      ))}
+      <label>
+        <input type="checkbox" checked={accepted} onChange={(event) => onChange(event.target.checked)} />
+        I have read these notices
+      </label>
+    </div>
   );
 }
 
@@ -95,11 +173,11 @@ function ProgressBar({ percent }: { percent: number | null }) {
 function useInstall() {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const install = async () => {
+  const install = async (acknowledgedNoticeIds: string[]) => {
     setInstalling(true);
     setError(null);
     try {
-      await window.tantalus.invoke("installUpdate");
+      await window.tantalus.invoke("installUpdate", acknowledgedNoticeIds);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not install the update.");
     } finally {

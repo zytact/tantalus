@@ -1,7 +1,15 @@
 import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 
+export type ReleaseNotice = {
+  id: string;
+  message: string;
+  fromVersion: string;
+  throughVersion: string;
+  platforms?: ("linux" | "darwin" | "win32")[];
+};
+
 /** A signed release newer than the running build, as the window and tray show it. */
-export type AvailableUpdate = { version: string };
+export type AvailableUpdate = { version: string; manualInstall: boolean; notices: ReleaseNotice[] };
 
 /** How far an update install has come. `total` is null when the download does not state its size. */
 export type DownloadProgress = { received: number; total: number | null };
@@ -29,7 +37,8 @@ export type Commands = {
   setProxyHubEnabled: (id: string, enabled: boolean) => ProxyHubSettings[];
   removeProxyHub: (id: string) => ProxyHubSettings[];
   checkForUpdate: () => AvailableUpdate | null;
-  installUpdate: () => void;
+  installUpdate: (acknowledgedNoticeIds: string[]) => void;
+  openLatestRelease: () => void;
   /** The notes of every release after the running build, up to the available update, newest first. */
   releaseNotes: () => ReleaseNotes[];
   openAtLogin: () => boolean;

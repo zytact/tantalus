@@ -75,6 +75,20 @@ macOS builds are ad-hoc signed rather than signed with an Apple Developer ID, so
 
 The release workflow signs every bundle with the existing Tauri Minisign key in the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets through `scripts/sign-update.ts`, and writes `latest.json` into the draft release. Installed Tauri and Electron versions trust that same key. The matching public key lives in `src/main/release.ts`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub.
 
+Direct in-app updates cover the latest 15 published releases. Older versions show a link to the latest release for a fresh install after quitting Tantalus. The release workflow writes the oldest eligible version into `latest.json`; the app checks it again before installing. Add urgent notices to `release-notices.json` with a unique `id`, plain `message`, and inclusive `fromVersion` and `throughVersion` for the running app. Add `platforms` only when the notice applies to specific systems, using `linux`, `darwin`, or `win32`. Matching notices appear beside the install button and require acknowledgement. The workflow carries them into later manifests while an affected version remains eligible for direct updates, then drops them. Versions published before this notice support cannot display or enforce these fields.
+
+For example, an entry that addresses only Linux users running version 0.0.20 is:
+
+```json
+{
+  "id": "restart-before-update",
+  "message": "Quit and reopen Tantalus before installing this update.",
+  "fromVersion": "0.0.20",
+  "throughVersion": "0.0.20",
+  "platforms": ["linux"]
+}
+```
+
 ## Privacy and behavior
 
 - Each refresh re-reads every credential file. `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` win when they are set. Otherwise the app reads `.codex/auth.json`, `.claude/.credentials.json`, and `.local/share/opencode/auth.json` under the home directory, which is `$HOME` on Linux and macOS and `%USERPROFILE%` on Windows.
