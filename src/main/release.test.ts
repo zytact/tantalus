@@ -101,6 +101,7 @@ describe("release manifest", () => {
     expect(() =>
       parseManifest({ version: "0.0.25", platforms: {}, notices: [{ ...notice, message: null }] }),
     ).toThrow();
+    expect(() => releasePolicy("0.0.25", [], [{ ...notice, id: 123 }])).toThrow();
   });
 
   it("keeps a 15-release direct update window and notices for versions inside it", () => {

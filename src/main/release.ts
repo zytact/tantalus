@@ -1,7 +1,11 @@
 import { createPublicKey, verify } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2.js";
 import type { DownloadProgress, ReleaseChange, ReleaseNotes, ReleaseNotice } from "../shared/ipc";
+import { parseReleaseNotices } from "../shared/release-notice";
+import { isNewer, validVersion } from "../shared/version";
 import { field } from "./parse";
+
+export { isNewer } from "../shared/version";
 
 /** The Minisign key used by Tauri releases and by `scripts/sign-update.ts`. */
 const PUBLIC_KEY =
@@ -33,39 +37,12 @@ export function parseManifest(value: unknown): Manifest {
   if (minimumVersion !== undefined && (typeof minimumVersion !== "string" || !validVersion(minimumVersion))) {
     throw new Error("the release manifest has an invalid minimum version");
   }
-  if (notices !== undefined && !Array.isArray(notices)) throw new Error("the release manifest has invalid notices");
   return {
     version,
     minimumVersion: minimumVersion ?? null,
-    notices: (notices ?? []).map(parseNotice),
+    notices: parseReleaseNotices(notices ?? []),
     platforms: assets,
   };
-}
-
-function parseNotice(value: unknown): ReleaseNotice {
-  const id = field(value, "id");
-  const message = field(value, "message");
-  const fromVersion = field(value, "fromVersion");
-  const throughVersion = field(value, "throughVersion");
-  const platforms = field(value, "platforms");
-  if (!nonempty(id) || !nonempty(message) || !versionField(fromVersion) || !versionField(throughVersion)) {
-    throw new Error("the release manifest has an invalid notice");
-  }
-  if (platforms !== undefined && (!Array.isArray(platforms) || !platforms.every(isPlatform))) {
-    throw new Error("the release manifest has an invalid notice");
-  }
-  return { id, message, fromVersion, throughVersion, ...(platforms === undefined ? {} : { platforms }) };
-}
-
-const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0;
-const versionField = (value: unknown): value is string => typeof value === "string" && validVersion(value);
-
-function isPlatform(value: unknown): value is "linux" | "darwin" | "win32" {
-  return value === "linux" || value === "darwin" || value === "win32";
-}
-
-export function validVersion(version: string): boolean {
-  return /^\d+\.\d+\.\d+$/.test(version);
 }
 
 export function matchingNotices(notices: ReleaseNotice[], version: string, platform: string): ReleaseNotice[] {
@@ -75,15 +52,6 @@ export function matchingNotices(notices: ReleaseNotice[], version: string, platf
       !isNewer(version, notice.throughVersion) &&
       (!notice.platforms || notice.platforms.some((supported) => supported === platform)),
   );
-}
-
-/** Releases are plain `major.minor.patch`. */
-export function isNewer(candidate: string, current: string): boolean {
-  const [a, b] = [candidate, current].map((version) => version.split(".").map(Number));
-  for (let index = 0; index < 3; index++) {
-    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) > (b[index] ?? 0);
-  }
-  return false;
 }
 
 /** Keeps the published releases in `(after, through]` from a GitHub releases listing, newest first. */

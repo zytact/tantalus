@@ -21,6 +21,9 @@ const RETRY_START = 5 * 60 * 1000;
 const DOWNLOAD_TIMEOUT = 10 * 60 * 1000;
 
 const run = promisify(execFile);
+type PendingUpdate =
+  | (AvailableUpdate & { manualInstall: true })
+  | (AvailableUpdate & { manualInstall: false } & ReleaseAsset);
 
 /** The manifest key for the bundle this app was installed from, so an rpm install never downloads
  * the deb. electron-builder records a Linux package's format beside the app. */
@@ -36,7 +39,7 @@ export function platformKey(): string | null {
 /** Finds signed releases newer than the running build and installs them. The release it last found
  * stays on offer through an install, so a failed one leaves nothing to put back. */
 export class Updater {
-  private pending: (ReleaseAsset & AvailableUpdate) | null = null;
+  private pending: PendingUpdate | null = null;
   private progress: InstallProgress | null = null;
 
   constructor(
@@ -138,11 +141,14 @@ export class Updater {
   }
 }
 
-function selectUpdate(manifest: Manifest, currentVersion: string): (ReleaseAsset & AvailableUpdate) | null {
+function selectUpdate(manifest: Manifest, currentVersion: string): PendingUpdate | null {
   if (!isNewer(manifest.version, currentVersion)) return null;
+  if (isNewer(manifest.minimumVersion ?? currentVersion, currentVersion)) {
+    return { version: manifest.version, manualInstall: true, notices: [] };
+  }
   return {
     version: manifest.version,
-    manualInstall: isNewer(manifest.minimumVersion ?? currentVersion, currentVersion),
+    manualInstall: false,
     notices: matchingNotices(manifest.notices, currentVersion, process.platform),
     ...selectAsset(manifest),
   };
