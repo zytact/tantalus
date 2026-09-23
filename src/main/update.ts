@@ -6,8 +6,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { app } from "electron";
 import type { AvailableUpdate, InstallProgress, ReleaseNotes } from "../shared/ipc";
-import { isNewer, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
-import type { ReleaseAsset } from "./release";
+import { isNewer, matchingNotices, parseManifest, parseReleases, readDownload, verifySignature } from "./release";
+import type { Manifest, ReleaseAsset } from "./release";
 import { nextBackoff } from "./usage-state";
 
 const MANIFEST_URL = "https://github.com/zytact/tantalus/releases/latest/download/latest.json";
@@ -45,7 +45,13 @@ export class Updater {
   ) {}
 
   available(): AvailableUpdate | null {
-    return this.pending && { version: this.pending.version };
+    return (
+      this.pending && {
+        version: this.pending.version,
+        manualInstall: this.pending.manualInstall,
+        notices: this.pending.notices,
+      }
+    );
   }
 
   installProgress(): InstallProgress | null {
@@ -56,13 +62,10 @@ export class Updater {
     const response = await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(REQUEST_TIMEOUT) });
     if (!response.ok) throw new Error(`the release manifest returned ${response.status}`);
     const manifest = parseManifest(await response.json());
-    if (!isNewer(manifest.version, app.getVersion())) return null;
-    const key = platformKey();
-    const asset = key && manifest.platforms[key];
-    if (!asset) throw new Error(`the release has no update for ${key ?? process.platform}`);
-    this.pending = { version: manifest.version, ...asset };
-    this.announce({ version: manifest.version });
-    return { version: manifest.version };
+    this.pending = selectUpdate(manifest, app.getVersion());
+    const update = this.available();
+    if (update) this.announce(update);
+    return update;
   }
 
   async releaseNotes(): Promise<ReleaseNotes[]> {
@@ -95,9 +98,14 @@ export class Updater {
   /** Downloads the pending update, verifies its signature, installs it, then relaunches into it. A
    * deb or rpm install asks for an administrator password through polkit. Windows hands over to the
    * NSIS installer, which starts the new version itself. */
-  async install() {
+  async install(acknowledgedNoticeIds: string[]) {
     const update = this.pending;
     if (!update) throw new Error("No update is ready to install.");
+    if (update.manualInstall)
+      throw new Error("This version needs a fresh install. Quit Tantalus and install the latest release.");
+    if (update.notices.some(({ id }) => !acknowledgedNoticeIds.includes(id))) {
+      throw new Error("Read and acknowledge the update notice before installing.");
+    }
     if (this.progress) throw new Error("The update is already installing.");
     this.setProgress({ stage: "download", received: 0, total: null });
     let directory: string | null = null;
@@ -128,6 +136,23 @@ export class Updater {
     this.progress = progress;
     this.report(progress);
   }
+}
+
+function selectUpdate(manifest: Manifest, currentVersion: string): (ReleaseAsset & AvailableUpdate) | null {
+  if (!isNewer(manifest.version, currentVersion)) return null;
+  return {
+    version: manifest.version,
+    manualInstall: isNewer(manifest.minimumVersion ?? currentVersion, currentVersion),
+    notices: matchingNotices(manifest.notices, currentVersion, process.platform),
+    ...selectAsset(manifest),
+  };
+}
+
+function selectAsset(manifest: Manifest): ReleaseAsset {
+  const key = platformKey() ?? process.platform;
+  const asset = manifest.platforms[key];
+  if (!asset) throw new Error(`the release has no update for ${key}`);
+  return asset;
 }
 
 async function installBundle(file: string, directory: string) {

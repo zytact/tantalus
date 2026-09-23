@@ -108,6 +108,14 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - uses: actions/download-artifact@v4
         with:
           pattern: bundle-*
@@ -136,8 +144,10 @@ jobs:
             platforms=$(jq --arg key "$key" --arg url "https://github.com/$GH_REPO/releases/download/$TAG/$name" \
               --rawfile signature "$bundle.sig" '.[$key] = {url: $url, signature: ($signature | rtrimstr("\n"))}' <<<"$platforms")
           done
-          jq -n --arg version "${TAG#v}" --argjson platforms "$platforms" \
-            '{version: $version, pub_date: (now | todate), platforms: $platforms}' > bundles/latest.json
+          node scripts/release-policy.ts "$TAG" "$GH_REPO" bundles/update-policy.json
+          jq -n --arg version "${TAG#v}" --argjson platforms "$platforms" --slurpfile policy bundles/update-policy.json \
+            '{version: $version, pub_date: (now | todate), platforms: $platforms} + $policy[0]' > bundles/latest.json
+          rm bundles/update-policy.json
 
           mapfile -t assets < <(find bundles -type f -print)
           if gh release view "$TAG" >/dev/null 2>&1; then
