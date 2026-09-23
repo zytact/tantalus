@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { access, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -133,29 +133,54 @@ export class Updater {
 async function installBundle(file: string, directory: string) {
   switch (process.platform) {
     case "win32":
-      await launchWindowsInstaller(file);
+      await launchDetached(file, ["--updated", "/S", "--force-run"]);
       app.exit(0);
       return;
     case "darwin":
       await replaceAppBundle(file);
+      app.relaunch();
       break;
     default:
-      await run("pkexec", platformKey()?.endsWith("-rpm") ? ["rpm", "-U", file] : ["dpkg", "-i", file]);
+      await installLinuxPackage(file);
   }
   await rm(directory, { recursive: true, force: true }).catch((error: unknown) =>
     console.error("Failed to remove the update directory:", error),
   );
-  app.relaunch();
   app.exit(0);
 }
 
-async function launchWindowsInstaller(file: string) {
-  const installer = spawn(file, ["--updated", "/S", "--force-run"], { detached: true, stdio: "ignore" });
-  await new Promise<void>((resolve, reject) => {
-    installer.once("spawn", resolve);
-    installer.once("error", reject);
+async function installLinuxPackage(file: string) {
+  // An instance an older release relaunched carries no_new_privs, which pkexec cannot run under.
+  if (/^NoNewPrivs:\s*1$/m.test(await readFile("/proc/self/status", "utf8"))) {
+    throw new Error("Tantalus needs a restart first. Quit and reopen it, then install again.");
+  }
+  await run("pkexec", platformKey()?.endsWith("-rpm") ? ["rpm", "-U", file] : ["dpkg", "-i", file]);
+  await relaunchLinux().catch((error: unknown) => {
+    console.error("Failed to relaunch through the shell:", error);
+    app.relaunch();
   });
-  installer.unref();
+}
+
+/** `app.relaunch()` starts the new instance with no_new_privs set, so its next pkexec would fail.
+ * This shell waits for the current process to exit, freeing the single-instance lock and ports, then
+ * execs the app without the flag. */
+async function relaunchLinux() {
+  await launchDetached("sh", [
+    "-c",
+    'while kill -0 "$0" 2>/dev/null; do sleep 0.1; done; exec "$@"',
+    String(process.pid),
+    process.execPath,
+    ...process.argv.slice(1),
+  ]);
+}
+
+async function launchDetached(command: string, args: string[]) {
+  const child = spawn(command, args, { detached: true, stdio: "ignore" });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  child.unref();
 }
 
 /** Unpacks the new bundle beside the running one, so the swap is a rename on one volume, and puts the
