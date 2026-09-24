@@ -50,6 +50,11 @@ export function parseCodexUsage(value: unknown, now: number): ParsedUsage {
   };
 }
 
+export function parseCodexSubscription(value: unknown): number | null {
+  const parsed = epoch(field(value, "active_until") ?? field(value, "activeUntil"));
+  return parsed !== null && Number.isFinite(parsed) && !Number.isNaN(new Date(parsed * 1000).getTime()) ? parsed : null;
+}
+
 /** Claude names its windows instead of reporting a duration, so the duration is supplied here. A
  * `locked_reason` on either window is the only signal that the account is actually cut off. */
 export function parseClaudeUsage(value: unknown): ParsedUsage {

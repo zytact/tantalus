@@ -34,6 +34,7 @@ import {
   remainingPercent,
   statusLine,
   statusTone,
+  subscriptionDate,
   usagePercent,
   usageTier,
 } from "./presentation";
@@ -208,6 +209,16 @@ function ProviderSection({
           {statusLine(provider)}
         </span>
       </div>
+      {id === "codex" &&
+        provider.subscription_active_until_epoch !== null &&
+        provider.subscription_active_until_epoch > now && (
+          <p className="subscription-date">
+            Subscription period ends{" "}
+            <time dateTime={new Date(provider.subscription_active_until_epoch * 1000).toISOString()}>
+              {subscriptionDate(provider.subscription_active_until_epoch)}
+            </time>
+          </p>
+        )}
       {degraded && (
         <p className="notice" role="status">
           {provider.error_message ?? "The last successful reading remains visible."}

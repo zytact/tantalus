@@ -12,7 +12,13 @@ describe("credentials", () => {
       '{"chatgptAuthTokens":{"access_token":"a"},"chatgpt_account_id":"id"}',
       '{"chatgpt_auth":{"access_token":"a"},"chatgptAccountId":"id"}',
     ]) {
-      expect(parseCredentials("codex", raw)).toEqual({ accessToken: "a", accountId: "id", email: null, plan: null });
+      expect(parseCredentials("codex", raw)).toEqual({
+        accessToken: "a",
+        accountId: "id",
+        email: null,
+        plan: null,
+        subscription_active_until_epoch: null,
+      });
     }
   });
 
@@ -22,10 +28,11 @@ describe("credentials", () => {
       accountId: null,
       email: null,
       plan: null,
+      subscription_active_until_epoch: null,
     });
     expect(
       parseCredentials("opencode", '{"google":{"type":"api","key":"g"},"opencode-go":{"type":"api","key":"a"}}'),
-    ).toEqual({ accessToken: "a", accountId: null, email: null, plan: "Go" });
+    ).toEqual({ accessToken: "a", accountId: null, email: null, plan: "Go", subscription_active_until_epoch: null });
   });
 
   it("tells a file without a token from one that is not JSON", () => {
@@ -43,20 +50,33 @@ describe("credentials", () => {
 
   it("reads account details from Codex and Claude credentials", () => {
     const payload = Buffer.from(
-      JSON.stringify({ email: "codex@example.com", "https://api.openai.com/auth": { chatgpt_plan_type: "plus" } }),
+      JSON.stringify({
+        email: "codex@example.com",
+        "https://api.openai.com/auth": {
+          chatgpt_plan_type: "plus",
+          chatgpt_subscription_active_until: "2099-01-01T00:00:00Z",
+        },
+      }),
     ).toString("base64url");
     expect(parseCredentials("codex", `{"tokens":{"access_token":"a","id_token":"e30.${payload}.signature"}}`)).toEqual({
       accessToken: "a",
       accountId: null,
       email: "codex@example.com",
       plan: "Plus",
+      subscription_active_until_epoch: 4_070_908_800,
     });
     expect(
       parseCredentials(
         "claude",
         '{"claudeAiOauth":{"accessToken":"a","subscriptionType":"max","rateLimitTier":"default_claude_max_20x"}}',
       ),
-    ).toEqual({ accessToken: "a", accountId: null, email: null, plan: "Max 20x" });
+    ).toEqual({
+      accessToken: "a",
+      accountId: null,
+      email: null,
+      plan: "Max 20x",
+      subscription_active_until_epoch: null,
+    });
   });
 
   it("reads WSL distribution names from either console encoding", () => {

@@ -7,6 +7,7 @@ import {
   parseClaudeResets,
   parseClaudeUsage,
   parseCodexUsage,
+  parseCodexSubscription,
   parseCredits,
   stringAt,
 } from "./parse";
@@ -18,10 +19,12 @@ type AuthFile = {
   email: string | null;
   accountId: string | null;
   plan: string | null;
+  subscriptionActiveUntilEpoch: number | null;
 };
 
 const CODEX_BASE = "https://chatgpt.com/backend-api/wham";
 const CREDITS_URL = `${CODEX_BASE}/rate-limit-reset-credits`;
+const SUBSCRIPTION_URL = "https://chatgpt.com/backend-api/subscriptions";
 const CLAUDE_BASE = "https://api.anthropic.com/api/oauth";
 const TIMEOUT_MILLISECONDS = 12_000;
 
@@ -86,7 +89,19 @@ export class ProxyHubApi {
   }
 
   private async readCodex(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
-    const value = await this.apiCall(config, account, `${CODEX_BASE}/usage`);
+    const [value, subscription] = await Promise.all([
+      this.apiCall(config, account, `${CODEX_BASE}/usage`),
+      account.accountId
+        ? this.apiCall(
+            config,
+            account,
+            `${SUBSCRIPTION_URL}?account_id=${encodeURIComponent(account.accountId)}`,
+          ).catch((error: unknown) => {
+            if (error instanceof ProxyHubRejected) throw error;
+            return null;
+          })
+        : null,
+    ]);
     if (!codexUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
     const now = nowEpoch();
     const credits = await this.apiCall(config, account, CREDITS_URL)
@@ -95,6 +110,7 @@ export class ProxyHubApi {
     return ready(
       {
         ...parseCodexUsage(value, now),
+        subscription_active_until_epoch: parseCodexSubscription(subscription) ?? account.subscriptionActiveUntilEpoch,
         ...(credits === null ? {} : parseCredits({ credits })),
       },
       now,
@@ -185,6 +201,11 @@ function authFile(value: unknown): AuthFile | null {
     email: stringAt(value, ["email"]),
     accountId: stringAt(value, ["id_token", "chatgpt_account_id"]),
     plan: stringAt(value, ["id_token", "plan_type"]),
+    subscriptionActiveUntilEpoch: parseCodexSubscription({
+      active_until:
+        field(value, "chatgpt_subscription_active_until") ??
+        field(field(value, "id_token"), "chatgpt_subscription_active_until"),
+    }),
   };
 }
 

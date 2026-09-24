@@ -7,6 +7,7 @@ import {
   parseClaudeResets,
   parseClaudeUsage,
   parseCodexUsage,
+  parseCodexSubscription,
   parseCredits,
   parseOpencodeUsage,
 } from "./parse";
@@ -15,6 +16,7 @@ const endpoints = {
   whamUsage: { origin: "https://chatgpt.com", path: "/backend-api/wham/usage" },
   codexUsage: { origin: "https://chatgpt.com", path: "/backend-api/codex/usage" },
   resetCredits: { origin: "https://chatgpt.com", path: "/backend-api/wham/rate-limit-reset-credits" },
+  codexSubscription: { origin: "https://chatgpt.com", path: "/backend-api/subscriptions" },
   claudeUsage: { origin: "https://api.anthropic.com", path: "/api/oauth/usage?cedar_ember=1" },
   claudeProfile: { origin: "https://api.anthropic.com", path: "/api/oauth/profile" },
   opencodeUsage: { origin: "https://opencode.ai", path: "/zen/go/v1/usage" },
@@ -45,10 +47,24 @@ export class UsageApi {
   }
 
   private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
-    const usage = await this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials));
-    const credits = await this.json("resetCredits", credentials, codexResetHeaders);
+    const [usage, credits, subscription] = await Promise.all([
+      this.json("whamUsage", credentials).catch(() => this.json("codexUsage", credentials)),
+      this.json("resetCredits", credentials, codexResetHeaders),
+      credentials.accountId
+        ? this.json("codexSubscription", credentials, codexResetHeaders, credentials.accountId).catch(() => null)
+        : null,
+    ]);
     const now = nowEpoch();
-    return ready({ ...parseCodexUsage(usage, now), ...parseCredits(credits), ...identity(credentials) }, now);
+    return ready(
+      {
+        ...parseCodexUsage(usage, now),
+        ...parseCredits(credits),
+        ...identity(credentials),
+        subscription_active_until_epoch:
+          parseCodexSubscription(subscription) ?? credentials.subscription_active_until_epoch,
+      },
+      now,
+    );
   }
 
   private async fetchClaude(credentials: Credentials): Promise<ProviderUsage> {
@@ -77,8 +93,10 @@ export class UsageApi {
     endpoint: Endpoint,
     credentials: Credentials,
     headers: Record<string, string> = {},
+    accountId?: string,
   ): Promise<unknown> {
-    const response = await fetch(this.url(endpoint), {
+    const url = accountId ? `${this.url(endpoint)}?account_id=${encodeURIComponent(accountId)}` : this.url(endpoint);
+    const response = await fetch(url, {
       headers: {
         authorization: `Bearer ${credentials.accessToken}`,
         accept: "application/json",

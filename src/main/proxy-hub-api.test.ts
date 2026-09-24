@@ -24,7 +24,11 @@ function fixture(
       auth_index: "codex-auth",
       provider: "codex",
       email: "codex@example.com",
-      id_token: { chatgpt_account_id: "account-a", plan_type: "pro" },
+      id_token: {
+        chatgpt_account_id: "account-a",
+        plan_type: "pro",
+        chatgpt_subscription_active_until: "2099-01-01T00:00:00Z",
+      },
     },
     { id: "claude.json", auth_index: "claude-auth", provider: "claude", email: "claude@example.com" },
     { id: "off.json", auth_index: "off", provider: "codex", disabled: true },
@@ -38,7 +42,9 @@ function fixture(
     const call = JSON.parse(requestBody(init)) as ManagementCall;
     calls.push(call);
     let body: unknown;
-    if (call.url.endsWith("rate-limit-reset-credits")) {
+    if (call.url.includes("/subscriptions?")) {
+      body = { active_until: "2099-02-01T00:00:00Z" };
+    } else if (call.url.endsWith("rate-limit-reset-credits")) {
       body = {
         credits: [
           {
@@ -94,11 +100,13 @@ describe("CLIProxyAPI usage", () => {
     ]);
     expect(accounts[0]?.usage.seven_day.used_percent).toBe(72);
     expect(accounts[0]?.usage.reset_credit_count).toBe(1);
+    expect(accounts[0]?.usage.subscription_active_until_epoch).toBe(4_073_587_200);
     expect(accounts[1]?.usage.five_hour.used_percent).toBe(31);
     expect(accounts[1]?.usage.reset_credit_count).toBe(1);
     expect(test.calls.map((call) => call.auth_index).sort()).toEqual([
       "claude-auth",
       "claude-auth",
+      "codex-auth",
       "codex-auth",
       "codex-auth",
     ]);
@@ -221,6 +229,23 @@ describe("CLIProxyAPI usage", () => {
     const reading = new ProxyHubApi(request).read(config);
     await expect(reading).rejects.toThrow(ProxyHubRejected);
     await expect(reading).rejects.toThrow(message);
+  });
+
+  it("treats a management refusal on the optional subscription read as a hub refusal", async () => {
+    const request: typeof fetch = async (_input, init) => {
+      if (init?.method === "GET") {
+        return Response.json({
+          files: [{ id: "codex", auth_index: "codex", provider: "codex", id_token: { chatgpt_account_id: "a" } }],
+        });
+      }
+      const call = JSON.parse(requestBody(init)) as ManagementCall;
+      if (call.url.includes("/subscriptions?")) return Response.json({}, { status: 401 });
+      const body = call.url.endsWith("rate-limit-reset-credits")
+        ? { credits: [] }
+        : { rate_limit: { primary_window: { used_percent: 20, limit_window_seconds: 18_000 } } };
+      return Response.json({ status_code: 200, body: JSON.stringify(body) });
+    };
+    await expect(new ProxyHubApi(request).read(config)).rejects.toThrow(ProxyHubRejected);
   });
 
   it("treats a refusal while reading an account or its plan as a refusal of the whole hub", async () => {
