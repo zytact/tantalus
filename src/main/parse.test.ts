@@ -5,11 +5,18 @@ import {
   parseClaudeResets,
   parseClaudeUsage,
   parseCodexUsage,
+  parseCodexSubscription,
   parseCredits,
   parseOpencodeUsage,
 } from "./parse";
 
 describe("codex usage", () => {
+  it("reads the subscription period end in either provider format", () => {
+    expect(parseCodexSubscription({ active_until: "2026-10-08T18:17:28+00:00" })).toBe(1_791_483_448);
+    expect(parseCodexSubscription({ activeUntil: 1_791_483_448_000 })).toBe(1_791_483_448);
+    expect(parseCodexSubscription({ active_until: "not a date" })).toBeNull();
+    expect(parseCodexSubscription({ active_until: "99999999999999999999" })).toBeNull();
+  });
   it("maps windows by duration and parses a millisecond reset", () => {
     const usage = parseCodexUsage(
       {

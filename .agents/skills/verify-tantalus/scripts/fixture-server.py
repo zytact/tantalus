@@ -48,6 +48,7 @@ def ready():
                 "secondary_window": codex_window(12, 7 * DAY, 5 * DAY),
             }
         },
+        "codex_subscription": {"active_until": rfc3339(time.time() + 22 * DAY)},
         "codex_credits": {
             "available_count": 2,
             "credits": [
@@ -90,6 +91,7 @@ def monthly_only():
 
 def blocked():
     return {
+        "codex_subscription": {"active_until": rfc3339(time.time() + 22 * DAY)},
         "codex_usage": {
             "rate_limit": {
                 "allowed": False,
@@ -121,6 +123,7 @@ def blocked():
 
 def no_windows():
     return {
+        "codex_subscription": {"active_until": None},
         "codex_usage": {"rate_limit": {}},
         "codex_credits": {},
         "claude_usage": {},
@@ -143,6 +146,7 @@ ROUTES = {
     "/backend-api/wham/usage": "codex_usage",
     "/backend-api/codex/usage": "codex_usage",
     "/backend-api/wham/rate-limit-reset-credits": "codex_credits",
+    "/backend-api/subscriptions": "codex_subscription",
     "/api/oauth/usage": "claude_usage",
     "/api/oauth/profile": "claude_profile",
     "/zen/go/v1/usage": "opencode_usage",

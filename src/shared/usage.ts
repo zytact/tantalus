@@ -18,6 +18,7 @@ export type SnapshotStatus = "ready" | "loading" | "stale" | "auth_missing" | "e
 export type ProviderUsage = {
   email: string | null;
   plan: string | null;
+  subscription_active_until_epoch: number | null;
   five_hour: WindowUsage;
   seven_day: WindowUsage;
   /** Opencode reports this alongside the other two, and it is the only window a Codex Go or free
@@ -90,6 +91,7 @@ export const unreportedWindow = (): WindowUsage => ({
 export const emptyProviderUsage = (): ProviderUsage => ({
   email: null,
   plan: null,
+  subscription_active_until_epoch: null,
   five_hour: unreportedWindow(),
   seven_day: unreportedWindow(),
   monthly: unreportedWindow(),

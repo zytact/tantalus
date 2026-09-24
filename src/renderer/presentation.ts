@@ -75,6 +75,10 @@ export function creditExpiry(epoch: number | null): string {
   return `Expires ${date}`;
 }
 
+export function subscriptionDate(epoch: number): string {
+  return new Date(epoch * 1000).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function creditAmount(
   value: number | null,
   { currency, decimal_places }: Pick<ExtraUsage, "currency" | "decimal_places">,

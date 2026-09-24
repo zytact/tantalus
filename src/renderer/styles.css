@@ -332,6 +332,16 @@ button.quiet {
   padding: 12px 1px 13px;
   border-bottom: 1px solid var(--hairline);
 }
+.subscription-date {
+  margin: 0;
+  padding: 0 1px 8px 33px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.subscription-date time {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
 .provider-icon {
   flex: none;
   width: 20px;

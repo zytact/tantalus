@@ -5,13 +5,14 @@ import { join, win32 } from "node:path";
 import { claudeSubscription, subscriptionName } from "../shared/usage";
 import type { ProviderId } from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { stringAt } from "./parse";
+import { parseCodexSubscription, stringAt } from "./parse";
 
 export type Credentials = {
   accessToken: string;
   accountId: string | null;
   email: string | null;
   plan: string | null;
+  subscription_active_until_epoch: number | null;
 };
 
 /** Where each login keeps its credentials. The variable relocates the store: Codex and Claude point
@@ -103,11 +104,15 @@ export function parseCredentials(provider: ProviderId, raw: string): Credentials
   return { accessToken, accountId: firstString(value, accountPaths), ...credentialIdentity(provider, value) };
 }
 
-function credentialIdentity(provider: ProviderId, value: unknown): Pick<Credentials, "email" | "plan"> {
-  if (provider === "opencode") return { email: null, plan: "Go" };
+function credentialIdentity(
+  provider: ProviderId,
+  value: unknown,
+): Pick<Credentials, "email" | "plan" | "subscription_active_until_epoch"> {
+  if (provider === "opencode") return { email: null, plan: "Go", subscription_active_until_epoch: null };
   if (provider === "claude") {
     return {
       email: null,
+      subscription_active_until_epoch: null,
       plan: claudeSubscription(
         stringAt(value, ["claudeAiOauth", "subscriptionType"]),
         stringAt(value, ["claudeAiOauth", "rateLimitTier"]),
@@ -117,7 +122,13 @@ function credentialIdentity(provider: ProviderId, value: unknown): Pick<Credenti
   const token = stringAt(value, ["tokens", "id_token"]);
   const payload = token ? jwtPayload(token) : null;
   const plan = stringAt(payload, ["https://api.openai.com/auth", "chatgpt_plan_type"]);
-  return { email: stringAt(payload, ["email"]), plan: plan ? subscriptionName(plan) : null };
+  return {
+    email: stringAt(payload, ["email"]),
+    plan: plan ? subscriptionName(plan) : null,
+    subscription_active_until_epoch: parseCodexSubscription({
+      active_until: stringAt(payload, ["https://api.openai.com/auth", "chatgpt_subscription_active_until"]),
+    }),
+  };
 }
 
 function jwtPayload(token: string): unknown {
