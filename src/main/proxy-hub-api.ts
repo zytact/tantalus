@@ -96,7 +96,10 @@ export class ProxyHubApi {
             config,
             account,
             `${SUBSCRIPTION_URL}?account_id=${encodeURIComponent(account.accountId)}`,
-          ).catch(() => null)
+          ).catch((error: unknown) => {
+            if (error instanceof ProxyHubRejected) throw error;
+            return null;
+          })
         : null,
     ]);
     if (!codexUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");

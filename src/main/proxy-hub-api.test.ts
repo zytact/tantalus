@@ -231,6 +231,23 @@ describe("CLIProxyAPI usage", () => {
     await expect(reading).rejects.toThrow(message);
   });
 
+  it("treats a management refusal on the optional subscription read as a hub refusal", async () => {
+    const request: typeof fetch = async (_input, init) => {
+      if (init?.method === "GET") {
+        return Response.json({
+          files: [{ id: "codex", auth_index: "codex", provider: "codex", id_token: { chatgpt_account_id: "a" } }],
+        });
+      }
+      const call = JSON.parse(requestBody(init)) as ManagementCall;
+      if (call.url.includes("/subscriptions?")) return Response.json({}, { status: 401 });
+      const body = call.url.endsWith("rate-limit-reset-credits")
+        ? { credits: [] }
+        : { rate_limit: { primary_window: { used_percent: 20, limit_window_seconds: 18_000 } } };
+      return Response.json({ status_code: 200, body: JSON.stringify(body) });
+    };
+    await expect(new ProxyHubApi(request).read(config)).rejects.toThrow(ProxyHubRejected);
+  });
+
   it("treats a refusal while reading an account or its plan as a refusal of the whole hub", async () => {
     const refusing =
       (refused: (call: ManagementCall) => boolean): typeof fetch =>
