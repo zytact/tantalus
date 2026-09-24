@@ -334,7 +334,7 @@ button.quiet {
 }
 .subscription-date {
   margin: 0;
-  padding: 0 1px 8px 33px;
+  padding: 8px 1px 8px 33px;
   color: var(--text-muted);
   font-size: 0.72rem;
 }
