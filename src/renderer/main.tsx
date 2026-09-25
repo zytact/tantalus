@@ -259,7 +259,7 @@ function ProviderSection({
   );
 }
 
-/** One sentence per window still learning its usual pace, saying when it starts. */
+/** One sentence per window still learning its usual pace, saying when it is done. */
 function LearningLine({
   windows,
   paceOf,
@@ -278,11 +278,13 @@ function LearningLine({
       {learning.map(({ label, startsAt }) => (
         <Fragment key={label}>
           {" "}
-          The {label.toLowerCase()} starts{" "}
+          The {label.toLowerCase()}{" "}
           {startsAt === null ? (
-            "after your first use"
+            "waits for your first use"
           ) : (
-            <time dateTime={new Date(startsAt * 1000).toISOString()}>{absoluteTime(startsAt)}</time>
+            <>
+              is done <time dateTime={new Date(startsAt * 1000).toISOString()}>{absoluteTime(startsAt)}</time>
+            </>
           )}
           .
         </Fragment>
