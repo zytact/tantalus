@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { dirname, join, win32 } from "node:path";
 import { claudeSubscription, subscriptionName } from "../shared/usage";
 import type { ProviderId } from "../shared/usage";
 import { ReadFailure } from "./failure";
@@ -31,6 +31,14 @@ const locations = {
     underHome: [".local", "share", "opencode", "auth.json"],
   },
 } as const satisfies Record<ProviderId, { variable: string; underVariable: string[]; underHome: string[] }>;
+
+/** The directory holding the provider's login on this machine, which is where its CLI keeps its
+ * sessions too. WSL homes are left out, since touching them starts the distribution. */
+export function dataDirectory(provider: ProviderId): string {
+  const { variable, underVariable, underHome } = locations[provider];
+  const directory = process.env[variable];
+  return dirname(directory ? join(directory, ...underVariable) : join(process.env.HOME || homedir(), ...underHome));
+}
 
 /** Reads the first readable credential file for `provider`. Its variable wins outright; otherwise the
  * home directory is tried before any WSL distribution home. */
