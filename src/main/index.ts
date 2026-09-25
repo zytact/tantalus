@@ -9,11 +9,12 @@ import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
 import { nowEpoch, providerIds } from "../shared/usage";
+import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
-import { noActivity, PaceTracker } from "./pace-tracker";
+import { PaceTracker } from "./pace-tracker";
 import { paceSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
@@ -78,7 +79,7 @@ function start() {
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),
       join(app.getPath("userData"), "pace-creatures.json"),
-      async () => noActivity,
+      () => readActivity(),
     ),
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
