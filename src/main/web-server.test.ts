@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { defaultPaceSettings } from "../shared/pace";
 import { emptyProviderUsage } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { trustedHost, WebServer } from "./web-server";
@@ -15,6 +16,7 @@ const snapshot = (claude: boolean): UsageSnapshot => ({
   opencode: emptyProviderUsage(),
   enabled: { codex: true, claude, opencode: false },
   proxy_hubs: [],
+  pace: { settings: defaultPaceSettings, windows: {} },
 });
 
 let root: string;

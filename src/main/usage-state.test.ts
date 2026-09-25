@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { defaultPaceSettings } from "../shared/pace";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { emptyProviderUsage, emptyProxyHubSnapshot } from "../shared/usage";
 import type {
@@ -12,6 +13,7 @@ import type {
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
+import { noActivity, PaceTracker } from "./pace-tracker";
 import { ProxyHubRejected } from "./proxy-hub-api";
 import { saveSettings } from "./settings";
 import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
@@ -26,13 +28,23 @@ function settingsPath() {
   return join(directory, "providers.json");
 }
 
+function paceTracker() {
+  const directory = join(settingsPath(), "..");
+  return new PaceTracker(join(directory, "pace-log.json"), join(directory, "pace.json"), async () => noActivity);
+}
+
 function createState(
   readProvider: (id: ProviderId) => Promise<ProviderUsage>,
   publish: (snapshot: UsageSnapshot) => void = () => {},
   readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]> = async () => [],
 ) {
   const providers = settingsPath();
-  return new UsageState(providers, join(providers, "..", "proxy-hubs.json"), readProvider, readHub, publish);
+  const pace = new PaceTracker(
+    join(providers, "..", "pace-log.json"),
+    join(providers, "..", "pace.json"),
+    async () => noActivity,
+  );
+  return new UsageState(providers, join(providers, "..", "proxy-hubs.json"), readProvider, readHub, publish, pace);
 }
 
 const ready = (used: number): ProviderUsage => ({
@@ -123,6 +135,7 @@ describe("usage state", () => {
       async () => ready(42),
       async () => [],
       () => {},
+      paceTracker(),
     );
     await state.refresh();
     const directory = join(path, "..");
@@ -146,6 +159,7 @@ describe("usage state", () => {
         return [hubAccount(42)];
       },
       () => {},
+      paceTracker(),
     );
     const settings = await state.addProxyHub({
       label: "Home hub",
@@ -169,6 +183,7 @@ describe("usage state", () => {
         throw new ProxyHubRejected("The hub rejected the management key.");
       },
       () => {},
+      paceTracker(),
     );
     await expect(
       state.addProxyHub({ label: "Home hub", url: "http://hub.test:8317", managementKey: "wrong" }),
@@ -193,6 +208,7 @@ describe("usage state", () => {
         return [hubAccount(42)];
       },
       () => {},
+      paceTracker(),
     );
     await state.refresh();
 
@@ -233,6 +249,7 @@ describe("usage state", () => {
         throw new ProxyHubRejected("The hub rejected the management key.");
       },
       () => {},
+      paceTracker(),
     );
     await state.refresh();
     const snapshot = await state.refresh();
@@ -260,6 +277,7 @@ describe("usage state", () => {
         return [hubAccount(42)];
       },
       () => {},
+      paceTracker(),
     );
     await state.refresh();
     expect(state.setProxyHubEnabled("hub", false)[0]?.enabled).toBe(false);
@@ -287,6 +305,7 @@ describe("usage state", () => {
             })
           : Promise.resolve([hubAccount(42)]),
       () => {},
+      paceTracker(),
     );
     const refresh = state.refresh();
     state.setProxyHubEnabled("work", true);
@@ -309,6 +328,7 @@ describe("usage state", () => {
       async () => ready(1),
       () => new Promise<ProxyHubAccount[]>((resolve) => (release = resolve)),
       () => {},
+      paceTracker(),
     );
     const refresh = state.refresh();
     state.removeProxyHub("hub");
@@ -373,6 +393,7 @@ describe("polling", () => {
       opencode: emptyProviderUsage(),
       enabled: { codex: true, claude: true, opencode: false },
       proxy_hubs: [],
+      pace: { settings: defaultPaceSettings, windows: {} },
     };
     expect(settled(snapshot)).toBe(false);
     expect(settled({ ...snapshot, enabled: { codex: true, claude: false, opencode: false } })).toBe(true);
@@ -391,6 +412,7 @@ describe("polling", () => {
           accounts: [{ ...hubAccount(1), usage: { ...emptyProviderUsage(), status: "error" } }],
         },
       ],
+      pace: { settings: defaultPaceSettings, windows: {} },
     };
     expect(settled(snapshot)).toBe(false);
     expect(settled({ ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0]!, accounts: [] }] })).toBe(true);

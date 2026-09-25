@@ -13,6 +13,8 @@ import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
+import { noActivity, PaceTracker } from "./pace-tracker";
+import { paceSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
 import { trayItems } from "./tray-menu";
@@ -73,6 +75,11 @@ function start() {
       publish("usageSnapshot", snapshot);
       web.publish(snapshot);
     },
+    new PaceTracker(
+      join(app.getPath("userData"), "pace-log.json"),
+      join(app.getPath("userData"), "pace-creatures.json"),
+      async () => noActivity,
+    ),
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
   const updater = new Updater(
@@ -184,6 +191,15 @@ function registerUsageHandlers(state: UsageState) {
       return state.setProviderEnabled(provider, enabled);
     } catch (error) {
       throw new Error(`Could not save provider setting: ${message(error)}`);
+    }
+  });
+  handle("setPaceSettings", (settings) => {
+    const parsed = paceSettings(settings);
+    if (!parsed) throw new Error("Unknown pace setting.");
+    try {
+      return state.setPaceSettings(parsed);
+    } catch (error) {
+      throw new Error(`Could not save pace setting: ${message(error)}`);
     }
   });
   handle("proxyHubs", () => state.proxyHubs());

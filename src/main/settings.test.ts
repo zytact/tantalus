@@ -2,8 +2,11 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { defaultPaceSettings, recordSample } from "../shared/pace";
 import {
   defaultSettings,
+  loadPaceLogs,
+  loadPaceSettings,
   loadProxyHubSettings,
   loadRemoteSettings,
   loadSettings,
@@ -79,5 +82,24 @@ describe("proxy hub settings", () => {
     const file = path();
     saveSettings(file, []);
     expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("pace settings", () => {
+  it("falls back to the defaults when the file is missing or malformed", () => {
+    const file = path();
+    expect(loadPaceSettings(file)).toEqual(defaultPaceSettings);
+    writeFileSync(file, '{"enabled":true,"preset":"frantic","explained":false}');
+    expect(loadPaceSettings(file)).toEqual(defaultPaceSettings);
+  });
+
+  it("keeps a pace log through a reload and starts over from a malformed one", () => {
+    const file = path();
+    const first = recordSample(undefined, { epoch: 1000, used: 4, resetAt: 9000 }, 18_000, false);
+    const logs = { "codex:18000": recordSample(first, { epoch: 1300, used: 5, resetAt: 9000 }, 18_000, true) };
+    saveSettings(file, logs);
+    expect(loadPaceLogs(file)).toEqual(logs);
+    writeFileSync(file, '{"codex:18000":{"firstSeen":"soon"}}');
+    expect(loadPaceLogs(file)).toEqual({});
   });
 });

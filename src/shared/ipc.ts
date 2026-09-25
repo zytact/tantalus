@@ -1,3 +1,4 @@
+import type { PaceSettings } from "./pace";
 import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 
 export type ReleaseNotice = {
@@ -31,6 +32,7 @@ export type ProxyHubInput = { label: string; url: string; managementKey: string 
 export type Commands = {
   refreshUsage: () => UsageSnapshot;
   setProviderEnabled: (provider: ProviderId, enabled: boolean) => UsageSnapshot;
+  setPaceSettings: (settings: PaceSettings) => UsageSnapshot;
   proxyHubs: () => ProxyHubSettings[];
   addProxyHub: (input: ProxyHubInput) => ProxyHubSettings[];
   updateProxyHub: (id: string, input: ProxyHubInput) => ProxyHubSettings[];
