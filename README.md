@@ -23,6 +23,16 @@ Press **Ctrl+R**, or **Cmd+R** on macOS, to refresh.
 
 Launching Tantalus opens the window. Closing it leaves the app running in the tray, and the tray's **Open Tantalus** item opens the window again. Only one instance runs at a time, so launching it a second time reopens the window of the one already running. **Quit** exits the app and stops polling.
 
+## Dragon and tortoise
+
+Tantalus learns how fast you usually move each window, separately for every window of every provider and hub account. When a window moves much faster than that, a dragon rides its bar. When it moves much slower while you are working, a tortoise does. Hover or focus the creature for the numbers. It is separate from the pace label, which compares what you have used with how much of the window has passed.
+
+The rate comes from the time between the last few 1% ticks of the window's own percentage, never from tokens or cost. Each window watches for a while before it starts: 5 hours for the 5-hour window, 3.5 days for the 7-day one and 5 days for the monthly one. It also needs one stretch of use. Its usual pace is the median of its recent readings. Settings turns both creatures off, picks how big a change they wait for (Calm 4×, Normal 2.5× or Eager 1.6×), and shows what each window has learned. The log lives in `pace-log.json` and the setting in `pace-creatures.json`, both in the app config directory.
+
+A window that is not moving shows nothing, since idle is not slow. To tell the two apart, Tantalus checks when a local Codex, Claude Code or Opencode session file last changed. It reads only modification times, never contents. A session cannot say which account it used, so when several accounts of one provider are shown, including hub accounts, the activity goes to the one whose window moved last.
+
+The dragon and tortoise icons are by [Delapouite](https://delapouite.com) from [game-icons.net](https://game-icons.net), under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+
 ## Remote access
 
 Settings has two switches that let other devices open a read-only copy of the allowance page. It has no Refresh button and no Settings, and it updates whenever the app refreshes. Both start off, and the choice is saved to `remote-access.json` in the app config directory.
