@@ -158,7 +158,7 @@ function Learning({ title, pace }: { title: string; pace: Extract<WindowPace, { 
           "Waiting for you to use it."
         ) : (
           <>
-            Starts{" "}
+            Done learning{" "}
             <time dateTime={new Date(pace.starts_at_epoch * 1000).toISOString()}>
               {absoluteTime(pace.starts_at_epoch)}
             </time>
