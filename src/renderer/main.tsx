@@ -1,32 +1,26 @@
 import "@fontsource-variable/inter-tight/wght.css";
 import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-  fiveHourSeconds,
-  clockEpoch,
-  monthlySeconds,
-  providerIds,
-  providerNames,
-  refreshedAgo,
-  refreshedEpoch,
-  sevenDaySeconds,
-  usagePace,
-} from "../shared/usage";
+import { firstRider, paceKey, riderOf } from "../shared/pace";
+import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
+import { clockEpoch, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type {
   ExtraUsage,
   ProviderId,
   ProviderUsage,
-  ProxyHubAccount,
   ProxyHubSnapshot,
   ProxyHubStatus,
+  UsageSnapshot,
   WindowUsage,
 } from "../shared/usage";
 import { BusyButton, PendingLabel } from "./busy";
+import { CreatureIcon } from "./creature-icon";
 import {
   absoluteTime,
   countdown,
+  creatureTip,
   creditAmount,
   creditExpiry,
   isRefreshShortcut,
@@ -37,6 +31,8 @@ import {
   subscriptionDate,
   usagePercent,
   usageTier,
+  usageValueText,
+  windowEntries,
 } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
@@ -52,16 +48,19 @@ function Entry({
   duration,
   now,
   window: usage,
+  speed,
 }: {
   label: string;
   span: string;
   duration: number;
   now: number;
   window: WindowUsage;
+  speed: WindowPace | undefined;
 }) {
   const reported = usage.limit_window_seconds === duration;
   const used = reported ? usage.used_percent : null;
   const pace = reported ? usagePace(usage, now) : null;
+  const rider = riderOf(speed);
   const entryLabel = reported ? label : "Window unavailable";
   return (
     <section className="entry" aria-label={entryLabel} data-reported={reported}>
@@ -87,10 +86,11 @@ function Entry({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={used ?? undefined}
-        aria-valuetext={`${usagePercent(used)} used${pace ? `, ${pace.label.toLowerCase()}` : ""}`}
+        aria-valuetext={usageValueText(used, pace, rider)}
       >
         <span className="rule-fill" style={{ width: `${Math.min(100, Math.max(0, used ?? 0))}%` }} />
         {pace && <span className="pace-marker" style={{ left: `${pace.expectedPercent}%` }} aria-hidden="true" />}
+        <CreatureRider rider={rider} used={used} resetAt={usage.reset_at_epoch} now={now} />
       </div>
       <dl className="facts">
         <div>
@@ -107,6 +107,41 @@ function Entry({
         </div>
       </dl>
     </section>
+  );
+}
+
+const creatureNames = { dragon: "Dragon", tortoise: "Tortoise" } satisfies Record<Creature, string>;
+
+/** Rides the bar at the fill head. The tooltip opens on hover and on focus, and slides along with the
+ * head so it stays over the bar at either end. */
+function CreatureRider({
+  rider,
+  used,
+  resetAt,
+  now,
+}: {
+  rider: Rider | null;
+  used: number | null;
+  resetAt: number | null;
+  now: number;
+}) {
+  if (!rider || used === null) return null;
+  const head = Math.min(100, Math.max(0, used));
+  const tip = creatureTip(rider, used, resetAt, now);
+  return (
+    <span
+      className="creature"
+      data-kind={rider.kind}
+      style={{ left: `${head}%` }}
+      tabIndex={0}
+      role="img"
+      aria-label={`${creatureNames[rider.kind]}: ${tip}`}
+    >
+      <CreatureIcon kind={rider.kind} />
+      <span className="creature-tip" style={{ transform: `translateX(-${head}%)` }} aria-hidden="true">
+        {tip}
+      </span>
+    </span>
   );
 }
 
@@ -168,27 +203,18 @@ function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
   });
 }
 
-/** Every window a provider can report, in the order they are shown. Which of them a reading
- * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
- * and OpenAI has switched the 5-hour one off for a plan before, so none of the three is assumed. */
-function windowEntries(provider: ProviderUsage) {
-  return [
-    { label: "Short window", span: "5 hours", duration: fiveHourSeconds, window: provider.five_hour },
-    { label: "Long window", span: "7 days", duration: sevenDaySeconds, window: provider.seven_day },
-    { label: "Monthly window", span: "30 days", duration: monthlySeconds, window: provider.monthly },
-  ];
-}
-
 function ProviderSection({
   id,
   provider,
   now,
   account,
+  paceOf,
 }: {
   id: ProviderId;
   provider: ProviderUsage;
   now: number;
   account?: { email: string | null; plan: string | null; label?: string };
+  paceOf: (duration: number) => WindowPace | undefined;
 }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
@@ -219,16 +245,49 @@ function ProviderSection({
             </time>
           </p>
         )}
+      <LearningLine windows={reported} paceOf={paceOf} />
       {degraded && (
         <p className="notice" role="status">
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
       {entries.map((entry) => (
-        <Entry key={entry.label} {...entry} now={now} />
+        <Entry key={entry.label} {...entry} now={now} speed={paceOf(entry.duration)} />
       ))}
       <Extras id={id} provider={provider} />
     </div>
+  );
+}
+
+/** One sentence per window still learning its usual pace, saying when it starts. */
+function LearningLine({
+  windows,
+  paceOf,
+}: {
+  windows: { label: string; duration: number }[];
+  paceOf: (duration: number) => WindowPace | undefined;
+}) {
+  const learning = windows.flatMap(({ label, duration }) => {
+    const pace = paceOf(duration);
+    return pace?.status === "learning" ? [{ label, startsAt: pace.starts_at_epoch }] : [];
+  });
+  if (learning.length === 0) return null;
+  return (
+    <p className="subscription-date">
+      Learning your usual pace.
+      {learning.map(({ label, startsAt }) => (
+        <Fragment key={label}>
+          {" "}
+          The {label.toLowerCase()} starts{" "}
+          {startsAt === null ? (
+            "after your first use"
+          ) : (
+            <time dateTime={new Date(startsAt * 1000).toISOString()}>{absoluteTime(startsAt)}</time>
+          )}
+          .
+        </Fragment>
+      ))}
+    </p>
   );
 }
 
@@ -277,7 +336,7 @@ const hubStatusTones = {
   rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
-function HubSection({ hub, now }: { hub: ProxyHubSnapshot; now: number }) {
+function HubSection({ hub, now, paces }: { hub: ProxyHubSnapshot; now: number; paces: PaceSnapshot["windows"] }) {
   return (
     <section className="hub">
       <div className="hub-row">
@@ -287,7 +346,7 @@ function HubSection({ hub, now }: { hub: ProxyHubSnapshot; now: number }) {
         </span>
       </div>
       <HubMessage hub={hub} />
-      <HubAccounts hub={hub.label} accounts={hub.accounts} now={now} />
+      <HubAccounts hub={hub} now={now} paces={paces} />
     </section>
   );
 }
@@ -316,8 +375,8 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
   return messages[hub.status];
 }
 
-function HubAccounts({ hub, accounts, now }: { hub: string; accounts: ProxyHubAccount[]; now: number }) {
-  return accounts.map((account, index) => (
+function HubAccounts({ hub, now, paces }: { hub: ProxyHubSnapshot; now: number; paces: PaceSnapshot["windows"] }) {
+  return hub.accounts.map((account, index) => (
     <ProviderSection
       key={`${account.provider}:${account.id}`}
       id={account.provider}
@@ -326,10 +385,71 @@ function HubAccounts({ hub, accounts, now }: { hub: string; accounts: ProxyHubAc
       account={{
         email: account.email,
         plan: account.plan,
-        label: `${hub} ${providerNames[account.provider]} account ${index + 1}`,
+        label: `${hub.label} ${providerNames[account.provider]} account ${index + 1}`,
       }}
+      paceOf={(duration) => paces[paceKey(duration, account.provider, { hubId: hub.id, accountId: account.id })]}
     />
   ));
+}
+
+/** The strips above the providers, which only the app window shows. */
+function Notices({
+  snapshot,
+  onSnapshot,
+  onSettings,
+}: {
+  snapshot: UsageSnapshot | null;
+  onSnapshot: (snapshot: UsageSnapshot) => void;
+  onSettings: () => void;
+}) {
+  return (
+    <>
+      <UpdateNotice />
+      {snapshot && <PaceExplainer pace={snapshot.pace} onSnapshot={onSnapshot} onSettings={onSettings} />}
+    </>
+  );
+}
+
+const paceDirection = { dragon: "faster", tortoise: "slower" } satisfies Record<Creature, string>;
+
+/** Shown once, the first time either creature appears, until it is dismissed either way. A failed save
+ * leaves it up, which is the retry. */
+function PaceExplainer({
+  pace: { settings, windows },
+  onSnapshot,
+  onSettings,
+}: {
+  pace: PaceSnapshot;
+  onSnapshot: (snapshot: UsageSnapshot) => void;
+  onSettings: () => void;
+}) {
+  const kind = settings.explained ? null : firstRider(windows)?.kind;
+  if (!kind) return null;
+  const dismiss = () =>
+    window.tantalus.invoke("setPaceSettings", { ...settings, explained: true }).then(onSnapshot, () => {});
+  return (
+    <section className="update" aria-label="Dragon and tortoise">
+      <div className="update-content">
+        <p>
+          <CreatureIcon kind={kind} className="inline-creature" />
+          The {kind} means a window is moving much {paceDirection[kind]} than you usually use it. Hover it for the
+          numbers.
+        </p>
+        <div className="update-actions">
+          <button
+            className="quiet"
+            onClick={() => {
+              void dismiss();
+              onSettings();
+            }}
+          >
+            Settings
+          </button>
+          <button onClick={() => void dismiss()}>Got it</button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /** The current epoch in seconds, re-read often enough that a minute-grained label is never more
@@ -413,7 +533,8 @@ function App() {
       {page === "settings" ? (
         <SettingsPage
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
-          onProviderChange={setSnapshot}
+          snapshot={snapshot}
+          onSnapshot={setSnapshot}
           onBack={() => setPage("allowance")}
         />
       ) : (
@@ -446,7 +567,7 @@ function App() {
             </div>
           </header>
 
-          {!remote && <UpdateNotice />}
+          {!remote && <Notices snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />}
 
           {snapshot && shown.length === 0 && snapshot.proxy_hubs.length === 0 && (
             <p className="empty">No providers are on. Turn one on in Settings.</p>
@@ -460,10 +581,14 @@ function App() {
                 provider={snapshot[id]}
                 now={now}
                 account={{ email: snapshot[id].email, plan: snapshot[id].plan }}
+                paceOf={(duration) => snapshot.pace.windows[paceKey(duration, id)]}
               />
             ))}
 
-          {snapshot && snapshot.proxy_hubs.map((hub) => <HubSection key={hub.id} hub={hub} now={now} />)}
+          {snapshot &&
+            snapshot.proxy_hubs.map((hub) => (
+              <HubSection key={hub.id} hub={hub} now={now} paces={snapshot.pace.windows} />
+            ))}
 
           <footer>Auto-refreshes every 5 minutes</footer>
         </>

@@ -6,6 +6,7 @@ import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { BusyButton } from "./busy";
 import type { Loadable } from "./busy";
+import { PaceSettingsRows } from "./pace-settings";
 import { ProviderIcon } from "./provider-icon";
 import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
@@ -217,6 +218,7 @@ function VersionRow() {
             Version <strong className="version">v{version}</strong>
           </h2>
           {check === "latest" && <p>You have the latest version.</p>}
+          <p>Dragon and tortoise icons by Delapouite, from game-icons.net, under CC BY 3.0.</p>
         </div>
         <BusyButton
           label="Check for updates"
@@ -237,11 +239,13 @@ function VersionRow() {
 
 export function SettingsPage({
   providers,
-  onProviderChange,
+  snapshot,
+  onSnapshot,
   onBack,
 }: {
   providers: ProviderChoice;
-  onProviderChange: (snapshot: UsageSnapshot) => void;
+  snapshot: UsageSnapshot | null;
+  onSnapshot: (snapshot: UsageSnapshot) => void;
   onBack: () => void;
 }) {
   const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null);
@@ -289,10 +293,12 @@ export function SettingsPage({
 
       <div className="settings-list">
         {providerIds.map((id) => (
-          <ProviderRow key={id} id={id} choice={providers} onChange={onProviderChange} />
+          <ProviderRow key={id} id={id} choice={providers} onChange={onSnapshot} />
         ))}
 
         <ProxyHubSettingsRows />
+
+        <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
 
         <section className="setting-row">
           <div className="setting-copy">

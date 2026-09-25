@@ -1,6 +1,7 @@
 import type { InstallProgress } from "../shared/ipc";
-import { percent } from "../shared/usage";
-import type { ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
+import type { Creature, Rider } from "../shared/pace";
+import { fiveHourSeconds, monthlySeconds, percent, sevenDaySeconds } from "../shared/usage";
+import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
 
 /** What a provider banks beyond its windows, in the order shown. Opencode reports neither. */
 export const providerExtras = {
@@ -8,6 +9,22 @@ export const providerExtras = {
   claude: ["credits", "spend"],
   opencode: [],
 } as const satisfies Record<ProviderId, readonly ("credits" | "spend")[]>;
+
+/** Every window a provider can report, in the order they are shown. Which of them a reading
+ * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
+ * and OpenAI has switched the 5-hour one off for a plan before, so none of the three is assumed. */
+export function windowEntries(provider: ProviderUsage) {
+  return windowSlots.map(({ slot, ...entry }) => ({ ...entry, window: provider[slot] }));
+}
+
+const windowSlots = [
+  { label: "Short window", span: "5 hours", duration: fiveHourSeconds, slot: "five_hour" },
+  { label: "Long window", span: "7 days", duration: sevenDaySeconds, slot: "seven_day" },
+  { label: "Monthly window", span: "30 days", duration: monthlySeconds, slot: "monthly" },
+] as const;
+
+export const windowLabel = (duration: number) =>
+  windowSlots.find((slot) => slot.duration === duration)?.label ?? "Window";
 
 /** The update strip's wording while an install runs. `percent` is null when the stage cannot be measured. */
 export function installStatus(version: string, progress: InstallProgress) {
@@ -86,6 +103,53 @@ export function creditAmount(
   if (value === null) return "Unavailable";
   const amount = value.toFixed(decimal_places);
   return currency ? `${amount} ${currency}` : amount;
+}
+
+/** A learning time or a runway, coarse on purpose: "40m", "40h", "3d 12h". */
+export function span(seconds: number): string {
+  const minutes = Math.max(0, Math.round(seconds / 60));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  return hours % 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours / 24}d`;
+}
+
+export function perHour(rate: number): string {
+  return `${rate.toFixed(rate < 1 ? 2 : rate < 10 ? 1 : 0)}%/h`;
+}
+
+/** How the current rate compares with the usual one: a multiple for a dragon, a share for a tortoise. */
+function paceComparison(creature: Creature, ratio: number): string {
+  return creature === "dragon"
+    ? `${ratio.toFixed(1)}× your usual pace`
+    : `${Math.round(ratio * 100)}% of your usual pace`;
+}
+
+/** What the creature's tooltip says: how far off the usual pace the window is, and where the current
+ * rate leaves it by the reset. */
+export function creatureTip(
+  { kind: creature, rate, ratio }: Rider,
+  used: number,
+  resetAt: number | null,
+  now: number,
+): string {
+  const lead = `${paceComparison(creature, ratio)} for this window.`;
+  if (resetAt === null) return `${lead} It is moving at ${perHour(rate)}.`;
+  const hoursLeft = Math.max(0, resetAt - now) / 3600;
+  if (creature === "tortoise") {
+    const atReset = Math.min(100, used + rate * hoursLeft);
+    return `${lead} At ${perHour(rate)} you'd be at about ${percent(Math.round(atReset))} when it resets.`;
+  }
+  const runway = Math.max(0, 100 - used) / rate;
+  return runway < hoursLeft
+    ? `${lead} At ${perHour(rate)} it runs out in ${span(runway * 3600)}, before it resets.`
+    : `${lead} At ${perHour(rate)} it still lasts until the reset.`;
+}
+
+/** What a screen reader hears for a window's bar: how much is used, the pace, and how fast it moves. */
+export function usageValueText(used: number | null, pace: UsagePace | null, rider: Rider | null): string {
+  const comparison = rider && paceComparison(rider.kind, rider.ratio);
+  return [`${usagePercent(used)} used`, pace?.label.toLowerCase(), comparison].filter(Boolean).join(", ");
 }
 
 /** Bar tone thresholds: amber from 75% of the window spent, red from 90%. */

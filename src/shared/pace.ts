@@ -3,7 +3,7 @@ import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./us
 
 /** How far from the usual pace a window has to move before a creature shows. The same multiple sets
  * both thresholds: a dragon at `multiple` times the usual pace, a tortoise at one `multiple`th of it. */
-const pacePresets = { calm: 4, normal: 2.5, eager: 1.6 } as const;
+export const pacePresets = { calm: 4, normal: 2.5, eager: 1.6 } as const;
 export type PacePreset = keyof typeof pacePresets;
 export const isPacePreset = (value: unknown): value is PacePreset =>
   typeof value === "string" && Object.hasOwn(pacePresets, value);
@@ -60,7 +60,7 @@ const windowTuning = new Map([
 
 /** Which log a window belongs to. A proxy hub account is kept apart from the direct provider, even
  * when both are the same account. */
-function paceKey(duration: number, provider: ProviderId, hub?: { hubId: string; accountId: string }): string {
+export function paceKey(duration: number, provider: ProviderId, hub?: { hubId: string; accountId: string }): string {
   return hub ? `${hub.hubId}:${provider}:${hub.accountId}:${duration}` : `${provider}:${duration}`;
 }
 
@@ -181,6 +181,18 @@ export function windowPace(
     creature: current === null || kind === null ? null : { kind, rate: current, ratio: current / usual },
     readings: log.readings,
   };
+}
+
+export const riderOf = (pace: WindowPace | undefined): Rider | null =>
+  pace?.status === "learned" ? pace.creature : null;
+
+/** The first creature riding any window, which the one-time explainer introduces. */
+export function firstRider(windows: PaceSnapshot["windows"]): Rider | null {
+  return (
+    Object.values(windows)
+      .map(riderOf)
+      .find((rider) => rider !== null) ?? null
+  );
 }
 
 export function creatureFor(rate: number, usual: number, preset: PacePreset, active: boolean): Creature | null {
