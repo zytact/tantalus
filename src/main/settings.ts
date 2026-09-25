@@ -1,6 +1,8 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RemoteSettings } from "../shared/ipc";
+import { defaultPaceSettings, isPacePreset } from "../shared/pace";
+import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
 import type { ProviderSettings, ProxyHubConfig } from "../shared/usage";
 import { field } from "./parse";
 
@@ -30,6 +32,67 @@ export function loadRemoteSettings(path: string): RemoteSettings {
     return typeof localNetwork === "boolean" && typeof tailscale === "boolean" ? { localNetwork, tailscale } : null;
   });
 }
+
+export function loadPaceSettings(path: string): PaceSettings {
+  return load(path, defaultPaceSettings, defaultPaceSettings, paceSettings);
+}
+
+/** The pace settings in a saved file or a request from the window, or null for anything else. */
+export function paceSettings(value: unknown): PaceSettings | null {
+  const enabled = field(value, "enabled");
+  const preset = field(value, "preset");
+  const explained = field(value, "explained");
+  return typeof enabled === "boolean" && typeof explained === "boolean" && isPacePreset(preset)
+    ? { enabled, preset, explained }
+    : null;
+}
+
+/** A log that does not parse starts over, which only costs the time it takes to learn again. */
+export function loadPaceLogs(path: string): Record<string, PaceLog> {
+  return load(path, {}, {}, (value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const logs = Object.entries(value).map(([key, log]) => [key, paceLog(log)] as const);
+    return logs.every((entry): entry is readonly [string, PaceLog] => entry[1] !== null)
+      ? Object.fromEntries(logs)
+      : null;
+  });
+}
+
+function paceLog(value: unknown): PaceLog | null {
+  const firstSeen = field(value, "firstSeen");
+  const last = paceSample(field(value, "last"));
+  const readings = field(value, "readings");
+  const stretch = field(value, "stretch");
+  if (typeof firstSeen !== "number" || !last || !numbers(readings)) return null;
+  if (stretch === null) return { firstSeen, last, readings, stretch: null };
+  const parsed = paceStretch(stretch);
+  return parsed && { firstSeen, last, readings, stretch: parsed };
+}
+
+function paceStretch(value: unknown): PaceLog["stretch"] {
+  const ticks = field(value, "ticks");
+  const pending = field(value, "pending");
+  const activeAt = field(value, "activeAt");
+  if (!Array.isArray(ticks) || ticks.length === 0 || typeof pending !== "number") return null;
+  const parsed = ticks.map(paceTick);
+  if (!parsed.every((tick) => tick !== null)) return null;
+  return activeAt === null || typeof activeAt === "number" ? { ticks: parsed, pending, activeAt } : null;
+}
+
+function paceTick(value: unknown): PaceTick | null {
+  const epoch = field(value, "epoch");
+  const used = field(value, "used");
+  return typeof epoch === "number" && typeof used === "number" ? { epoch, used } : null;
+}
+
+function paceSample(value: unknown): PaceSample | null {
+  const tick = paceTick(value);
+  const resetAt = field(value, "resetAt");
+  return tick && (resetAt === null || typeof resetAt === "number") ? { ...tick, resetAt } : null;
+}
+
+const numbers = (value: unknown): value is number[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "number");
 
 export function loadProxyHubSettings(path: string): ProxyHubConfig[] {
   return load(path, [], [], (value) => {

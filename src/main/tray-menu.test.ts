@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { defaultPaceSettings } from "../shared/pace";
 import { emptyProviderUsage, fiveHourSeconds, monthlySeconds, sevenDaySeconds } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { bar, trayItems, trayRows } from "./tray-menu";
@@ -58,6 +59,7 @@ describe("tray menu", () => {
     opencode: emptyProviderUsage(),
     enabled,
     proxy_hubs: [],
+    pace: { settings: defaultPaceSettings, windows: {} },
   });
 
   it("lists enabled providers, when they were read, then the actions led by an update", () => {

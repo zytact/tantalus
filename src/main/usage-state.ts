@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ProxyHubInput } from "../shared/ipc";
+import type { PaceSettings } from "../shared/pace";
 import { emptyProviderUsage, emptyProxyHubSnapshot, nowEpoch, providerIds } from "../shared/usage";
 import type {
   ProviderId,
@@ -12,6 +13,8 @@ import type {
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
+import { noActivity } from "./pace-tracker";
+import type { PaceTracker } from "./pace-tracker";
 import { ProxyHubError, ProxyHubRejected } from "./proxy-hub-api";
 import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./settings";
 
@@ -32,6 +35,7 @@ export class UsageState {
     private readonly readProvider: (provider: ProviderId) => Promise<ProviderUsage>,
     private readonly readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]>,
     private readonly publish: (snapshot: UsageSnapshot) => void,
+    private readonly pace: PaceTracker,
   ) {
     this.hubConfigs = loadProxyHubSettings(proxyHubSettingsPath);
     this.snapshot = {
@@ -42,6 +46,7 @@ export class UsageState {
       proxy_hubs: this.hubConfigs
         .filter(({ enabled }) => enabled)
         .map((config) => emptyProxyHubSnapshot(redact(config))),
+      pace: { settings: pace.settings, windows: {} },
     };
   }
 
@@ -63,7 +68,7 @@ export class UsageState {
         const config = this.hubConfigs.find(({ id }) => id === hub.id);
         return config && hub.status !== "rejected" ? [{ hub, config }] : [];
       });
-      const [providerReadings, hubReadings] = await Promise.all([
+      const [providerReadings, hubReadings, activity] = await Promise.all([
         Promise.all(
           providerIds.map(async (id) => {
             if (!this.snapshot.enabled[id]) return null;
@@ -82,6 +87,7 @@ export class UsageState {
             ),
           })),
         ),
+        this.pace.readActivity().catch(() => noActivity),
       ]);
       const next = { ...this.snapshot };
       for (const result of providerReadings) {
@@ -95,11 +101,11 @@ export class UsageState {
         const result = readings.get(hub);
         return result ? applyHubReading(hub, redact(result.config), result.reading) : hub;
       });
-      this.snapshot = next;
+      this.snapshot = this.pace.track(next, activity);
       if (!this.again) {
         this.running = null;
-        this.publish(next);
-        return next;
+        this.publish(this.snapshot);
+        return this.snapshot;
       }
     }
   }
@@ -111,9 +117,17 @@ export class UsageState {
     saveSettings(this.providerSettingsPath, settings);
     const next = { ...this.snapshot, enabled: settings };
     if (!enabled) next[provider] = emptyProviderUsage();
-    this.snapshot = next;
-    this.publish(next);
-    return enabled ? this.refresh() : Promise.resolve(next);
+    this.snapshot = this.pace.annotate(next);
+    this.publish(this.snapshot);
+    return enabled ? this.refresh() : Promise.resolve(this.snapshot);
+  }
+
+  /** Saves the choice before it takes effect, and shows it straight away without a read. */
+  setPaceSettings(settings: PaceSettings): UsageSnapshot {
+    this.pace.setSettings(settings);
+    this.snapshot = this.pace.annotate(this.snapshot);
+    this.publish(this.snapshot);
+    return this.snapshot;
   }
 
   proxyHubs(): ProxyHubSettings[] {
@@ -181,12 +195,12 @@ export class UsageState {
     saveSettings(this.proxyHubSettingsPath, configs);
     this.hubConfigs = configs;
     const current = new Map(snapshots.map((hub) => [hub.id, hub]));
-    this.snapshot = {
+    this.snapshot = this.pace.annotate({
       ...this.snapshot,
       proxy_hubs: configs
         .filter(({ enabled }) => enabled)
         .map((config) => current.get(config.id) ?? emptyProxyHubSnapshot(redact(config))),
-    };
+    });
     this.publish(this.snapshot);
     if (refresh) void this.refresh();
     return this.proxyHubs();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { defaultPaceSettings } from "../shared/pace";
 import { clockEpoch, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import {
@@ -84,6 +85,7 @@ describe("display contract", () => {
       opencode: provider(),
       enabled: { codex: true, claude: false, opencode: true },
       proxy_hubs: [],
+      pace: { settings: defaultPaceSettings, windows: {} },
     };
     expect(refreshedEpoch(snapshot)).toBe(now - 600);
     expect(

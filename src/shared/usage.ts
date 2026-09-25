@@ -1,3 +1,5 @@
+import type { PaceSnapshot } from "./pace";
+
 export type WindowUsage = {
   used_percent: number | null;
   limit_window_seconds: number | null;
@@ -64,6 +66,7 @@ export type ProviderSettings = Record<ProviderId, boolean>;
 export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
   enabled: ProviderSettings;
   proxy_hubs: ProxyHubSnapshot[];
+  pace: PaceSnapshot;
 };
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
