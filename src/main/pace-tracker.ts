@@ -1,12 +1,10 @@
 import { claimActivity, paceWindows, recordSample, windowPace } from "../shared/pace";
-import type { PaceLog, PaceSettings, WindowPace } from "../shared/pace";
+import type { Activity, PaceLog, PaceSettings, WindowPace } from "../shared/pace";
 import { nowEpoch } from "../shared/usage";
-import type { ProviderId, UsageSnapshot } from "../shared/usage";
+import type { UsageSnapshot } from "../shared/usage";
 import { loadPaceLogs, loadPaceSettings, saveSettings } from "./settings";
 
-/** Whether a local session of each provider changed recently. */
-export type Activity = Record<ProviderId, boolean>;
-export const noActivity: Activity = { codex: false, claude: false, opencode: false };
+export const noActivity: Activity = { codex: null, claude: null, opencode: null };
 
 /** A log with no sample for this long belongs to an account that is gone. */
 const FORGET_AFTER = 60 * 86_400;
@@ -16,8 +14,8 @@ const FORGET_AFTER = 60 * 86_400;
 export class PaceTracker {
   settings: PaceSettings;
   private readonly logs: Map<string, PaceLog>;
-  /** The windows the latest local activity belongs to. */
-  private active = new Set<string>();
+  /** The windows the latest local activity belongs to, and when each was last worked on. */
+  private active = new Map<string, number>();
 
   constructor(
     private readonly logPath: string,
@@ -35,7 +33,7 @@ export class PaceTracker {
     for (const { key, duration, window, epoch } of windows) {
       if (epoch === null || window.used_percent === null) continue;
       const sample = { epoch, used: window.used_percent, resetAt: window.reset_at_epoch };
-      this.logs.set(key, recordSample(this.logs.get(key), sample, duration, this.active.has(key)));
+      this.logs.set(key, recordSample(this.logs.get(key), sample, duration, this.active.get(key) ?? null));
     }
     for (const [key, log] of this.logs) {
       if (now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);

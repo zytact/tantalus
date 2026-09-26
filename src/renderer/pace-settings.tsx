@@ -2,7 +2,7 @@ import { useState } from "react";
 import { creatureFor, pacePresets, paceWindows } from "../shared/pace";
 import type { PacePreset, PaceSettings, WindowPace } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
-import { absoluteTime, perHour, span, windowLabel } from "./presentation";
+import { absoluteTime, learningByUse, perHour, span, windowLabel } from "./presentation";
 import { SettingPending, Toggle } from "./settings-controls";
 
 const presets = [
@@ -154,16 +154,13 @@ function Learning({ title, pace }: { title: string; pace: Extract<WindowPace, { 
         <span className="rule-fill" style={{ width: `${(pace.watched_seconds / pace.learn_seconds) * 100}%` }} />
       </div>
       <p>
-        {pace.starts_at_epoch === null ? (
-          "Waiting for you to use it."
-        ) : (
+        {pace.until.kind === "time" ? (
           <>
             Done learning{" "}
-            <time dateTime={new Date(pace.starts_at_epoch * 1000).toISOString()}>
-              {absoluteTime(pace.starts_at_epoch)}
-            </time>
-            .
+            <time dateTime={new Date(pace.until.epoch * 1000).toISOString()}>{absoluteTime(pace.until.epoch)}</time>.
           </>
+        ) : (
+          `Learning ${learningByUse(pace.until.in_use)}.`
         )}
       </p>
     </div>
@@ -197,7 +194,7 @@ function Learned({
       </div>
       <p>
         Usual <b>{perHour(pace.usual_rate)}</b> · Right now{" "}
-        <b>{pace.current_rate === null ? "idle" : perHour(pace.current_rate)}</b>
+        <b>{pace.current.kind === "moving" ? perHour(pace.current.rate) : pace.current.kind}</b>
       </p>
     </div>
   );

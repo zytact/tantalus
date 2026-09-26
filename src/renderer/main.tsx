@@ -21,6 +21,7 @@ import {
   absoluteTime,
   countdown,
   creatureTip,
+  learningByUse,
   creditAmount,
   creditExpiry,
   isRefreshShortcut,
@@ -269,22 +270,22 @@ function LearningLine({
 }) {
   const learning = windows.flatMap(({ label, duration }) => {
     const pace = paceOf(duration);
-    return pace?.status === "learning" ? [{ label, startsAt: pace.starts_at_epoch }] : [];
+    return pace?.status === "learning" ? [{ label, until: pace.until }] : [];
   });
   if (learning.length === 0) return null;
   return (
     <p className="subscription-date">
       Learning your usual pace.
-      {learning.map(({ label, startsAt }) => (
+      {learning.map(({ label, until }) => (
         <Fragment key={label}>
           {" "}
           The {label.toLowerCase()}{" "}
-          {startsAt === null ? (
-            "waits for your first use"
-          ) : (
+          {until.kind === "time" ? (
             <>
-              is done <time dateTime={new Date(startsAt * 1000).toISOString()}>{absoluteTime(startsAt)}</time>
+              is done <time dateTime={new Date(until.epoch * 1000).toISOString()}>{absoluteTime(until.epoch)}</time>
             </>
+          ) : (
+            learningByUse(until.in_use)
           )}
           .
         </Fragment>

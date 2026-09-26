@@ -11,20 +11,30 @@ export type PaceSettings = { enabled: boolean; preset: PacePreset; explained: bo
 export const defaultPaceSettings: PaceSettings = { enabled: true, preset: "normal", explained: false };
 
 export type Creature = "dragon" | "tortoise";
-/** A creature riding a window's bar, with the rate that put it there. `ratio` is the rate over the usual one. */
-export type Rider = { kind: Creature; rate: number; ratio: number };
+/** A creature riding a window's bar, with the current rate that put it there and the usual one. */
+export type Rider = { kind: Creature; rate: number; usual: number };
 
-/** What the window shows for one window's pace. Rates are in percent of the window per hour. A window
- * that saw no use while it was watched has no start time, since it starts after its first reading. */
+/** What ends a window's learning: the end of its watching time, or else its first reading. `in_use`
+ * says whether the provider is being used toward that reading. */
+export type LearnUntil = { kind: "time"; epoch: number } | { kind: "reading"; in_use: boolean };
+
+/** How a window is moving right now. It is measuring while it is in use but has too few rises for a rate. */
+export type CurrentPace = { kind: "moving"; rate: number } | { kind: "measuring" } | { kind: "idle" };
+
+/** What the window shows for one window's pace. Rates are in percent of the window per hour. */
 export type WindowPace =
-  | { status: "learning"; watched_seconds: number; learn_seconds: number; starts_at_epoch: number | null }
+  | { status: "learning"; watched_seconds: number; learn_seconds: number; until: LearnUntil }
   | {
       status: "learned";
       usual_rate: number;
-      current_rate: number | null;
+      current: CurrentPace;
       creature: Rider | null;
       readings: number[];
     };
+
+/** When a local session of each provider last changed, in epoch seconds, or null when none changed
+ * recently. */
+export type Activity = Record<ProviderId, number | null>;
 
 /** Every tracked window's pace, keyed by `paceKey`. Empty while the creatures are switched off. */
 export type PaceSnapshot = { settings: PaceSettings; windows: Partial<Record<string, WindowPace>> };
@@ -99,12 +109,13 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
 }
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
- * and duration that ticked last. An account nobody is using stays idle while another one is busy. */
+ * and duration that ticked last. An account nobody is using stays idle while another one is busy.
+ * Returns when each claimed window was last worked on. */
 export function claimActivity(
   windows: PaceWindow[],
   logs: ReadonlyMap<string, PaceLog>,
-  activity: Record<ProviderId, boolean>,
-): Set<string> {
+  activity: Activity,
+): Map<string, number> {
   const lastTick = (key: string) => {
     const stretch = logs.get(key)?.stretch;
     return stretch ? newest(stretch).epoch : 0;
@@ -114,28 +125,36 @@ export function claimActivity(
     const group = `${provider}:${duration}`;
     latest.set(group, Math.max(latest.get(group) ?? 0, lastTick(key)));
   }
-  return new Set(
-    windows
-      .filter(
-        ({ key, provider, duration }) => activity[provider] && lastTick(key) === latest.get(`${provider}:${duration}`),
-      )
-      .map(({ key }) => key),
+  return new Map(
+    windows.flatMap(({ key, provider, duration }) => {
+      const workedAt = activity[provider];
+      return workedAt !== null && lastTick(key) === latest.get(`${provider}:${duration}`) ? [[key, workedAt]] : [];
+    }),
   );
 }
 
-/** Folds one successful reading into a window's log. `active` says whether a local session of the
- * window's provider changed recently, which keeps a stretch going through a slow patch. */
-export function recordSample(log: PaceLog | undefined, sample: PaceSample, duration: number, active: boolean): PaceLog {
+/** Folds one successful reading into a window's log. `workedAt` is when a local session of the
+ * window's provider last changed, which keeps a stretch going through a slow patch. */
+export function recordSample(
+  log: PaceLog | undefined,
+  sample: PaceSample,
+  duration: number,
+  workedAt: number | null,
+): PaceLog {
   if (!log) return { firstSeen: sample.epoch, last: sample, stretch: null, readings: [] };
   if (sample.epoch <= log.last.epoch) return log;
   const next = { ...log, last: sample };
   const reset =
     sample.used < log.last.used ||
     (sample.resetAt !== null && log.last.resetAt !== null && Math.abs(sample.resetAt - log.last.resetAt) > RESET_DRIFT);
-  const stretch = log.stretch && sample.epoch - lastSeen(log.stretch) <= quietGap(duration) ? log.stretch : null;
+  const stretch = openStretch(log, duration, sample.epoch);
   if (reset || sample.epoch - log.last.epoch > MAX_SAMPLE_GAP) return { ...next, stretch: null };
   if (sample.used === log.last.used) {
-    return { ...next, stretch: stretch && active ? { ...stretch, activeAt: sample.epoch } : stretch };
+    return {
+      ...next,
+      stretch:
+        stretch && workedAt !== null ? { ...stretch, activeAt: Math.max(stretch.activeAt ?? 0, workedAt) } : stretch,
+    };
   }
   const tick = { epoch: sample.epoch, used: sample.used };
   if (!stretch) return { ...next, stretch: { ticks: [tick], pending: 0, activeAt: null } };
@@ -168,17 +187,19 @@ export function windowPace(
       status: "learning",
       watched_seconds: Math.min(watched, tuning.learnSeconds),
       learn_seconds: tuning.learnSeconds,
-      starts_at_epoch: watched < tuning.learnSeconds ? log.firstSeen + tuning.learnSeconds : null,
+      until:
+        watched < tuning.learnSeconds
+          ? { kind: "time", epoch: log.firstSeen + tuning.learnSeconds }
+          : { kind: "reading", in_use: active || openStretch(log, duration, now) !== null },
     };
   }
   const usual = median(log.readings);
-  const current = currentRate(log, duration, now);
-  const kind = current === null ? null : creatureFor(current, usual, preset, active);
+  const current = currentPace(log, duration, now, active);
   return {
     status: "learned",
     usual_rate: usual,
-    current_rate: current,
-    creature: current === null || kind === null ? null : { kind, rate: current, ratio: current / usual },
+    current,
+    creature: rider(current, usual, preset, active),
     readings: log.readings,
   };
 }
@@ -201,13 +222,24 @@ export function creatureFor(rate: number, usual: number, preset: PacePreset, act
   return active && rate <= usual / multiple ? "tortoise" : null;
 }
 
-/** The rate across the newest ticks, timed up to now so it falls on its own once ticks stop coming.
- * A stretch that has gone quiet has no current rate. */
-function currentRate(log: PaceLog, duration: number, now: number): number | null {
-  const stretch = log.stretch;
-  if (!stretch || stretch.ticks.length <= RATE_TICKS) return null;
-  if (now - lastSeen(stretch) > quietGap(duration)) return null;
-  return rate(stretch.ticks[0], newest(stretch), now);
+function rider(current: CurrentPace, usual: number, preset: PacePreset, active: boolean): Rider | null {
+  if (current.kind !== "moving") return null;
+  const kind = creatureFor(current.rate, usual, preset, active);
+  return kind && { kind, rate: current.rate, usual };
+}
+
+/** The rate across the newest ticks, timed up to the last sign of work, the newest tick or a later
+ * session change, so a pause with nothing running does not count as going slow. */
+function currentPace(log: PaceLog, duration: number, now: number, active: boolean): CurrentPace {
+  const stretch = openStretch(log, duration, now);
+  if (!stretch) return { kind: active ? "measuring" : "idle" };
+  if (stretch.ticks.length <= RATE_TICKS) return { kind: "measuring" };
+  return { kind: "moving", rate: rate(stretch.ticks[0], newest(stretch), lastSeen(stretch)) };
+}
+
+/** The window's stretch, unless it has gone quiet. */
+function openStretch(log: PaceLog, duration: number, now: number): Stretch | null {
+  return log.stretch && now - lastSeen(log.stretch) <= quietGap(duration) ? log.stretch : null;
 }
 
 const rate = (from: PaceTick, to: PaceTick, until: number) => (to.used - from.used) / ((until - from.epoch) / 3600);

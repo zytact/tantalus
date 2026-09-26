@@ -27,6 +27,6 @@ describe("local activity", () => {
     session(join(root, "codex", "sessions", "2026", "09", "25", "rollout.jsonl"), 5, now);
     session(join(root, "claude", "projects", "tantalus", "session.jsonl"), 60, now);
     session(join(root, "data", "opencode", "opencode.db-wal"), 1, now);
-    expect(await readActivity(now)).toEqual({ codex: true, claude: false, opencode: true });
+    expect(await readActivity(now)).toEqual({ codex: now / 1000 - 300, claude: null, opencode: now / 1000 - 60 });
   });
 });
