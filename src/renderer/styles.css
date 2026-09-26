@@ -250,6 +250,14 @@ button:focus-visible {
 button.quiet {
   border-color: transparent;
 }
+button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--canvas);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger);
+}
 
 /* The release notes page covers the whole window, with the install action pinned below it. */
 .release-notes {

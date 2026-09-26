@@ -153,11 +153,13 @@ function ResetLearning({ onSnapshot }: { onSnapshot: (snapshot: UsageSnapshot) =
     ? {
         copy: "Forget every reading? Each window starts learning your pace from scratch.",
         action: "Forget",
+        className: "danger",
         onClick: () => run(() => window.tantalus.invoke("resetPace"), "Could not reset what Tantalus learned."),
       }
     : {
         copy: "Start over when your habits change. Each window learns your pace from scratch.",
         action: "Reset",
+        className: undefined,
         onClick: () => setConfirming(true),
       };
   return (
@@ -173,7 +175,7 @@ function ResetLearning({ onSnapshot }: { onSnapshot: (snapshot: UsageSnapshot) =
               Cancel
             </button>
           )}
-          <button disabled={pending} onClick={step.onClick}>
+          <button className={step.className} disabled={pending} onClick={step.onClick}>
             {step.action}
           </button>
         </div>
