@@ -154,16 +154,15 @@ function Learning({ title, pace }: { title: string; pace: Extract<WindowPace, { 
         <span className="rule-fill" style={{ width: `${(pace.watched_seconds / pace.learn_seconds) * 100}%` }} />
       </div>
       <p>
-        {pace.starts_at_epoch === null ? (
-          "Waiting for you to use it."
-        ) : (
+        {pace.until.kind === "time" ? (
           <>
             Done learning{" "}
-            <time dateTime={new Date(pace.starts_at_epoch * 1000).toISOString()}>
-              {absoluteTime(pace.starts_at_epoch)}
-            </time>
-            .
+            <time dateTime={new Date(pace.until.epoch * 1000).toISOString()}>{absoluteTime(pace.until.epoch)}</time>.
           </>
+        ) : pace.until.in_use ? (
+          "Needs a little more use to finish."
+        ) : (
+          "Starts when you next use it."
         )}
       </p>
     </div>
@@ -197,7 +196,7 @@ function Learned({
       </div>
       <p>
         Usual <b>{perHour(pace.usual_rate)}</b> · Right now{" "}
-        <b>{pace.current_rate === null ? "idle" : perHour(pace.current_rate)}</b>
+        <b>{pace.current.kind === "moving" ? perHour(pace.current.rate) : pace.current.kind}</b>
       </p>
     </div>
   );

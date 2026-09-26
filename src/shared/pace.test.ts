@@ -21,17 +21,28 @@ const steady = (from: number, ticks: number) =>
   Array.from({ length: ticks * 2 + 1 }, (_, index) => from + Math.floor(index / 2));
 
 describe("pace from ticks", () => {
-  it("measures the newest ticks up to now, so the rate falls once they stop", () => {
+  it("measures the newest ticks up to the last sign of work, so a pause is not slow", () => {
     const log = poll(steady(10, 4));
     const last = start + 8 * 300;
     expect(windowPace(log, fiveHourSeconds, last, "normal", false)).toMatchObject({ status: "learning" });
 
     const watched = { ...log, firstSeen: last - 5 * 3600 };
-    const now = windowPace(watched, fiveHourSeconds, last, "normal", false);
-    expect(now).toMatchObject({ status: "learned", usual_rate: 6 });
-    expect(now?.status === "learned" && now.current_rate).toBeCloseTo(6);
-    const later = windowPace(watched, fiveHourSeconds, last + 1800, "normal", false);
-    expect(later?.status === "learned" && later.current_rate).toBeCloseTo(3);
+    expect(windowPace(watched, fiveHourSeconds, last, "normal", false)).toMatchObject({
+      status: "learned",
+      usual_rate: 6,
+      current: { kind: "moving", rate: 6 },
+    });
+    const paused = windowPace(watched, fiveHourSeconds, last + 1800, "normal", false);
+    expect(paused).toMatchObject({ current: { kind: "moving", rate: 6 }, creature: null });
+  });
+
+  it("is measuring while in use with too few rises for a rate", () => {
+    const log = { ...poll(steady(10, 4)), firstSeen: start - 5 * 3600 };
+    const resumed = poll([0, 1], { log, from: start + 9 * 300 });
+    const now = start + 10 * 300;
+    expect(windowPace(resumed, fiveHourSeconds, now, "normal", false)).toMatchObject({
+      current: { kind: "measuring" },
+    });
   });
 
   it("never measures across a reset", () => {
@@ -50,18 +61,19 @@ describe("pace from ticks", () => {
     expect(resumed.stretch).toBeNull();
   });
 
-  it("shows nothing once the window goes quiet, unless the provider is in use", () => {
+  it("is idle once the window goes quiet, and slow when the provider works without rising", () => {
     const log = { ...poll(steady(10, 4)), firstSeen: start - 5 * 3600 };
     const quiet = start + 7200;
-    expect(windowPace(log, fiveHourSeconds, quiet, "normal", true)).toMatchObject({ current_rate: null });
+    expect(windowPace(log, fiveHourSeconds, quiet, "normal", false)).toMatchObject({ current: { kind: "idle" } });
+    expect(windowPace(log, fiveHourSeconds, quiet, "normal", true)).toMatchObject({ current: { kind: "measuring" } });
 
     const busy = poll(
       Array.from({ length: 12 }, () => 14),
       { log, from: start + 9 * 300, active: true },
     );
-    const slow = windowPace(busy, fiveHourSeconds, quiet, "normal", true);
-    expect(slow).toMatchObject({ creature: { kind: "tortoise" } });
-    expect(slow?.status === "learned" && slow.creature?.ratio).toBeCloseTo(0.27, 2);
+    const slow = windowPace(busy, fiveHourSeconds, start + 20 * 300, "normal", true);
+    expect(slow).toMatchObject({ creature: { kind: "tortoise", usual: 6 } });
+    expect(slow?.status === "learned" && slow.creature?.rate).toBeCloseTo(2);
   });
 });
 
@@ -72,11 +84,15 @@ describe("learning", () => {
       status: "learning",
       watched_seconds: 3600,
       learn_seconds: 84 * 3600,
-      starts_at_epoch: start + 84 * 3600,
+      until: { kind: "time", epoch: start + 84 * 3600 },
     });
     expect(windowPace(fresh, sevenDaySeconds, start + 90 * 3600, "normal", false)).toMatchObject({
       status: "learning",
-      starts_at_epoch: null,
+      until: { kind: "use", in_use: false },
+    });
+    const using = { ...poll([5, 6]), firstSeen: start - 90 * 3600 };
+    expect(windowPace(using, sevenDaySeconds, start + 300, "normal", false)).toMatchObject({
+      until: { kind: "use", in_use: true },
     });
   });
 });

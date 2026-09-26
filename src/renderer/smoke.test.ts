@@ -195,22 +195,22 @@ describe("creature tooltip", () => {
   const resetIn = (hours: number) => now + hours * 3600;
 
   it("says when a dragon runs the window out, and when it does not", () => {
-    const dragon = { kind: "dragon", rate: 24, ratio: 2.8 } as const;
+    const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
     expect(creatureTip(dragon, 64, resetIn(3), now)).toBe(
-      "2.8× your usual pace for this window. At 24%/h it runs out in 1h 30m, before it resets.",
+      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate it runs out in 1h 30m, before it resets.",
     );
     expect(creatureTip(dragon, 64, resetIn(1), now)).toBe(
-      "2.8× your usual pace for this window. At 24%/h it still lasts until the reset.",
+      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate it lasts until the reset.",
     );
   });
 
   it("says where a tortoise leaves the window at the reset", () => {
-    const tortoise = { kind: "tortoise", rate: 0.3, ratio: 0.28 } as const;
+    const tortoise = { kind: "tortoise", rate: 0.3, usual: 1.1 } as const;
     expect(creatureTip(tortoise, 22, resetIn(120), now)).toBe(
-      "28% of your usual pace for this window. At 0.30%/h you'd be at about 58% when it resets.",
+      "Slower than usual. 0.30%/h now, against your usual 1.1%/h. At this rate you'd be at about 58% when it resets.",
     );
     const pace = { expectedPercent: 40, status: "under", label: "Under pace" } as const;
-    expect(usageValueText(22, pace, tortoise)).toBe("22% used, under pace, 28% of your usual pace");
+    expect(usageValueText(22, pace, tortoise)).toBe("22% used, under pace, 27% of your usual pace");
     expect(usageValueText(null, null, null)).toBe("Unavailable used");
   });
 });

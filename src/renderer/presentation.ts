@@ -118,37 +118,34 @@ export function perHour(rate: number): string {
   return `${rate.toFixed(rate < 1 ? 2 : rate < 10 ? 1 : 0)}%/h`;
 }
 
+const paceDirection = { dragon: "Faster", tortoise: "Slower" } satisfies Record<Creature, string>;
+
 /** How the current rate compares with the usual one: a multiple for a dragon, a share for a tortoise. */
-function paceComparison(creature: Creature, ratio: number): string {
-  return creature === "dragon"
-    ? `${ratio.toFixed(1)}× your usual pace`
-    : `${Math.round(ratio * 100)}% of your usual pace`;
+function paceComparison({ kind, rate, usual }: Rider): string {
+  const ratio = rate / usual;
+  return kind === "dragon" ? `${ratio.toFixed(1)}× your usual pace` : `${Math.round(ratio * 100)}% of your usual pace`;
 }
 
-/** What the creature's tooltip says: how far off the usual pace the window is, and where the current
- * rate leaves it by the reset. */
-export function creatureTip(
-  { kind: creature, rate, ratio }: Rider,
-  used: number,
-  resetAt: number | null,
-  now: number,
-): string {
-  const lead = `${paceComparison(creature, ratio)} for this window.`;
-  if (resetAt === null) return `${lead} It is moving at ${perHour(rate)}.`;
+/** What the creature's tooltip says: the current rate next to the usual one, and where the current
+ * rate leaves the window by the reset. */
+export function creatureTip(rider: Rider, used: number, resetAt: number | null, now: number): string {
+  const { kind, rate, usual } = rider;
+  const lead = `${paceDirection[kind]} than usual. ${perHour(rate)} now, against your usual ${perHour(usual)}.`;
+  if (resetAt === null) return lead;
   const hoursLeft = Math.max(0, resetAt - now) / 3600;
-  if (creature === "tortoise") {
+  if (kind === "tortoise") {
     const atReset = Math.min(100, used + rate * hoursLeft);
-    return `${lead} At ${perHour(rate)} you'd be at about ${percent(Math.round(atReset))} when it resets.`;
+    return `${lead} At this rate you'd be at about ${percent(Math.round(atReset))} when it resets.`;
   }
   const runway = Math.max(0, 100 - used) / rate;
   return runway < hoursLeft
-    ? `${lead} At ${perHour(rate)} it runs out in ${span(runway * 3600)}, before it resets.`
-    : `${lead} At ${perHour(rate)} it still lasts until the reset.`;
+    ? `${lead} At this rate it runs out in ${span(runway * 3600)}, before it resets.`
+    : `${lead} At this rate it lasts until the reset.`;
 }
 
 /** What a screen reader hears for a window's bar: how much is used, the pace, and how fast it moves. */
 export function usageValueText(used: number | null, pace: UsagePace | null, rider: Rider | null): string {
-  const comparison = rider && paceComparison(rider.kind, rider.ratio);
+  const comparison = rider && paceComparison(rider);
   return [`${usagePercent(used)} used`, pace?.label.toLowerCase(), comparison].filter(Boolean).join(", ");
 }
 
