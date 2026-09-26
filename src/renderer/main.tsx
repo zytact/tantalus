@@ -21,6 +21,7 @@ import {
   absoluteTime,
   countdown,
   creatureTip,
+  learningByUse,
   creditAmount,
   creditExpiry,
   isRefreshShortcut,
@@ -283,10 +284,8 @@ function LearningLine({
             <>
               is done <time dateTime={new Date(until.epoch * 1000).toISOString()}>{absoluteTime(until.epoch)}</time>
             </>
-          ) : until.in_use ? (
-            "needs a little more use to finish"
           ) : (
-            "starts when you next use it"
+            learningByUse(until.in_use)
           )}
           .
         </Fragment>

@@ -1,9 +1,9 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import type { Activity } from "../shared/pace";
 import type { ProviderId } from "../shared/usage";
 import { dataDirectory } from "./auth";
-import type { Activity } from "./pace-tracker";
 
 /** A session file that changed this recently means the provider is in use. It spans a few polls, so a
  * long tool call that writes nothing while it runs still counts. */
@@ -36,7 +36,8 @@ export async function readActivity(now = Date.now()): Promise<Activity> {
         ),
       ),
     );
-    return changed.some((time) => time >= now - LOOKBACK);
+    const latest = changed.reduce((newest, time) => Math.max(newest, time), 0);
+    return latest >= now - LOOKBACK ? Math.floor(latest / 1000) : null;
   };
   const [codex, claude, opencode] = await Promise.all([active("codex"), active("claude"), active("opencode")]);
   return { codex, claude, opencode };

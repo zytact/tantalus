@@ -118,6 +118,10 @@ export function perHour(rate: number): string {
   return `${rate.toFixed(rate < 1 ? 2 : rate < 10 ? 1 : 0)}%/h`;
 }
 
+/** How a window still learning its pace will finish, when that waits on use rather than time. */
+export const learningByUse = (inUse: boolean) =>
+  inUse ? "needs a little more use to finish" : "finishes once you use it";
+
 const paceDirection = { dragon: "Faster", tortoise: "Slower" } satisfies Record<Creature, string>;
 
 /** How the current rate compares with the usual one: a multiple for a dragon, a share for a tortoise. */

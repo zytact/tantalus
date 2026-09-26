@@ -11,7 +11,12 @@ function poll(percentages: number[], options: { log?: PaceLog; from?: number; ac
   const from = options.from ?? start;
   return percentages.reduce<PaceLog | undefined>(
     (log, used, index) =>
-      recordSample(log, { epoch: from + index * 300, used, resetAt: reset }, fiveHourSeconds, options.active ?? false),
+      recordSample(
+        log,
+        { epoch: from + index * 300, used, resetAt: reset },
+        fiveHourSeconds,
+        options.active ? from + index * 300 : null,
+      ),
     options.log,
   )!;
 }
@@ -32,8 +37,11 @@ describe("pace from ticks", () => {
       usual_rate: 6,
       current: { kind: "moving", rate: 6 },
     });
-    const paused = windowPace(watched, fiveHourSeconds, last + 1800, "normal", false);
-    expect(paused).toMatchObject({ current: { kind: "moving", rate: 6 }, creature: null });
+    const paused = recordSample(watched, { epoch: last + 900, used: 14, resetAt: reset }, fiveHourSeconds, last);
+    expect(windowPace(paused, fiveHourSeconds, last + 900, "normal", true)).toMatchObject({
+      current: { kind: "moving", rate: 6 },
+      creature: null,
+    });
   });
 
   it("is measuring while in use with too few rises for a rate", () => {
@@ -57,7 +65,12 @@ describe("pace from ticks", () => {
 
   it("does not time a rise across a gap in polling", () => {
     const log = poll([10, 11]);
-    const resumed = recordSample(log, { epoch: start + 3 * 3600, used: 30, resetAt: reset }, fiveHourSeconds, true);
+    const resumed = recordSample(
+      log,
+      { epoch: start + 3 * 3600, used: 30, resetAt: reset },
+      fiveHourSeconds,
+      start + 3 * 3600,
+    );
     expect(resumed.stretch).toBeNull();
   });
 
@@ -88,11 +101,11 @@ describe("learning", () => {
     });
     expect(windowPace(fresh, sevenDaySeconds, start + 90 * 3600, "normal", false)).toMatchObject({
       status: "learning",
-      until: { kind: "use", in_use: false },
+      until: { kind: "reading", in_use: false },
     });
     const using = { ...poll([5, 6]), firstSeen: start - 90 * 3600 };
     expect(windowPace(using, sevenDaySeconds, start + 300, "normal", false)).toMatchObject({
-      until: { kind: "use", in_use: true },
+      until: { kind: "reading", in_use: true },
     });
   });
 });
@@ -130,7 +143,9 @@ describe("local activity", () => {
       ["hub", poll(steady(10, 4), { from: start + 3600 })],
     ]);
     const windows = [window("direct"), window("hub")];
-    expect(claimActivity(windows, logs, { codex: true, claude: false, opencode: false })).toEqual(new Set(["hub"]));
-    expect(claimActivity(windows, logs, { codex: false, claude: false, opencode: false })).toEqual(new Set());
+    expect(claimActivity(windows, logs, { codex: start, claude: null, opencode: null })).toEqual(
+      new Map([["hub", start]]),
+    );
+    expect(claimActivity(windows, logs, { codex: null, claude: null, opencode: null })).toEqual(new Map());
   });
 });

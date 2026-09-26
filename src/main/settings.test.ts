@@ -95,8 +95,8 @@ describe("pace settings", () => {
 
   it("keeps a pace log through a reload and starts over from a malformed one", () => {
     const file = path();
-    const first = recordSample(undefined, { epoch: 1000, used: 4, resetAt: 9000 }, 18_000, false);
-    const logs = { "codex:18000": recordSample(first, { epoch: 1300, used: 5, resetAt: 9000 }, 18_000, true) };
+    const first = recordSample(undefined, { epoch: 1000, used: 4, resetAt: 9000 }, 18_000, null);
+    const logs = { "codex:18000": recordSample(first, { epoch: 1300, used: 5, resetAt: 9000 }, 18_000, 1300) };
     saveSettings(file, logs);
     expect(loadPaceLogs(file)).toEqual(logs);
     writeFileSync(file, '{"codex:18000":{"firstSeen":"soon"}}');

@@ -15,8 +15,8 @@ export type Creature = "dragon" | "tortoise";
 export type Rider = { kind: Creature; rate: number; usual: number };
 
 /** What ends a window's learning: the end of its watching time, or else its first reading. `in_use`
- * says whether a run of rises toward that reading is already going. */
-export type LearnUntil = { kind: "time"; epoch: number } | { kind: "use"; in_use: boolean };
+ * says whether the provider is being used toward that reading. */
+export type LearnUntil = { kind: "time"; epoch: number } | { kind: "reading"; in_use: boolean };
 
 /** How a window is moving right now. It is measuring while it is in use but has too few rises for a rate. */
 export type CurrentPace = { kind: "moving"; rate: number } | { kind: "measuring" } | { kind: "idle" };
@@ -31,6 +31,10 @@ export type WindowPace =
       creature: Rider | null;
       readings: number[];
     };
+
+/** When a local session of each provider last changed, in epoch seconds, or null when none changed
+ * recently. */
+export type Activity = Record<ProviderId, number | null>;
 
 /** Every tracked window's pace, keyed by `paceKey`. Empty while the creatures are switched off. */
 export type PaceSnapshot = { settings: PaceSettings; windows: Partial<Record<string, WindowPace>> };
@@ -105,12 +109,13 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
 }
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
- * and duration that ticked last. An account nobody is using stays idle while another one is busy. */
+ * and duration that ticked last. An account nobody is using stays idle while another one is busy.
+ * Returns when each claimed window was last worked on. */
 export function claimActivity(
   windows: PaceWindow[],
   logs: ReadonlyMap<string, PaceLog>,
-  activity: Record<ProviderId, boolean>,
-): Set<string> {
+  activity: Activity,
+): Map<string, number> {
   const lastTick = (key: string) => {
     const stretch = logs.get(key)?.stretch;
     return stretch ? newest(stretch).epoch : 0;
@@ -120,18 +125,22 @@ export function claimActivity(
     const group = `${provider}:${duration}`;
     latest.set(group, Math.max(latest.get(group) ?? 0, lastTick(key)));
   }
-  return new Set(
-    windows
-      .filter(
-        ({ key, provider, duration }) => activity[provider] && lastTick(key) === latest.get(`${provider}:${duration}`),
-      )
-      .map(({ key }) => key),
+  return new Map(
+    windows.flatMap(({ key, provider, duration }) => {
+      const workedAt = activity[provider];
+      return workedAt !== null && lastTick(key) === latest.get(`${provider}:${duration}`) ? [[key, workedAt]] : [];
+    }),
   );
 }
 
-/** Folds one successful reading into a window's log. `active` says whether a local session of the
- * window's provider changed recently, which keeps a stretch going through a slow patch. */
-export function recordSample(log: PaceLog | undefined, sample: PaceSample, duration: number, active: boolean): PaceLog {
+/** Folds one successful reading into a window's log. `workedAt` is when a local session of the
+ * window's provider last changed, which keeps a stretch going through a slow patch. */
+export function recordSample(
+  log: PaceLog | undefined,
+  sample: PaceSample,
+  duration: number,
+  workedAt: number | null,
+): PaceLog {
   if (!log) return { firstSeen: sample.epoch, last: sample, stretch: null, readings: [] };
   if (sample.epoch <= log.last.epoch) return log;
   const next = { ...log, last: sample };
@@ -141,7 +150,11 @@ export function recordSample(log: PaceLog | undefined, sample: PaceSample, durat
   const stretch = openStretch(log, duration, sample.epoch);
   if (reset || sample.epoch - log.last.epoch > MAX_SAMPLE_GAP) return { ...next, stretch: null };
   if (sample.used === log.last.used) {
-    return { ...next, stretch: stretch && active ? { ...stretch, activeAt: sample.epoch } : stretch };
+    return {
+      ...next,
+      stretch:
+        stretch && workedAt !== null ? { ...stretch, activeAt: Math.max(stretch.activeAt ?? 0, workedAt) } : stretch,
+    };
   }
   const tick = { epoch: sample.epoch, used: sample.used };
   if (!stretch) return { ...next, stretch: { ticks: [tick], pending: 0, activeAt: null } };
@@ -177,17 +190,16 @@ export function windowPace(
       until:
         watched < tuning.learnSeconds
           ? { kind: "time", epoch: log.firstSeen + tuning.learnSeconds }
-          : { kind: "use", in_use: openStretch(log, duration, now) !== null },
+          : { kind: "reading", in_use: active || openStretch(log, duration, now) !== null },
     };
   }
   const usual = median(log.readings);
   const current = currentPace(log, duration, now, active);
-  const kind = current.kind === "moving" ? creatureFor(current.rate, usual, preset, active) : null;
   return {
     status: "learned",
     usual_rate: usual,
     current,
-    creature: current.kind === "moving" && kind !== null ? { kind, rate: current.rate, usual } : null,
+    creature: rider(current, usual, preset, active),
     readings: log.readings,
   };
 }
@@ -210,8 +222,14 @@ export function creatureFor(rate: number, usual: number, preset: PacePreset, act
   return active && rate <= usual / multiple ? "tortoise" : null;
 }
 
-/** The rate across the newest ticks, timed up to the last sign of work like the readings are, so a
- * pause with nothing running does not count as going slow. */
+function rider(current: CurrentPace, usual: number, preset: PacePreset, active: boolean): Rider | null {
+  if (current.kind !== "moving") return null;
+  const kind = creatureFor(current.rate, usual, preset, active);
+  return kind && { kind, rate: current.rate, usual };
+}
+
+/** The rate across the newest ticks, timed up to the last sign of work, the newest tick or a later
+ * session change, so a pause with nothing running does not count as going slow. */
 function currentPace(log: PaceLog, duration: number, now: number, active: boolean): CurrentPace {
   const stretch = openStretch(log, duration, now);
   if (!stretch) return { kind: active ? "measuring" : "idle" };

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { creatureFor, pacePresets, paceWindows } from "../shared/pace";
 import type { PacePreset, PaceSettings, WindowPace } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
-import { absoluteTime, perHour, span, windowLabel } from "./presentation";
+import { absoluteTime, learningByUse, perHour, span, windowLabel } from "./presentation";
 import { SettingPending, Toggle } from "./settings-controls";
 
 const presets = [
@@ -159,10 +159,8 @@ function Learning({ title, pace }: { title: string; pace: Extract<WindowPace, { 
             Done learning{" "}
             <time dateTime={new Date(pace.until.epoch * 1000).toISOString()}>{absoluteTime(pace.until.epoch)}</time>.
           </>
-        ) : pace.until.in_use ? (
-          "Needs a little more use to finish."
         ) : (
-          "Starts when you next use it."
+          `Learning ${learningByUse(pace.until.in_use)}.`
         )}
       </p>
     </div>
