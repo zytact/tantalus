@@ -250,6 +250,14 @@ button:focus-visible {
 button.quiet {
   border-color: transparent;
 }
+button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--canvas);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger);
+}
 
 /* The release notes page covers the whole window, with the install action pinned below it. */
 .release-notes {
@@ -540,7 +548,7 @@ button.quiet {
 .hub-heading > button {
   white-space: nowrap;
 }
-.hub-controls {
+.setting-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -962,7 +970,7 @@ footer {
   .hub-form-wide {
     grid-column: auto;
   }
-  .hub-controls {
+  .setting-actions {
     align-items: flex-end;
     flex-direction: column;
   }

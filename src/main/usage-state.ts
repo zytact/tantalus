@@ -130,6 +130,12 @@ export class UsageState {
     return this.snapshot;
   }
 
+  resetPace(): UsageSnapshot {
+    this.snapshot = this.pace.reset(this.snapshot);
+    this.publish(this.snapshot);
+    return this.snapshot;
+  }
+
   proxyHubs(): ProxyHubSettings[] {
     return this.hubConfigs.map(redact);
   }

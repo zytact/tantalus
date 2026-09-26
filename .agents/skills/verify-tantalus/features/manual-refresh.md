@@ -1,6 +1,6 @@
 # Manual refresh
 
-Refresh invokes the `refreshUsage` command for every enabled provider. The button becomes disabled, reads `Refreshing`, and sets `aria-busy=true`. Ctrl+R and Cmd+R use the same action, including from Settings and the remote access page, though the busy button is out of view in Settings. Refresh now in the tray calls the same main-process path.
+Refresh invokes the `refreshUsage` command for every enabled provider. Once a refresh has run for 200 ms, the button becomes disabled, reads `Refreshing`, and sets `aria-busy=true`, so a fast answer never flashes the busy state. Ctrl+R and Cmd+R use the same action, including from Settings and the remote access page, though the busy button is out of view in Settings. Refresh now in the tray calls the same main-process path.
 
 The main process reads enabled providers concurrently. Disabled providers stop before credential reads. A refresh asked for mid-read folds into one more pass, and both callers get its result. A failure after prior success keeps figures and shows Cached. Missing credentials before any success show Not signed in. Other first failures show Could not refresh.
 

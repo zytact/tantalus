@@ -7,8 +7,10 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [monthly-window](monthly-window.md) - 30-day usage entry
 - [reset-credits](reset-credits.md) - Codex banked reset credits
 - [manual-refresh](manual-refresh.md) - button, shortcut, tray refresh, and failure states
+- [pace](pace.md) - dragon and tortoise, learning, presets, and reset
+- [proxy-hubs](proxy-hubs.md) - CLIProxyAPI hubs and their pooled accounts
 - [provider-switch](provider-switch.md) - provider enablement and persistence
-- [settings](settings.md) - providers, open at login, remote access switches, version, and updates
+- [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - read-only page over the local network and Tailscale
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
 - [updates](updates.md) - release update checks and installation

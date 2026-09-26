@@ -33,6 +33,8 @@ export type Commands = {
   refreshUsage: () => UsageSnapshot;
   setProviderEnabled: (provider: ProviderId, enabled: boolean) => UsageSnapshot;
   setPaceSettings: (settings: PaceSettings) => UsageSnapshot;
+  /** Forgets what every window has learned, so each one learns again from now. */
+  resetPace: () => UsageSnapshot;
   proxyHubs: () => ProxyHubSettings[];
   addProxyHub: (input: ProxyHubInput) => ProxyHubSettings[];
   updateProxyHub: (id: string, input: ProxyHubInput) => ProxyHubSettings[];

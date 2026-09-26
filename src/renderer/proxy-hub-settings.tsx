@@ -146,7 +146,7 @@ function HubRow({
         <h2>{hub.label}</h2>
         <p>{hub.url}</p>
       </div>
-      <div className="hub-controls">
+      <div className="setting-actions">
         <Toggle label={`${hub.label} proxy hub`} checked={hub.enabled} busy={busy} onToggle={onToggle} />
         <button disabled={busy} aria-label={`${editing ? "Cancel editing" : "Edit"} ${hub.label}`} onClick={onEdit}>
           {editing ? "Cancel" : "Edit"}

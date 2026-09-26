@@ -21,7 +21,9 @@ export function PaceSettingsRows({
   failed: boolean;
   onSnapshot: (snapshot: UsageSnapshot) => void;
 }) {
-  const { saving, error, save } = useSave(onSnapshot);
+  const { pending, error, run } = useRequest(onSnapshot);
+  const save = (next: PaceSettings) =>
+    run(() => window.tantalus.invoke("setPaceSettings", next), "Could not save the dragon and tortoise setting.");
   return (
     <>
       <section className="setting-row">
@@ -32,33 +34,31 @@ export function PaceSettingsRows({
             that, and a tortoise when you go much slower.
           </p>
         </div>
-        <PaceToggle settings={snapshot?.pace.settings} failed={failed} saving={saving} onSave={save} />
+        <PaceToggle settings={snapshot?.pace.settings} failed={failed} saving={pending} onSave={save} />
       </section>
       {error && (
         <p className="notice settings-notice" role="alert">
           {error}
         </p>
       )}
-      <PaceDetails snapshot={snapshot} saving={saving} onSave={save} />
+      <PaceDetails snapshot={snapshot} saving={pending} onSave={save} />
+      {snapshot && <ResetLearning onSnapshot={onSnapshot} />}
     </>
   );
 }
 
-function useSave(onSnapshot: (snapshot: UsageSnapshot) => void) {
-  const [saving, setSaving] = useState(false);
+/** Hands each request's snapshot to `onSnapshot`, and shows `failure` when a request fails. */
+function useRequest(onSnapshot: (snapshot: UsageSnapshot) => void) {
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const save = async (next: PaceSettings) => {
-    setSaving(true);
+  const run = (request: () => Promise<UsageSnapshot>, failure: string) => {
+    setPending(true);
     setError(null);
-    try {
-      onSnapshot(await window.tantalus.invoke("setPaceSettings", next));
-    } catch {
-      setError("Could not save the dragon and tortoise setting.");
-    } finally {
-      setSaving(false);
-    }
+    void request()
+      .then(onSnapshot, () => setError(failure))
+      .finally(() => setPending(false));
   };
-  return { saving, error, save: (next: PaceSettings) => void save(next) };
+  return { pending, error, run };
 }
 
 function PaceToggle({
@@ -138,6 +138,54 @@ function PaceDetails({
         ),
       )}
     </section>
+  );
+}
+
+/** Asks once more before it forgets. The log keeps growing while the creatures are off, so this shows
+ * either way. */
+function ResetLearning({ onSnapshot }: { onSnapshot: (snapshot: UsageSnapshot) => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const { pending, error, run } = useRequest((snapshot) => {
+    setConfirming(false);
+    onSnapshot(snapshot);
+  });
+  const step = confirming
+    ? {
+        copy: "Forget every reading? Each window starts learning your pace from scratch.",
+        action: "Forget",
+        className: "danger",
+        onClick: () => run(() => window.tantalus.invoke("resetPace"), "Could not reset what Tantalus learned."),
+      }
+    : {
+        copy: "Start over when your habits change. Each window learns your pace from scratch.",
+        action: "Reset",
+        className: undefined,
+        onClick: () => setConfirming(true),
+      };
+  return (
+    <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>Reset learning</h2>
+          <p>{step.copy}</p>
+        </div>
+        <div className="setting-actions">
+          {confirming && (
+            <button disabled={pending} onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          )}
+          <button className={step.className} disabled={pending} onClick={step.onClick}>
+            {step.action}
+          </button>
+        </div>
+      </section>
+      {error && (
+        <p className="notice settings-notice" role="alert">
+          {error}
+        </p>
+      )}
+    </>
   );
 }
 
