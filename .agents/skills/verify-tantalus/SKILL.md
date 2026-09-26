@@ -35,6 +35,8 @@ mkdir -p "$EVIDENCE"
 
 Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts. Pass `--restart` to quit and relaunch only the preview, keeping the display, usage mode, fixture server, and saved settings, which is how a proof shows that something survives a restart. Run doctor again after it.
 
+`build-preview.sh` refuses while a harness preview is running, since replacing the binary under it leaves a process the harness no longer recognizes. Run `cleanup.sh` before rebuilding, then launch again.
+
 If `build-preview.sh` fails with `The specified electronDist does not exist`, the install skipped Electron's download, which happens in a fresh worktree. Run `node node_modules/electron/install.js` and build again.
 
 `build-preview.sh` runs `vp build`, `vp pack`, and `node scripts/package.ts --preview --dir`, then checks for `release/tantalus-preview/linux-unpacked/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that executable on an isolated Xvfb display with `--remote-debugging-port` on a free local port, and records the PIDs and the port under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
@@ -71,11 +73,13 @@ Use one preview process per usage mode, and run cleanup before switching modes. 
 node .agents/skills/verify-tantalus/scripts/drive.ts snapshot
 node .agents/skills/verify-tantalus/scripts/drive.ts click button Settings
 node .agents/skills/verify-tantalus/scripts/drive.ts click switch Opencode
+node .agents/skills/verify-tantalus/scripts/drive.ts fill textbox "Hub URL" http://127.0.0.1:8317
+node .agents/skills/verify-tantalus/scripts/drive.ts scroll button Reset
 node .agents/skills/verify-tantalus/scripts/drive.ts press Control+R
 node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" settings
 ```
 
-`snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click by ARIA role and accessible name, as the snapshot shows them.
+`snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
 Prefix a command with `--web <url>` to run it against the remote access page instead. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
 
@@ -137,11 +141,12 @@ The helper kills only the preview, fixture server, and Xvfb PIDs started by `lau
 
 All helpers in `scripts/` are executable or run with `node`:
 
-- `build-preview.sh` builds the separately identified preview app without installing it
+- `build-preview.sh` builds the separately identified preview app without installing it, and refuses while a harness preview runs
 - `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
-- `drive.ts [--web URL] <snapshot | click ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
+- `drive.ts [--web URL] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
+- `seed-pace.sh` writes a learned pace log into the mock settings directory, and refuses outside mock mode; run `launch.sh --restart` after it
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
 

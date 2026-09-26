@@ -6,7 +6,7 @@ Settings has two switches below Open at login. Both start off and save to `remot
 
 A change saves first, then listens, then runs Tailscale. If any step fails, the file and listener go back to how they were, the switch stays put, and an alert names the cause, such as `Port 4748 is already in use.` or `Tailscale is not signed in.` If the port is taken at launch, the saved switches stay on and Settings shows `Remote access is not being served. Port 4748 is already in use.` until the next successful change.
 
-The page is the allowance view without Settings or the update notice. It reads `/api/current/usageSnapshot`, then follows `/api/events`, which sends the current snapshot on connect and one more on every publish. Refresh posts to `/api/refresh`; other resources only serve GET. A Host header that is not an IP address, a single-label or `.local` name, or a `ts.net` name gets a 403, and a path outside the built page gets a 404.
+The page is the allowance view without Settings or the update notice. It follows `/api/events` and then reads `/api/current/usageSnapshot`, so a publish during load is not lost. The event stream sends the current snapshot on connect and one more on every publish. Refresh posts to `/api/refresh`; other resources only serve GET. A Host header that is not an IP address, a single-label or `.local` name, or a `ts.net` name gets a 403, and a path outside the built page gets a 404.
 
 ## Preview proof
 

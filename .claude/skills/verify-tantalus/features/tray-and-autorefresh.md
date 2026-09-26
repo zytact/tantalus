@@ -2,7 +2,7 @@
 
 The main process owns the tray, destroys the window on close and recreates it, and refreshes usage in the background. Healthy polling waits five minutes. Until every enabled provider is Ready, retries wait 5, 10, and 20 seconds and keep doubling up to five minutes.
 
-The menu skips disabled providers. Each enabled provider has a heading and one row per reported `5h`, `7d`, or `30d` window. Rows include a bar, percentage, and optional `Under pace`, `On pace`, or `Ahead of pace`. A disabled refreshed row is recomputed every five seconds, and the menu is rebuilt only when a label changed. Open Tantalus and reading rows open the window, Refresh now refreshes, and Quit exits.
+The menu skips disabled providers. Each enabled provider has a heading and one row per reported `5h`, `7d`, or `30d` window. Rows include a bar, percentage, and optional `Under pace`, `On pace`, or `Ahead of pace`. Each switched-on proxy hub adds its own block of account rows. The dragon and tortoise never appear in the tray. A disabled refreshed row is recomputed every five seconds, and the menu is rebuilt only when a label changed. Open Tantalus and reading rows open the window, Refresh now refreshes, and Quit exits.
 
 Preview uses the blue icon and `Tantalus Preview` tooltip. Its tray, settings, and single-instance lock are separate from release.
 

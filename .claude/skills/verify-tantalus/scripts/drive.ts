@@ -1,6 +1,8 @@
 // Drive the running preview's window over the Chrome DevTools Protocol that launch.sh opened.
 //   drive.ts snapshot                       print the page's accessibility tree
 //   drive.ts click <role> <name>            click an element by ARIA role and accessible name
+//   drive.ts fill <role> <name> <text>      replace a field's text, e.g. fill textbox "Hub URL" http://...
+//   drive.ts scroll <role> <name>           scroll an element into view before a screenshot
 //   drive.ts press <key>                    press a key or chord, e.g. Control+R
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a fresh
@@ -38,6 +40,18 @@ try {
       console.log(`CLICKED ${role} "${name}"`);
       break;
     }
+    case "fill": {
+      const [role, name, text] = args;
+      await page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true }).fill(text);
+      console.log(`FILLED ${role} "${name}"`);
+      break;
+    }
+    case "scroll": {
+      const [role, name] = args;
+      await page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true }).scrollIntoViewIfNeeded();
+      console.log(`SCROLLED to ${role} "${name}"`);
+      break;
+    }
     case "press":
       await page.keyboard.press(args[0]);
       console.log(`PRESSED ${args[0]}`);
@@ -50,7 +64,7 @@ try {
     }
     default:
       throw new Error(
-        "usage: drive.ts [--web URL] <snapshot | click ROLE NAME | press KEY | screenshot DIR [NAME]>",
+        "usage: drive.ts [--web URL] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>",
       );
   }
 } finally {
