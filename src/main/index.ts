@@ -203,6 +203,13 @@ function registerUsageHandlers(state: UsageState) {
       throw new Error(`Could not save pace setting: ${message(error)}`);
     }
   });
+  handle("resetPace", () => {
+    try {
+      return state.resetPace();
+    } catch (error) {
+      throw new Error(`Could not reset pace learning: ${message(error)}`);
+    }
+  });
   handle("proxyHubs", () => state.proxyHubs());
   handle("addProxyHub", (input) => {
     assertProxyHubInput(input);

@@ -58,6 +58,14 @@ export class PaceTracker {
     return { ...snapshot, pace: { settings: this.settings, windows: Object.fromEntries(windows) } };
   }
 
+  /** Forgets every window's log and starts each one again from the reading the snapshot holds. The
+   * empty log is saved first, so a failed save changes nothing. */
+  reset(snapshot: UsageSnapshot, now = nowEpoch()): UsageSnapshot {
+    saveSettings(this.logPath, {});
+    this.logs.clear();
+    return this.track(snapshot, noActivity, now);
+  }
+
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
   setSettings(settings: PaceSettings) {
     saveSettings(this.settingsPath, settings);
