@@ -135,6 +135,16 @@ function paceComparison({ kind, rate, usual }: Rider): string {
 export function creatureTip(rider: Rider, used: number, resetAt: number | null, now: number): string {
   const { kind, rate, usual } = rider;
   const lead = `${paceDirection[kind]} than usual. ${perHour(rate)} now, against your usual ${perHour(usual)}.`;
+  if (kind === "dragon" && used >= 100) {
+    const resetCountdown = countdown(resetAt, now);
+    const reset =
+      resetAt === null
+        ? ""
+        : resetCountdown === "Resetting now"
+          ? ` ${resetCountdown}.`
+          : ` Resets in ${resetCountdown}.`;
+    return `${paceComparison(rider)} for this window. You've used all your available usage.${reset}`;
+  }
   if (resetAt === null) return lead;
   const hoursLeft = Math.max(0, resetAt - now) / 3600;
   if (kind === "tortoise") {

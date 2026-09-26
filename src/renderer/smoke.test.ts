@@ -204,6 +204,16 @@ describe("creature tooltip", () => {
     );
   });
 
+  it("says when a dragon has already exhausted the window", () => {
+    const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
+    expect(creatureTip(dragon, 100, resetIn(1 / 60), now)).toBe(
+      "2.8× your usual pace for this window. You've used all your available usage. Resets in 1m.",
+    );
+    expect(creatureTip(dragon, 100, resetIn(59 / 3600), now)).toBe(
+      "2.8× your usual pace for this window. You've used all your available usage. Resetting now.",
+    );
+  });
+
   it("says where a tortoise leaves the window at the reset", () => {
     const tortoise = { kind: "tortoise", rate: 0.3, usual: 1.1 } as const;
     expect(creatureTip(tortoise, 22, resetIn(120), now)).toBe(
