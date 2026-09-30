@@ -63,10 +63,10 @@ export function remainingPercent(value: number | null): string {
 }
 
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
-export function countdown(epoch: number | null, now = Date.now() / 1000): string {
+export function countdown(epoch: number | null, now: number): string {
   if (epoch === null) return "Unavailable";
   const seconds = Math.max(0, epoch - now);
-  if (seconds < 60) return "<1m";
+  if (seconds < 60) return "under 1m";
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -135,8 +135,8 @@ function paceComparison({ kind, rate, usual }: Rider): string {
 export function creatureTip(rider: Rider, used: number, resetAt: number | null, now: number): string {
   const { kind, rate, usual } = rider;
   const lead = `${paceDirection[kind]} than usual. ${perHour(rate)} now, against your usual ${perHour(usual)}.`;
+  const reset = resetAt === null ? "" : ` The window resets in ${countdown(resetAt, now)}.`;
   if (kind === "dragon" && used >= 100) {
-    const reset = resetAt === null ? "" : ` The window resets in ${countdown(resetAt, now)}.`;
     return `${paceComparison(rider)} for this window. You've used all your available usage.${reset}`;
   }
   if (resetAt === null) return lead;
@@ -147,7 +147,7 @@ export function creatureTip(rider: Rider, used: number, resetAt: number | null, 
   }
   const runway = Math.max(0, 100 - used) / rate;
   return runway < hoursLeft
-    ? `${lead} At this rate you'll use 100% in ${span(runway * 3600)}. The window resets in ${countdown(resetAt, now)}.`
+    ? `${lead} At this rate you'll use 100% in ${countdown(now + runway * 3600, now)}.${reset}`
     : `${lead} At this rate it lasts until the reset.`;
 }
 

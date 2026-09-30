@@ -52,7 +52,7 @@ describe("display contract", () => {
   it("keeps an unknown reset distinct from an imminent one", () => {
     const now = 1_000_000;
     expect(countdown(null, now)).toBe("Unavailable");
-    expect(countdown(now, now)).toBe("<1m");
+    expect(countdown(now, now)).toBe("under 1m");
     expect(countdown(now + 3600 * 3 + 60 * 29, now)).toBe("3h 29m");
     expect(countdown(now + 86_400 * 4 + 3600 * 20, now)).toBe("4d 20h");
   });
@@ -210,7 +210,7 @@ describe("creature tooltip", () => {
       "2.8× your usual pace for this window. You've used all your available usage. The window resets in 1m.",
     );
     expect(creatureTip(dragon, 100, resetIn(59 / 3600), now)).toBe(
-      "2.8× your usual pace for this window. You've used all your available usage. The window resets in <1m.",
+      "2.8× your usual pace for this window. You've used all your available usage. The window resets in under 1m.",
     );
   });
 
