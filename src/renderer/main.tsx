@@ -95,7 +95,7 @@ function Entry({
       </div>
       <dl className="facts">
         <div>
-          <dt>Resets</dt>
+          <dt>Resets in</dt>
           <dd>{countdown(reported ? usage.reset_at_epoch : null)}</dd>
         </div>
         <div>
