@@ -81,7 +81,9 @@ magick tray.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/tray.png
 
 Releases are automatic. Merge PRs with conventional commit titles into `main`, and [release-please](https://github.com/googleapis/release-please) keeps one release PR open that bumps the `package.json` version and writes `CHANGELOG.md`. While the version is below 1.0, `fix:` and `feat:` bump the patch version and a breaking change bumps the minor version. Merging the release PR tags `vX.Y.Z` and creates a draft release, and `.github/workflows/release.yml` builds and signs the bundles on each platform, uploads them with `latest.json`, and publishes the release. Never change the version or `CHANGELOG.md` by hand.
 
-Running the release workflow by hand is a dry run that uploads the bundles as workflow artifacts.
+Running the release workflow by hand with no tag is a dry run that uploads the bundles as workflow artifacts. Given the tag of a draft release left behind by a failed run, it builds, uploads, and publishes that release.
+
+release-please opens its PR with the workflow's `GITHUB_TOKEN`, so the repository needs **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** turned on. That PR does not trigger the PR checks, since GitHub skips workflows for events caused by `GITHUB_TOKEN`.
 
 ## Updates
 

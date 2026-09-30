@@ -3,15 +3,17 @@ name: release
 on:
   push:
     branches: [main]
-  # A dry run that only uploads the bundles as workflow artifacts.
   workflow_dispatch:
-
-concurrency: release
+    inputs:
+      tag:
+        description: Draft release to build and publish (e.g. v0.1.0), for when a release run failed. Leave empty for a dry run that only uploads the bundles as workflow artifacts.
+        type: string
+        default: ""
 
 jobs:
-  # Keeps a release PR open, and on its merge tags vX.Y.Z and creates a draft release.
   release-please:
     if: github.event_name == 'push'
+    concurrency: release-please
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -42,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag || github.ref }}
+          ref: ${{ needs.release-please.outputs.tag || inputs.tag || github.ref }}
 
       - uses: ./.github/actions/setup-frontend
 
@@ -87,7 +89,7 @@ jobs:
             release/tantalus/*.sig
 
   publish:
-    if: needs.release-please.outputs.created == 'true'
+    if: ${{ !cancelled() && needs.bundle.result == 'success' && (needs.release-please.outputs.created == 'true' || inputs.tag != '') }}
     needs: [release-please, bundle]
     runs-on: ubuntu-latest
     permissions:
@@ -96,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag }}
+          ref: ${{ needs.release-please.outputs.tag || inputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -111,7 +113,7 @@ jobs:
       - env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.release-please.outputs.tag }}
+          TAG: ${{ needs.release-please.outputs.tag || inputs.tag }}
         # latest.json is what installed apps read from the latest release. Each platform key names
         # the bundle that app was installed from, so an rpm install never downloads the deb. The release
         # stays a draft until every asset is up, so apps never see a latest release without latest.json.
