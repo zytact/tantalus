@@ -2,7 +2,7 @@
 
 Tantalus is an Electron tray app written in TypeScript. The main process is in `src/main/`, the preload bridge in `src/preload/`, the React page in `src/renderer/`, and the types and helpers both sides use in `src/shared/`. The IPC contract lives in `src/shared/ipc.ts`.
 
-Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit either by hand. PR titles must be conventional commits, since they decide the next version. The README's Releasing section covers the pipeline.
+Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit either by hand. PRs are squash-merged, so the PR title sets the bump. Below 1.0, `fix` and `feat` bump the patch version, and `!` (`feat!:`) or a `BREAKING CHANGE:` footer bumps the minor version. Mark anything that breaks updates or saved settings for installed apps as breaking. The README's Releasing section covers the pipeline.
 
 ## Toolchain
 
