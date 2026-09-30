@@ -77,13 +77,19 @@ magick icon.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/icon.png
 magick tray.png -fuzz 18% -fill '#4C6EF5' -opaque '#FC5A19' preview/tray.png
 ```
 
+## Releasing
+
+Releases are automatic. Merge PRs with conventional commit titles into `main`, and [release-please](https://github.com/googleapis/release-please) keeps one release PR open that bumps the `package.json` version and writes `CHANGELOG.md`. While the version is below 1.0, `fix:` and `feat:` bump the patch version and a breaking change bumps the minor version. Merging the release PR tags `vX.Y.Z` and creates a draft release, and `.github/workflows/release.yml` builds and signs the bundles on each platform, uploads them with `latest.json`, and publishes the release. Never change the version or `CHANGELOG.md` by hand.
+
+Running the release workflow by hand is a dry run that uploads the bundles as workflow artifacts.
+
 ## Updates
 
 A release build checks `latest.json` on the latest published GitHub release at launch and every 6 hours, and Settings has a **Check for updates** button that runs the same check on demand. When it finds a newer version, the window shows an **Install update** banner and the tray menu gains an item that opens the window. Installing downloads the update for the bundle the app was installed from (the deb, the rpm, the NSIS installer, or an app tarball on macOS), verifies its Minisign Ed25519 signature, installs it, and relaunches. A deb or rpm install asks for an administrator password through polkit. On macOS the new app replaces the old one in place, so the app needs write access to its folder. Dev and preview builds never check.
 
 macOS builds are ad-hoc signed rather than signed with an Apple Developer ID, so the first launch of a downloaded dmg needs **Open** from the app's context menu, or `xattr -dr com.apple.quarantine /Applications/Tantalus.app`. Updates arrive without that step, since the app downloads them itself.
 
-The release workflow signs every bundle with the existing Tauri Minisign key in the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets through `scripts/sign-update.ts`, and writes `latest.json` into the draft release. Installed Tauri and Electron versions trust that same key. The matching public key lives in `src/main/release.ts`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub.
+The release workflow signs every bundle with the existing Tauri Minisign key in the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets through `scripts/sign-update.ts`, and writes `latest.json` into the draft release before publishing it. Installed Tauri and Electron versions trust that same key. The matching public key lives in `src/main/release.ts`. Losing the private key means existing installs reject every later update, so keep a copy outside GitHub.
 
 Direct in-app updates cover the latest 15 published releases. Older versions show a link to the latest release for a fresh install after quitting Tantalus. The release workflow writes the oldest eligible version into `latest.json`; the app checks it again before installing. Add urgent notices to `release-notices.json` with a unique `id`, plain `message`, and inclusive `fromVersion` and `throughVersion` for the running app. Add `platforms` only when the notice applies to specific systems, using `linux`, `darwin`, or `win32`. Matching notices appear beside the install button and require acknowledgement. The workflow carries them into later manifests while an affected version remains eligible for direct updates, then drops them. Versions published before this notice support cannot display or enforce these fields.
 
