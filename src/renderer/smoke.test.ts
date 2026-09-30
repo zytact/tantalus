@@ -52,7 +52,7 @@ describe("display contract", () => {
   it("keeps an unknown reset distinct from an imminent one", () => {
     const now = 1_000_000;
     expect(countdown(null, now)).toBe("Unavailable");
-    expect(countdown(now, now)).toBe("Resetting now");
+    expect(countdown(now, now)).toBe("under 1m");
     expect(countdown(now + 3600 * 3 + 60 * 29, now)).toBe("3h 29m");
     expect(countdown(now + 86_400 * 4 + 3600 * 20, now)).toBe("4d 20h");
   });
@@ -196,8 +196,8 @@ describe("creature tooltip", () => {
 
   it("says when a dragon runs the window out, and when it does not", () => {
     const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
-    expect(creatureTip(dragon, 64, resetIn(3), now)).toBe(
-      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate it runs out in 1h 30m, before it resets.",
+    expect(creatureTip(dragon, 64, resetIn(4.1), now)).toBe(
+      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate you'll use 100% in 1h 30m. The window resets in 4h 6m.",
     );
     expect(creatureTip(dragon, 64, resetIn(1), now)).toBe(
       "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate it lasts until the reset.",
@@ -207,10 +207,10 @@ describe("creature tooltip", () => {
   it("says when a dragon has already exhausted the window", () => {
     const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
     expect(creatureTip(dragon, 100, resetIn(1 / 60), now)).toBe(
-      "2.8× your usual pace for this window. You've used all your available usage. Resets in 1m.",
+      "2.8× your usual pace for this window. You've used all your available usage. The window resets in 1m.",
     );
     expect(creatureTip(dragon, 100, resetIn(59 / 3600), now)).toBe(
-      "2.8× your usual pace for this window. You've used all your available usage. Resetting now.",
+      "2.8× your usual pace for this window. You've used all your available usage. The window resets in under 1m.",
     );
   });
 
