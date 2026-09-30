@@ -2,24 +2,32 @@ name: release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish a draft GitHub release. Leave off for a dry run that only uploads the bundles as workflow artifacts.
-        type: boolean
-        default: false
       tag:
-        description: Tag to publish under (e.g. v0.1.0). Required only when publish is on.
+        description: Draft release to build and publish (e.g. v0.1.0), for when a release run failed. Leave empty for a dry run that only uploads the bundles as workflow artifacts.
         type: string
         default: ""
 
-env:
-  PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
-
 jobs:
+  release-please:
+    if: github.event_name == 'push'
+    concurrency: release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v5
+
   bundle:
+    needs: release-please
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.created == 'true') }}
     strategy:
       fail-fast: false
       matrix:
@@ -32,31 +40,11 @@ jobs:
           - platform: windows-latest
 
     runs-on: ${{ matrix.platform }}
-    permissions:
-      contents: write
 
     steps:
-      - if: env.PUBLISH == 'true' && github.event_name == 'workflow_dispatch' && inputs.tag == ''
-        shell: bash
-        run: |
-          echo "::error::publish is on but no tag was given"
-          exit 1
-
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
-
-      # latest.json takes its version from the tag, so a tag ahead of the app version would offer an
-      # update that installs the same build again.
-      - if: env.PUBLISH == 'true' && startsWith(matrix.platform, 'ubuntu')
-        env:
-          TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          version=$(jq -r .version package.json)
-          if [ "$TAG" != "v$version" ]; then
-            echo "::error::tag $TAG does not match the app version $version"
-            exit 1
-          fi
+          ref: ${{ needs.release-please.outputs.tag || inputs.tag || github.ref }}
 
       - uses: ./.github/actions/setup-frontend
 
@@ -101,8 +89,8 @@ jobs:
             release/tantalus/*.sig
 
   publish:
-    if: github.event_name == 'push' || inputs.publish
-    needs: bundle
+    if: ${{ !cancelled() && needs.bundle.result == 'success' && (needs.release-please.outputs.created == 'true' || inputs.tag != '') }}
+    needs: [release-please, bundle]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ needs.release-please.outputs.tag || inputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -125,9 +113,10 @@ jobs:
       - env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ needs.release-please.outputs.tag || inputs.tag }}
         # latest.json is what installed apps read from the latest release. Each platform key names
-        # the bundle that app was installed from, so an rpm install never downloads the deb.
+        # the bundle that app was installed from, so an rpm install never downloads the deb. The release
+        # stays a draft until every asset is up, so apps never see a latest release without latest.json.
         run: |
           shopt -s nullglob
           platforms='{}'
@@ -150,8 +139,5 @@ jobs:
           rm bundles/update-policy.json
 
           mapfile -t assets < <(find bundles -type f -print)
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$TAG" "${assets[@]}" --draft --title "Tantalus $TAG" --verify-tag --generate-notes
-          fi
+          gh release upload "$TAG" "${assets[@]}" --clobber
+          gh release edit "$TAG" --title "Tantalus $TAG" --draft=false

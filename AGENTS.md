@@ -2,6 +2,8 @@
 
 Tantalus is an Electron tray app written in TypeScript. The main process is in `src/main/`, the preload bridge in `src/preload/`, the React page in `src/renderer/`, and the types and helpers both sides use in `src/shared/`. The IPC contract lives in `src/shared/ipc.ts`.
 
+Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit either by hand. PR titles must be conventional commits, since they decide the next version. The README's Releasing section covers the pipeline.
+
 ## Toolchain
 
 The toolchain is [Vite+](https://viteplus.dev), driven by the global `vp` CLI. It bundles Vite, Vitest, Oxlint and Oxfmt, and it delegates package management to pnpm. Install it with `curl -fsSL https://vite.plus | bash`.
