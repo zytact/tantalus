@@ -1,6 +1,6 @@
 {
   "name": "tantalus",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "private": true,
   "description": "Codex, Claude, and Opencode usage in the system tray",
   "author": "Arnab",
