@@ -12,6 +12,7 @@ import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
 import { SettingPending, Toggle } from "./settings-controls";
 import { UpdateNotice } from "./update-notice";
+import { WindowStartRows } from "./window-start-settings";
 
 /** The provider choice, or why it cannot be shown yet. */
 export type ProviderChoice = Loadable<Record<ProviderId, boolean>>;
@@ -299,6 +300,8 @@ export function SettingsPage({
         <ProxyHubSettingsRows />
 
         <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
+
+        <WindowStartRows polled={providers} />
 
         <section className="setting-row">
           <div className="setting-copy">

@@ -3,12 +3,14 @@ import { defaultPaceSettings } from "../shared/pace";
 import { clockEpoch, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import {
+  absoluteTime,
   countdown,
   creatureTip,
   creditExpiry,
   installStatus,
   isRefreshShortcut,
   remainingPercent,
+  startStatus,
   statusLine,
   statusTone,
   usagePercent,
@@ -139,6 +141,23 @@ describe("display contract", () => {
     expect(statusTone(provider({ status: "stale" }))).toBe("warn");
     expect(statusTone(provider({ status: "auth_missing" }))).toBe("danger");
     expect(statusTone(provider({ limit_reached: true }))).toBe("danger");
+  });
+});
+
+describe("window start status", () => {
+  const provider = { enabled: true, path: null, command: "/usr/bin/claude", last: null };
+
+  it("names what would run, or that nothing was found", () => {
+    expect(startStatus(provider)).toBe("Runs /usr/bin/claude.");
+    expect(startStatus({ ...provider, command: null })).toBe("Could not find the CLI. Enter its path below.");
+  });
+
+  it("puts the last start, and why it failed, before the command", () => {
+    const epoch = 1_790_000_000;
+    expect(startStatus({ ...provider, last: { epoch, error: null } })).toBe(`Started a window ${absoluteTime(epoch)}.`);
+    expect(startStatus({ ...provider, last: { epoch, error: "claude exited with code 1" } })).toBe(
+      `Could not start a window ${absoluteTime(epoch)}. claude exited with code 1`,
+    );
   });
 });
 

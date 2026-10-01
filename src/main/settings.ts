@@ -4,6 +4,7 @@ import type { RemoteSettings } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
 import type { ProviderSettings, ProxyHubConfig } from "../shared/usage";
+import type { StartProviderSettings, WindowStartSettings } from "../shared/window-start";
 import { field } from "./parse";
 
 /** Opencode is a separate paid plan, so it stays off until someone switches it on. */
@@ -45,6 +46,33 @@ export function paceSettings(value: unknown): PaceSettings | null {
   return typeof enabled === "boolean" && typeof explained === "boolean" && isPacePreset(preset)
     ? { enabled, preset, explained }
     : null;
+}
+
+/** Nothing runs a CLI until someone switches it on. */
+export const noWindowStarts: WindowStartSettings = {
+  enabled: false,
+  providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
+};
+
+export function loadWindowStartSettings(path: string): WindowStartSettings {
+  return load(path, noWindowStarts, noWindowStarts, windowStartSettings);
+}
+
+/** The window start settings in a saved file or a request from the window, or null for anything else.
+ * A blank path means the CLI is looked up. */
+export function windowStartSettings(value: unknown): WindowStartSettings | null {
+  const enabled = field(value, "enabled");
+  const providers = field(value, "providers");
+  const claude = startProvider(field(providers, "claude"));
+  const codex = startProvider(field(providers, "codex"));
+  return typeof enabled === "boolean" && claude && codex ? { enabled, providers: { claude, codex } } : null;
+}
+
+function startProvider(value: unknown): StartProviderSettings | null {
+  const enabled = field(value, "enabled");
+  const path = field(value, "path");
+  if (typeof enabled !== "boolean" || (path !== null && typeof path !== "string")) return null;
+  return { enabled, path: path?.trim() || null };
 }
 
 /** A log that does not parse starts over, which only costs the time it takes to learn again. */

@@ -1,0 +1,18 @@
+import type { ProviderId } from "./usage";
+
+/** The providers whose 5-hour window Tantalus can start through their CLI. */
+export const startProviderIds = ["claude", "codex"] as const satisfies readonly ProviderId[];
+export type StartProviderId = (typeof startProviderIds)[number];
+
+/** `path` is the CLI the user chose, or null to look in the usual install locations. */
+export type StartProviderSettings = { enabled: boolean; path: string | null };
+export type WindowStartSettings = { enabled: boolean; providers: Record<StartProviderId, StartProviderSettings> };
+
+/** The last time Tantalus ran the CLI, and why it failed if it did. */
+export type StartAttempt = { epoch: number; error: string | null };
+
+/** `command` is what would run, or null when no CLI was found. */
+export type WindowStart = {
+  enabled: boolean;
+  providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
+};

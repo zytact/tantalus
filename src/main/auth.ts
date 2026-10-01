@@ -40,9 +40,15 @@ export function dataDirectory(provider: ProviderId): string {
   return dirname(directory ? join(directory, ...underVariable) : join(process.env.HOME || homedir(), ...underHome));
 }
 
-/** Reads the first readable credential file for `provider`. Its variable wins outright; otherwise the
- * home directory is tried before any WSL distribution home. */
 export async function readCredentials(provider: ProviderId): Promise<Credentials> {
+  return (await locateCredentials(provider)).credentials;
+}
+
+type Located = { path: string; credentials: Credentials };
+
+/** Finds the first readable credential file for `provider`. Its variable wins outright; otherwise the
+ * home directory is tried before any WSL distribution home. */
+export async function locateCredentials(provider: ProviderId): Promise<Located> {
   const { variable, underVariable, underHome } = locations[provider];
   const directory = process.env[variable];
   if (directory) return readFrom(provider, join(directory, ...underVariable));
@@ -59,7 +65,7 @@ export async function readCredentials(provider: ProviderId): Promise<Credentials
 
 /** The first path holding credentials. A file that exists but cannot be used outranks a missing one
  * in the failure. */
-async function firstReadable(provider: ProviderId, paths: string[]): Promise<Credentials> {
+async function firstReadable(provider: ProviderId, paths: string[]): Promise<Located> {
   let failure = new ReadFailure("missingFile");
   for (const path of paths) {
     try {
@@ -71,11 +77,11 @@ async function firstReadable(provider: ProviderId, paths: string[]): Promise<Cre
   throw failure;
 }
 
-async function readFrom(provider: ProviderId, path: string): Promise<Credentials> {
+async function readFrom(provider: ProviderId, path: string): Promise<Located> {
   const raw = await readFile(path, "utf8").catch(() => {
     throw new ReadFailure("missingFile");
   });
-  return parseCredentials(provider, raw);
+  return { path, credentials: parseCredentials(provider, raw) };
 }
 
 const tokenPaths = [
