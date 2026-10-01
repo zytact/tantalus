@@ -9,6 +9,7 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [manual-refresh](manual-refresh.md) - button, shortcut, tray refresh, and failure states
 - [pace](pace.md) - dragon and tortoise, learning, presets, and reset
 - [proxy-hubs](proxy-hubs.md) - CLIProxyAPI hubs and their pooled accounts
+- [window-start](window-start.md) - starting idle Claude and Codex 5-hour windows through their CLIs
 - [provider-switch](provider-switch.md) - provider enablement and persistence
 - [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - read-only page over the local network and Tailscale
