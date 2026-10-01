@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.27](https://github.com/zytact/tantalus/compare/v0.0.26...v0.0.27) (2026-10-01)
+
+
+### Features
+
+* **usage:** start idle Claude and Codex windows so the limit resets sooner ([#83](https://github.com/zytact/tantalus/issues/83)) ([35d01f9](https://github.com/zytact/tantalus/commit/35d01f9d3fbe39b9880395d27910af8f35e2f8e7))
+
 ## [0.0.26](https://github.com/zytact/tantalus/compare/v0.0.25...v0.0.26) (2026-09-30)
 
 
