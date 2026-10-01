@@ -15,7 +15,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-function reading(epoch: number, used: number, reset: number | null): ProviderUsage {
+function reading(epoch: number, used: number | null, reset: number | null): ProviderUsage {
   return {
     ...emptyProviderUsage(),
     five_hour: { used_percent: used, limit_window_seconds: fiveHourSeconds, reset_at_epoch: reset },
@@ -74,6 +74,8 @@ describe("idle windows", () => {
   it("reads a started, used, stale or blocked window as busy", () => {
     expect(idleWindow(reading(1000, 0, 1000 + fiveHourSeconds - 600))).toBe(false);
     expect(idleWindow(reading(1000, 1, null))).toBe(false);
+    expect(idleWindow(reading(1000, null, null))).toBe(false);
+    expect(idleWindow(reading(1000, null, 1000 + fiveHourSeconds))).toBe(false);
     expect(idleWindow({ ...idle(1000), status: "stale" })).toBe(false);
     expect(idleWindow({ ...idle(1000), allowed: false })).toBe(false);
   });
@@ -91,6 +93,21 @@ describe("window starter", () => {
     expect(runs).toHaveLength(1);
     expect(started()).toBe(1);
     expect((await instance.read()).providers.claude.last).toMatchObject({ error: null });
+    for (const epoch of [1600, 1900, 2200]) {
+      instance.observe(snapshot(idle(epoch)));
+      await settle();
+    }
+    expect(runs).toHaveLength(1);
+
+    instance.observe(snapshot(running(2300)));
+    instance.observe(snapshot(idle(2400)));
+    instance.observe(snapshot(idle(2600)));
+    await settle();
+    expect(runs).toHaveLength(1);
+    instance.observe(snapshot(idle(2700)));
+    await settle();
+    expect(runs).toHaveLength(2);
+    expect(started()).toBe(2);
   });
 
   it("waits again after a reading that is not idle", async () => {
@@ -110,8 +127,29 @@ describe("window starter", () => {
     expect(runs).toHaveLength(0);
   });
 
+  it.each(["master", "provider"])(
+    "keeps an attempted idle spell consumed when the %s switch is toggled",
+    async (toggle) => {
+      const { instance, runs } = starter(claudeOnly);
+      instance.observe(snapshot(idle(1000)));
+      instance.observe(snapshot(idle(1300)));
+      await settle();
+      const disabled =
+        toggle === "master"
+          ? { ...claudeOnly, enabled: false }
+          : { ...claudeOnly, providers: { ...claudeOnly.providers, claude: { enabled: false, path: null } } };
+      await instance.set(disabled);
+      instance.observe(snapshot(idle(1600)));
+      await instance.set(claudeOnly);
+      instance.observe(snapshot(idle(1900)));
+      instance.observe(snapshot(idle(2200)));
+      await settle();
+      expect(runs).toHaveLength(1);
+    },
+  );
+
   it("keeps the reason a start failed", async () => {
-    const { instance, started } = starter(claudeOnly, async () => {
+    const { instance, runs, started } = starter(claudeOnly, async () => {
       throw new Error("claude exited with code 1: not logged in");
     });
     instance.observe(snapshot(idle(1000)));
@@ -119,5 +157,9 @@ describe("window starter", () => {
     await settle();
     expect(started()).toBe(0);
     expect((await instance.read()).providers.claude.last?.error).toBe("claude exited with code 1: not logged in");
+    instance.observe(snapshot(idle(1600)));
+    instance.observe(snapshot(idle(1900)));
+    await settle();
+    expect(runs).toHaveLength(1);
   });
 });

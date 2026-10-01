@@ -16,7 +16,7 @@ export function idleWindow(usage: ProviderUsage): boolean {
   const { used_percent: used, limit_window_seconds: duration, reset_at_epoch: reset } = usage.five_hour;
   const epoch = usage.last_successful_update_epoch;
   if (usage.status !== "ready" || usage.allowed === false || epoch === null || duration === null) return false;
-  return (used ?? 0) === 0 && (reset === null || reset - epoch >= duration - SLACK);
+  return used === 0 && (reset === null || reset - epoch >= duration - SLACK);
 }
 
 /** Starts a provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
@@ -24,6 +24,7 @@ export function idleWindow(usage: ProviderUsage): boolean {
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<StartProviderId, number>();
+  private readonly attempted = new Set<StartProviderId>();
   private readonly running = new Set<StartProviderId>();
   private readonly last = new Map<StartProviderId, StartAttempt>();
 
@@ -49,17 +50,23 @@ export class WindowStarter {
   }
 
   observe(snapshot: UsageSnapshot) {
-    for (const id of startProviderIds) {
-      const usage = snapshot[id];
-      const epoch = usage.last_successful_update_epoch;
-      if (!this.settings.enabled || !this.settings.providers[id].enabled || epoch === null || !idleWindow(usage)) {
-        this.idleSince.delete(id);
-        continue;
-      }
-      const since = this.idleSince.get(id) ?? epoch;
-      this.idleSince.set(id, since);
-      if (epoch - since >= GRACE && !this.running.has(id)) void this.start(id);
+    for (const id of startProviderIds) this.observeProvider(id, snapshot[id]);
+  }
+
+  private observeProvider(id: StartProviderId, usage: ProviderUsage) {
+    const epoch = usage.last_successful_update_epoch;
+    if (!idleWindow(usage)) {
+      this.idleSince.delete(id);
+      this.attempted.delete(id);
+      return;
     }
+    if (!this.settings.enabled || !this.settings.providers[id].enabled || epoch === null) {
+      this.idleSince.delete(id);
+      return;
+    }
+    const since = this.idleSince.get(id) ?? epoch;
+    this.idleSince.set(id, since);
+    if (epoch - since >= GRACE && !this.attempted.has(id) && !this.running.has(id)) void this.start(id);
   }
 
   private async provider(id: StartProviderId): Promise<WindowStart["providers"][StartProviderId]> {
@@ -69,6 +76,7 @@ export class WindowStarter {
   }
 
   private async start(id: StartProviderId) {
+    this.attempted.add(id);
     this.running.add(id);
     this.idleSince.delete(id);
     const epoch = nowEpoch();

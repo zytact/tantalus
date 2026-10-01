@@ -10,6 +10,7 @@ import {
   loadProxyHubSettings,
   loadRemoteSettings,
   loadSettings,
+  loadWindowStartSettings,
   noProviders,
   noRemoteAccess,
   saveSettings,
@@ -56,6 +57,25 @@ describe("remote access settings", () => {
     expect(loadRemoteSettings(file)).toEqual(noRemoteAccess);
     saveSettings(file, { localNetwork: false, tailscale: true });
     expect(loadRemoteSettings(file)).toEqual({ localNetwork: false, tailscale: true });
+  });
+});
+
+describe("window start settings", () => {
+  it("leaves the master and both provider switches off when no settings are saved", () => {
+    expect(loadWindowStartSettings(path())).toEqual({
+      enabled: false,
+      providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
+    });
+  });
+
+  it("preserves explicit saved choices", () => {
+    const file = path();
+    const settings = {
+      enabled: true,
+      providers: { claude: { enabled: true, path: "/usr/bin/claude" }, codex: { enabled: false, path: null } },
+    };
+    saveSettings(file, settings);
+    expect(loadWindowStartSettings(file)).toEqual(settings);
   });
 });
 

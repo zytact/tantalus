@@ -91,11 +91,11 @@ function inWsl(program: string, distribution: string | null, args: string[]): Cl
     args: [
       ...(distribution ? ["-d", distribution] : []),
       "--cd",
-      "~",
+      "/tmp",
       "--exec",
       "sh",
       "-lc",
-      'exec "$0" "$@"',
+      'directory=$(mktemp -d /tmp/tantalus-start.XXXXXX) || exit; trap \'rm -rf -- "$directory"\' 0; cd "$directory" || exit; "$0" "$@"',
       program,
       ...args,
     ],
