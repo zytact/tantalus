@@ -2,6 +2,7 @@ import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
 import { fiveHourSeconds, monthlySeconds, percent, sevenDaySeconds } from "../shared/usage";
 import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
+import type { StartProviderId, WindowStart } from "../shared/window-start";
 
 /** What a provider banks beyond its windows, in the order shown. Opencode reports neither. */
 export const providerExtras = {
@@ -78,6 +79,13 @@ export function absoluteTime(epoch: number | null): string {
   return epoch === null
     ? "Unavailable"
     : new Date(epoch * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+/** The last window start, or what the next one would run. */
+export function startStatus({ command, last }: WindowStart["providers"][StartProviderId]): string {
+  if (last?.error) return `Could not start a window ${absoluteTime(last.epoch)}. ${last.error}`;
+  if (last) return `Started a window ${absoluteTime(last.epoch)}.`;
+  return command ? `Runs ${command}.` : "Could not find the CLI. Enter its path below.";
 }
 
 /** Credits expire weeks out, so a weekday alone would not say which week. */

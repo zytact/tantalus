@@ -33,6 +33,14 @@ A window that is not moving shows nothing, since idle is not slow. To tell the t
 
 The dragon and tortoise icons are by [Delapouite](https://delapouite.com) from [game-icons.net](https://game-icons.net), under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
+## Starting 5-hour windows
+
+A 5-hour window only starts counting at your first prompt, so a window you open at 9:00 resets at 14:00 however little you used it. Settings can start the Claude and Codex windows for you. It starts off, with a switch per provider under it, and the choice is saved to `window-start.json` in the app config directory.
+
+A window counts as idle when nothing is used and no reset is running. Claude reports no reset time, and Codex keeps its reset a full window away. Once two readings at least 5 minutes apart both show it idle, Tantalus runs the provider's CLI with a one-word prompt in the temporary directory. That leaves you 5 minutes to start it yourself. Claude runs `claude -p OK --model haiku` and Codex runs `codex exec --ephemeral` with low reasoning. Neither loads MCP servers or your settings, and neither saves a session. Each start still uses a little of the weekly limit.
+
+Tantalus looks for the CLI on the `PATH`, then in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.npm-global/bin` and `~/.bun/bin`. On Windows it looks in `%USERPROFILE%\.local\bin` and `%APPDATA%\npm`. When the login was found inside WSL, the CLI runs in that distribution through `wsl.exe` and a login shell. Settings shows what it found and takes a path when it finds nothing. On Windows, a path starting with `/` runs inside WSL.
+
 ## Remote access
 
 Settings has two switches that let other devices open a read-only copy of the allowance page. It has no Refresh button and no Settings, and it updates whenever the app refreshes. Both start off, and the choice is saved to `remote-access.json` in the app config directory.

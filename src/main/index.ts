@@ -12,10 +12,11 @@ import { nowEpoch, providerIds } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
+import { runCli, startCli } from "./cli";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
-import { paceSettings } from "./settings";
+import { paceSettings, windowStartSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
 import { trayItems } from "./tray-menu";
@@ -23,6 +24,7 @@ import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
 import { pollUsage, UsageState } from "./usage-state";
 import { WebServer } from "./web-server";
+import { WindowStarter } from "./window-start";
 
 const identity = app.getName() === identities.preview.productName ? identities.preview : identities.release;
 const preview = identity === identities.preview;
@@ -75,12 +77,19 @@ function start() {
       renderTray();
       publish("usageSnapshot", snapshot);
       web.publish(snapshot);
+      starter.observe(snapshot);
     },
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),
       join(app.getPath("userData"), "pace-creatures.json"),
       () => readActivity(),
     ),
+  );
+  const starter = new WindowStarter(
+    join(app.getPath("userData"), "window-start.json"),
+    startCli,
+    runCli,
+    () => void state.refresh(),
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
   const updater = new Updater(
@@ -132,6 +141,12 @@ function start() {
   handle("releaseNotes", () => updater.releaseNotes());
   handle("openAtLogin", () => openAtLogin(identity));
   handle("setOpenAtLogin", (enabled) => setOpenAtLogin(identity, enabled === true));
+  handle("windowStart", () => starter.read());
+  handle("setWindowStart", (settings) => {
+    const parsed = windowStartSettings(settings);
+    if (!parsed) throw new Error("Unknown window start setting.");
+    return starter.set(parsed);
+  });
   handle("remoteAccess", () => remote.read());
   handle("setRemoteAccess", (route, enabled) => {
     if (!remoteRoutes.includes(route) || typeof enabled !== "boolean") {

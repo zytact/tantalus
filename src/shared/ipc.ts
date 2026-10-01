@@ -1,5 +1,6 @@
 import type { PaceSettings } from "./pace";
 import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
+import type { WindowStart, WindowStartSettings } from "./window-start";
 
 export type ReleaseNotice = {
   id: string;
@@ -47,6 +48,8 @@ export type Commands = {
   releaseNotes: () => ReleaseNotes[];
   openAtLogin: () => boolean;
   setOpenAtLogin: (enabled: boolean) => void;
+  windowStart: () => WindowStart;
+  setWindowStart: (settings: WindowStartSettings) => WindowStart;
   remoteAccess: () => RemoteAccess;
   setRemoteAccess: (route: RemoteRoute, enabled: boolean) => RemoteAccess;
 };

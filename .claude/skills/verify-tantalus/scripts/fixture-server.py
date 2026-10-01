@@ -121,6 +121,13 @@ def blocked():
     }
 
 
+def idle():
+    fixture = ready()
+    fixture["codex_usage"]["rate_limit"]["primary_window"] = codex_window(0, 5 * HOUR, 5 * HOUR)
+    fixture["claude_usage"]["five_hour"] = {"utilization": 0, "resets_at": None}
+    return fixture
+
+
 def no_windows():
     return {
         "codex_subscription": {"active_until": None},
@@ -139,6 +146,7 @@ SCENARIOS = {
     "ready": ready,
     "monthly-only": monthly_only,
     "blocked": blocked,
+    "idle": idle,
     "no-windows": no_windows,
     "error": None,
 }
