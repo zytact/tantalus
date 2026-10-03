@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.29](https://github.com/zytact/tantalus/compare/v0.0.28...v0.0.29) (2026-10-03)
+
+
+### Features
+
+* **usage:** start 5-hour windows for every polled provider with one switch ([#87](https://github.com/zytact/tantalus/issues/87)) ([2322b73](https://github.com/zytact/tantalus/commit/2322b7314bb6f4a518d54f20a3b0df3bc24cc21e))
+
+
+### Bug Fixes
+
+* **usage:** avoid waking claude for transient api failures ([#89](https://github.com/zytact/tantalus/issues/89)) ([3a01219](https://github.com/zytact/tantalus/commit/3a0121994ebc5fcfb3e04a45573525d410596846))
+
 ## [0.0.28](https://github.com/zytact/tantalus/compare/v0.0.27...v0.0.28) (2026-10-03)
 
 
