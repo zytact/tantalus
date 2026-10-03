@@ -25,7 +25,7 @@ export function signInRejected(usage: ProviderUsage): boolean {
   return (usage.status === "error" || usage.status === "stale") && usage.error_message === failureMessages.response;
 }
 
-/** Starts a provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
+/** Starts a polled provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
  * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
  * With wake on, it also runs the Claude CLI when Claude's sign-in is rejected, at most once an hour. */
 export class WindowStarter {
@@ -59,7 +59,7 @@ export class WindowStarter {
   }
 
   observe(snapshot: UsageSnapshot) {
-    for (const id of startProviderIds) this.observeProvider(id, snapshot[id]);
+    for (const id of startProviderIds) this.observeProvider(id, snapshot[id], snapshot.enabled[id]);
     this.observeSignIn(snapshot.claude);
   }
 
@@ -69,14 +69,14 @@ export class WindowStarter {
     void this.wake();
   }
 
-  private observeProvider(id: StartProviderId, usage: ProviderUsage) {
+  private observeProvider(id: StartProviderId, usage: ProviderUsage, polled: boolean) {
     const epoch = usage.last_successful_update_epoch;
     if (!idleWindow(usage)) {
       this.idleSince.delete(id);
       this.attempted.delete(id);
       return;
     }
-    if (!this.settings.enabled || !this.settings.providers[id].enabled || epoch === null) {
+    if (!this.settings.enabled || !polled || epoch === null) {
       this.idleSince.delete(id);
       return;
     }

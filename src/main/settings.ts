@@ -52,7 +52,7 @@ export function paceSettings(value: unknown): PaceSettings | null {
 export const noWindowStarts: WindowStartSettings = {
   enabled: false,
   wake: false,
-  providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
+  providers: { claude: { path: null }, codex: { path: null } },
 };
 
 export function loadWindowStartSettings(path: string): WindowStartSettings {
@@ -73,10 +73,9 @@ export function windowStartSettings(value: unknown): WindowStartSettings | null 
 }
 
 function startProvider(value: unknown): StartProviderSettings | null {
-  const enabled = field(value, "enabled");
   const path = field(value, "path");
-  if (typeof enabled !== "boolean" || (path !== null && typeof path !== "string")) return null;
-  return { enabled, path: path?.trim() || null };
+  if (path !== null && typeof path !== "string") return null;
+  return { path: path?.trim() || null };
 }
 
 /** A log that does not parse starts over, which only costs the time it takes to learn again. */

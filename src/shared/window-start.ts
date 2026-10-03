@@ -4,8 +4,8 @@ import type { ProviderId } from "./usage";
 export const startProviderIds = ["claude", "codex"] as const satisfies readonly ProviderId[];
 export type StartProviderId = (typeof startProviderIds)[number];
 
-/** `path` is the CLI the user chose, or null to look in the usual install locations. */
-export type StartProviderSettings = { enabled: boolean; path: string | null };
+/** Starts cover every provider being polled. `path` is the CLI the user chose, or null to look in the usual install locations. */
+export type StartProviderSettings = { path: string | null };
 export type WindowStartSettings = {
   enabled: boolean;
   wake: boolean;
