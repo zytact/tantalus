@@ -6,7 +6,12 @@ export type StartProviderId = (typeof startProviderIds)[number];
 
 /** `path` is the CLI the user chose, or null to look in the usual install locations. */
 export type StartProviderSettings = { enabled: boolean; path: string | null };
-export type WindowStartSettings = { enabled: boolean; providers: Record<StartProviderId, StartProviderSettings> };
+/** `wake` runs the Claude CLI when Claude's usage service rejects the sign-in, which renews it. */
+export type WindowStartSettings = {
+  enabled: boolean;
+  wake: boolean;
+  providers: Record<StartProviderId, StartProviderSettings>;
+};
 
 /** The last time Tantalus ran the CLI, and why it failed if it did. */
 export type StartAttempt = { epoch: number; error: string | null };
@@ -14,5 +19,7 @@ export type StartAttempt = { epoch: number; error: string | null };
 /** `command` is what would run, or null when no CLI was found. */
 export type WindowStart = {
   enabled: boolean;
+  wake: boolean;
+  lastWake: StartAttempt | null;
   providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
 };

@@ -3,12 +3,15 @@ import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { startProviderIds } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart, WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
+import { failureMessages } from "./failure";
 import { loadWindowStartSettings, saveSettings } from "./settings";
 
 /** How long a window sits idle before Tantalus starts it, which leaves time to start it yourself. */
 const GRACE = 5 * 60;
 /** How far short of a full window an idle Codex reset may fall, since it is counted from each reading. */
 const SLACK = 60;
+/** The least time between wakes, so a wake that does not help never spams the CLI. */
+const WAKE_INTERVAL = 60 * 60;
 
 /** A 5-hour window with nothing used and no clock running. Claude reports no reset for it, and Codex a
  * reset a full window after every reading. */
@@ -19,14 +22,22 @@ export function idleWindow(usage: ProviderUsage): boolean {
   return used === 0 && (reset === null || reset - epoch >= duration - SLACK);
 }
 
+/** Claude's usage service rejects a sign-in that Claude Code has not renewed in a while. Running the
+ * CLI renews it. */
+export function signInRejected(usage: ProviderUsage): boolean {
+  return (usage.status === "error" || usage.status === "stale") && usage.error_message === failureMessages.response;
+}
+
 /** Starts a provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
- * A reading that is not idle starts the wait over, so a window is started at most once per idle spell. */
+ * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
+ * With wake on, it also runs the Claude CLI when Claude's sign-in is rejected, at most once an hour. */
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<StartProviderId, number>();
   private readonly attempted = new Set<StartProviderId>();
   private readonly running = new Set<StartProviderId>();
   private readonly last = new Map<StartProviderId, StartAttempt>();
+  private lastWake: StartAttempt | null = null;
 
   constructor(
     private readonly path: string,
@@ -39,7 +50,8 @@ export class WindowStarter {
 
   async read(): Promise<WindowStart> {
     const [claude, codex] = await Promise.all([this.provider("claude"), this.provider("codex")]);
-    return { enabled: this.settings.enabled, providers: { claude, codex } };
+    const { enabled, wake } = this.settings;
+    return { enabled, wake, lastWake: this.lastWake, providers: { claude, codex } };
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
@@ -51,6 +63,13 @@ export class WindowStarter {
 
   observe(snapshot: UsageSnapshot) {
     for (const id of startProviderIds) this.observeProvider(id, snapshot[id]);
+    this.observeSignIn(snapshot.claude);
+  }
+
+  private observeSignIn(usage: ProviderUsage) {
+    if (!this.settings.wake || !signInRejected(usage) || this.running.has("claude")) return;
+    if (this.lastWake && nowEpoch() - this.lastWake.epoch < WAKE_INTERVAL) return;
+    void this.wake();
   }
 
   private observeProvider(id: StartProviderId, usage: ProviderUsage) {
@@ -77,17 +96,26 @@ export class WindowStarter {
 
   private async start(id: StartProviderId) {
     this.attempted.add(id);
-    this.running.add(id);
     this.idleSince.delete(id);
+    this.last.set(id, await this.runProvider(id));
+  }
+
+  private async wake() {
+    this.lastWake = await this.runProvider("claude");
+  }
+
+  /** Runs the provider's CLI and refreshes once it succeeds. */
+  private async runProvider(id: StartProviderId): Promise<StartAttempt> {
+    this.running.add(id);
     const epoch = nowEpoch();
     try {
       const cli = await this.locate(id, this.settings.providers[id].path);
       if (!cli) throw new Error(`Could not find the ${providerNames[id]} CLI. Set its path.`);
       await this.run(cli);
-      this.last.set(id, { epoch, error: null });
       this.started();
+      return { epoch, error: null };
     } catch (error) {
-      this.last.set(id, { epoch, error: error instanceof Error ? error.message : String(error) });
+      return { epoch, error: error instanceof Error ? error.message : String(error) };
     } finally {
       this.running.delete(id);
     }

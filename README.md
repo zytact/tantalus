@@ -41,6 +41,10 @@ A window counts as idle when nothing is used and no reset is running. Claude rep
 
 Tantalus looks for the CLI on the `PATH`, then in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, `~/.npm-global/bin` and `~/.bun/bin`. On Windows it looks in `%USERPROFILE%\.local\bin` and `%APPDATA%\npm`. When the login was found inside WSL, the CLI runs in that distribution through `wsl.exe` and a login shell. Settings shows what it found and takes a path when it finds nothing. On Windows, a path starting with `/` runs inside WSL.
 
+### Waking the Claude sign-in (beta)
+
+Claude's usage service starts rejecting the sign-in when Claude Code has not run for a while, and the window reads "The usage service returned an unexpected response" until you open Claude Code. The **Wake Claude sign-in** switch in Settings runs the same `claude -p OK` prompt when that happens, which renews the sign-in, then refreshes. It works whether or not window starts are on, uses the Claude CLI path set above, and runs at most once an hour so a wake that does not help never repeats every refresh. It starts off and is saved in `window-start.json`.
+
 ## Remote access
 
 Settings has two switches that let other devices open a read-only copy of the allowance page. It has no Refresh button and no Settings, and it updates whenever the app refreshes. Both start off, and the choice is saved to `remote-access.json` in the app config directory.
