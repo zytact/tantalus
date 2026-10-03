@@ -14,4 +14,13 @@ Launch with `--mock idle`. Real CLIs would fail against the fixture credentials,
 4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with the CLI's last stderr line.
 5. Run `launch.sh --restart` and confirm both switches and the Claude path survive.
 
+## Sign-in wake proof
+
+`WindowStarter` also runs the Claude CLI when a Claude reading fails with `The usage service returned an unexpected response`, at most once an hour.
+
+1. Launch with `--mock error`, open Settings, and switch on Wake Claude sign-in. Its row carries a Beta label.
+2. Enter `/usr/bin/true` as the Claude path (switch on Start 5-hour windows and Claude to show the field), then press Refresh.
+3. Reopen Settings. The wake row should read `Woke Claude <time>.`
+4. Press Refresh again and reopen Settings. The time should not change, since the next wake waits an hour.
+
 Never point a real-mode preview at an idle real account with the feature on unless you mean to start that account's window.

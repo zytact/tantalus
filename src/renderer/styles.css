@@ -590,6 +590,16 @@ button.danger:hover:not(:disabled) {
   margin-left: -1px;
   padding: 0 12px;
 }
+.beta-label {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .optional-label {
   color: var(--text-faint);
   font-weight: 450;

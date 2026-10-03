@@ -1,17 +1,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import { emptyProviderUsage, fiveHourSeconds } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import type { WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
+import { failureMessages } from "./failure";
 import { saveSettings } from "./settings";
 import { idleWindow, WindowStarter } from "./window-start";
 
 const directories: string[] = [];
 afterEach(() => {
+  vi.useRealTimers();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -40,6 +42,7 @@ function snapshot(claude: ProviderUsage): UsageSnapshot {
 
 const claudeOnly: WindowStartSettings = {
   enabled: true,
+  wake: false,
   providers: { claude: { enabled: true, path: null }, codex: { enabled: false, path: null } },
 };
 
@@ -161,5 +164,38 @@ describe("window starter", () => {
     instance.observe(snapshot(idle(1900)));
     await settle();
     expect(runs).toHaveLength(1);
+  });
+});
+
+describe("sign-in wake", () => {
+  const rejected: ProviderUsage = { ...emptyProviderUsage(), status: "error", error_message: failureMessages.response };
+  const wakeOnly: WindowStartSettings = { ...claudeOnly, enabled: false, wake: true };
+
+  it("wakes a rejected Claude sign-in at most once an hour", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    const { instance, runs, started } = starter(wakeOnly);
+    instance.observe(snapshot(rejected));
+    await settle();
+    expect(runs).toHaveLength(1);
+    expect(started()).toBe(1);
+    vi.setSystemTime(1_000_000 + 59 * 60_000);
+    instance.observe(snapshot({ ...rejected, status: "stale" }));
+    await settle();
+    expect(runs).toHaveLength(1);
+    vi.setSystemTime(1_000_000 + 60 * 60_000);
+    instance.observe(snapshot(rejected));
+    await settle();
+    expect(runs).toHaveLength(2);
+  });
+
+  it("leaves other failures and a switched off wake alone", async () => {
+    const { instance, runs } = starter(wakeOnly);
+    instance.observe(snapshot({ ...rejected, error_message: failureMessages.timeout }));
+    await settle();
+    expect(runs).toHaveLength(0);
+    await instance.set({ ...wakeOnly, wake: false });
+    instance.observe(snapshot(rejected));
+    await settle();
+    expect(runs).toHaveLength(0);
   });
 });

@@ -51,6 +51,7 @@ export function paceSettings(value: unknown): PaceSettings | null {
 /** Nothing runs a CLI until someone switches it on. */
 export const noWindowStarts: WindowStartSettings = {
   enabled: false,
+  wake: false,
   providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
 };
 
@@ -62,10 +63,13 @@ export function loadWindowStartSettings(path: string): WindowStartSettings {
  * A blank path means the CLI is looked up. */
 export function windowStartSettings(value: unknown): WindowStartSettings | null {
   const enabled = field(value, "enabled");
+  const wake = field(value, "wake") ?? false;
   const providers = field(value, "providers");
   const claude = startProvider(field(providers, "claude"));
   const codex = startProvider(field(providers, "codex"));
-  return typeof enabled === "boolean" && claude && codex ? { enabled, providers: { claude, codex } } : null;
+  return typeof enabled === "boolean" && typeof wake === "boolean" && claude && codex
+    ? { enabled, wake, providers: { claude, codex } }
+    : null;
 }
 
 function startProvider(value: unknown): StartProviderSettings | null {

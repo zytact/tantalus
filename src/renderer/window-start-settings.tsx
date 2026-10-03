@@ -4,7 +4,7 @@ import type { ProviderId } from "../shared/usage";
 import { startProviderIds } from "../shared/window-start";
 import type { StartProviderId, StartProviderSettings, WindowStart } from "../shared/window-start";
 import type { Loadable } from "./busy";
-import { startStatus } from "./presentation";
+import { startStatus, wakeStatus } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { SettingPending, Toggle } from "./settings-controls";
 
@@ -74,6 +74,7 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
             onChange={(patch) => change(start, id, patch)}
           />
         ))}
+      <WakeRow start={start} saving={saving} onSave={(next) => void save(next)} />
     </>
   );
 }
@@ -95,6 +96,38 @@ function StartToggle({
       busy={saving}
       onToggle={() => onSave({ ...start, enabled: !start.enabled })}
     />
+  );
+}
+
+function WakeRow({
+  start,
+  saving,
+  onSave,
+}: {
+  start: Loadable<WindowStart>;
+  saving: boolean;
+  onSave: (start: WindowStart) => void;
+}) {
+  const loaded = typeof start !== "string";
+  return (
+    <section className="setting-row">
+      <div className="setting-copy">
+        <h2>
+          Wake Claude sign-in <span className="beta-label">Beta</span>
+        </h2>
+        <p>{loaded ? wakeStatus(start) : "Runs the Claude CLI when Claude's sign-in is rejected."}</p>
+      </div>
+      {loaded ? (
+        <Toggle
+          label="Wake Claude sign-in"
+          checked={start.wake}
+          busy={saving}
+          onToggle={() => onSave({ ...start, wake: !start.wake })}
+        />
+      ) : (
+        <SettingPending failed={start === "unavailable"} />
+      )}
+    </section>
   );
 }
 

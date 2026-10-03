@@ -64,6 +64,7 @@ describe("window start settings", () => {
   it("leaves the master and both provider switches off when no settings are saved", () => {
     expect(loadWindowStartSettings(path())).toEqual({
       enabled: false,
+      wake: false,
       providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
     });
   });
@@ -72,10 +73,18 @@ describe("window start settings", () => {
     const file = path();
     const settings = {
       enabled: true,
+      wake: true,
       providers: { claude: { enabled: true, path: "/usr/bin/claude" }, codex: { enabled: false, path: null } },
     };
     saveSettings(file, settings);
     expect(loadWindowStartSettings(file)).toEqual(settings);
+  });
+
+  it("keeps settings saved before wake existed, with wake off", () => {
+    const file = path();
+    const providers = { claude: { enabled: true, path: null }, codex: { enabled: false, path: null } };
+    saveSettings(file, { enabled: true, providers });
+    expect(loadWindowStartSettings(file)).toEqual({ enabled: true, wake: false, providers });
   });
 });
 
