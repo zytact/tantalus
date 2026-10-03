@@ -88,7 +88,6 @@ export function startStatus({ command, last }: WindowStart["providers"][StartPro
   return command ? `Runs ${command}.` : "Could not find the CLI. Enter its path below.";
 }
 
-/** The last wake, or what a wake does before the first one. */
 export function wakeStatus({ lastWake }: WindowStart): string {
   if (lastWake?.error) return `Could not wake Claude ${absoluteTime(lastWake.epoch)}. ${lastWake.error}`;
   if (lastWake) return `Woke Claude ${absoluteTime(lastWake.epoch)}.`;

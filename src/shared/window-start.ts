@@ -6,7 +6,6 @@ export type StartProviderId = (typeof startProviderIds)[number];
 
 /** `path` is the CLI the user chose, or null to look in the usual install locations. */
 export type StartProviderSettings = { enabled: boolean; path: string | null };
-/** `wake` runs the Claude CLI when Claude's usage service rejects the sign-in, which renews it. */
 export type WindowStartSettings = {
   enabled: boolean;
   wake: boolean;

@@ -10,7 +10,6 @@ import { loadWindowStartSettings, saveSettings } from "./settings";
 const GRACE = 5 * 60;
 /** How far short of a full window an idle Codex reset may fall, since it is counted from each reading. */
 const SLACK = 60;
-/** The least time between wakes, so a wake that does not help never spams the CLI. */
 const WAKE_INTERVAL = 60 * 60;
 
 /** A 5-hour window with nothing used and no clock running. Claude reports no reset for it, and Codex a
@@ -22,8 +21,6 @@ export function idleWindow(usage: ProviderUsage): boolean {
   return used === 0 && (reset === null || reset - epoch >= duration - SLACK);
 }
 
-/** Claude's usage service rejects a sign-in that Claude Code has not renewed in a while. Running the
- * CLI renews it. */
 export function signInRejected(usage: ProviderUsage): boolean {
   return (usage.status === "error" || usage.status === "stale") && usage.error_message === failureMessages.response;
 }
@@ -104,7 +101,6 @@ export class WindowStarter {
     this.lastWake = await this.runProvider("claude");
   }
 
-  /** Runs the provider's CLI and refreshes once it succeeds. */
   private async runProvider(id: StartProviderId): Promise<StartAttempt> {
     this.running.add(id);
     const epoch = nowEpoch();

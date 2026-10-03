@@ -63,7 +63,6 @@ export function loadWindowStartSettings(path: string): WindowStartSettings {
  * A blank path means the CLI is looked up. */
 export function windowStartSettings(value: unknown): WindowStartSettings | null {
   const enabled = field(value, "enabled");
-  // Wake was added after window starts, so a file written by an earlier version leaves it out.
   const wake = field(value, "wake") ?? false;
   const providers = field(value, "providers");
   const claude = startProvider(field(providers, "claude"));

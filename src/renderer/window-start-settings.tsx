@@ -99,7 +99,6 @@ function StartToggle({
   );
 }
 
-/** Runs the Claude CLI when Claude's sign-in is rejected. It works apart from window starts. */
 function WakeRow({
   start,
   saving,
