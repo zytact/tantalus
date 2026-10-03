@@ -145,7 +145,7 @@ describe("display contract", () => {
 });
 
 describe("window start status", () => {
-  const provider = { enabled: true, path: null, command: "/usr/bin/claude", last: null };
+  const provider = { path: null, command: "/usr/bin/claude", last: null };
 
   it("names what would run, or that nothing was found", () => {
     expect(startStatus(provider)).toBe("Runs /usr/bin/claude.");

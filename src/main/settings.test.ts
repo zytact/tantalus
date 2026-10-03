@@ -61,11 +61,11 @@ describe("remote access settings", () => {
 });
 
 describe("window start settings", () => {
-  it("leaves the master and both provider switches off when no settings are saved", () => {
+  it("leaves window starts and wake off when no settings are saved", () => {
     expect(loadWindowStartSettings(path())).toEqual({
       enabled: false,
       wake: false,
-      providers: { claude: { enabled: false, path: null }, codex: { enabled: false, path: null } },
+      providers: { claude: { path: null }, codex: { path: null } },
     });
   });
 
@@ -74,17 +74,23 @@ describe("window start settings", () => {
     const settings = {
       enabled: true,
       wake: true,
-      providers: { claude: { enabled: true, path: "/usr/bin/claude" }, codex: { enabled: false, path: null } },
+      providers: { claude: { path: "/usr/bin/claude" }, codex: { path: null } },
     };
     saveSettings(file, settings);
     expect(loadWindowStartSettings(file)).toEqual(settings);
   });
 
-  it("keeps settings saved before wake existed, with wake off", () => {
+  it("keeps settings saved before wake existed, and the CLI paths from per-provider switches", () => {
     const file = path();
-    const providers = { claude: { enabled: true, path: null }, codex: { enabled: false, path: null } };
-    saveSettings(file, { enabled: true, providers });
-    expect(loadWindowStartSettings(file)).toEqual({ enabled: true, wake: false, providers });
+    saveSettings(file, {
+      enabled: true,
+      providers: { claude: { enabled: true, path: "/usr/bin/claude" }, codex: { enabled: false, path: null } },
+    });
+    expect(loadWindowStartSettings(file)).toEqual({
+      enabled: true,
+      wake: false,
+      providers: { claude: { path: "/usr/bin/claude" }, codex: { path: null } },
+    });
   });
 });
 

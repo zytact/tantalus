@@ -29,21 +29,21 @@ function reading(epoch: number, used: number | null, reset: number | null): Prov
 const idle = (epoch: number) => reading(epoch, 0, null);
 const running = (epoch: number) => reading(epoch, 4, epoch + 3600);
 
-function snapshot(claude: ProviderUsage): UsageSnapshot {
+function snapshot(claude: ProviderUsage, polled = true): UsageSnapshot {
   return {
     codex: emptyProviderUsage(),
     claude,
     opencode: emptyProviderUsage(),
-    enabled: { codex: false, claude: true, opencode: false },
+    enabled: { codex: false, claude: polled, opencode: false },
     proxy_hubs: [],
     pace: { settings: defaultPaceSettings, windows: {} },
   };
 }
 
-const claudeOnly: WindowStartSettings = {
+const startOn: WindowStartSettings = {
   enabled: true,
   wake: false,
-  providers: { claude: { enabled: true, path: null }, codex: { enabled: false, path: null } },
+  providers: { claude: { path: null }, codex: { path: null } },
 };
 
 function starter(settings: WindowStartSettings, run: (cli: Cli) => Promise<void> = async () => {}) {
@@ -86,7 +86,7 @@ describe("idle windows", () => {
 
 describe("window starter", () => {
   it("starts a window once it has sat idle for 5 minutes, and only once", async () => {
-    const { instance, runs, started } = starter(claudeOnly);
+    const { instance, runs, started } = starter(startOn);
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1200)));
     expect(runs).toHaveLength(0);
@@ -114,7 +114,7 @@ describe("window starter", () => {
   });
 
   it("waits again after a reading that is not idle", async () => {
-    const { instance, runs } = starter(claudeOnly);
+    const { instance, runs } = starter(startOn);
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(running(1200)));
     instance.observe(snapshot(idle(1300)));
@@ -123,36 +123,37 @@ describe("window starter", () => {
   });
 
   it("runs nothing while switched off", async () => {
-    const { instance, runs } = starter({ ...claudeOnly, enabled: false });
+    const { instance, runs } = starter({ ...startOn, enabled: false });
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1300)));
     await settle();
     expect(runs).toHaveLength(0);
   });
 
-  it.each(["master", "provider"])(
-    "keeps an attempted idle spell consumed when the %s switch is toggled",
-    async (toggle) => {
-      const { instance, runs } = starter(claudeOnly);
-      instance.observe(snapshot(idle(1000)));
-      instance.observe(snapshot(idle(1300)));
-      await settle();
-      const disabled =
-        toggle === "master"
-          ? { ...claudeOnly, enabled: false }
-          : { ...claudeOnly, providers: { ...claudeOnly.providers, claude: { enabled: false, path: null } } };
-      await instance.set(disabled);
-      instance.observe(snapshot(idle(1600)));
-      await instance.set(claudeOnly);
-      instance.observe(snapshot(idle(1900)));
-      instance.observe(snapshot(idle(2200)));
-      await settle();
-      expect(runs).toHaveLength(1);
-    },
-  );
+  it("runs nothing for a provider that is not polled", async () => {
+    const { instance, runs } = starter(startOn);
+    instance.observe(snapshot(idle(1000), false));
+    instance.observe(snapshot(idle(1300), false));
+    await settle();
+    expect(runs).toHaveLength(0);
+  });
+
+  it("keeps an attempted idle spell consumed when the switch is toggled", async () => {
+    const { instance, runs } = starter(startOn);
+    instance.observe(snapshot(idle(1000)));
+    instance.observe(snapshot(idle(1300)));
+    await settle();
+    await instance.set({ ...startOn, enabled: false });
+    instance.observe(snapshot(idle(1600)));
+    await instance.set(startOn);
+    instance.observe(snapshot(idle(1900)));
+    instance.observe(snapshot(idle(2200)));
+    await settle();
+    expect(runs).toHaveLength(1);
+  });
 
   it("keeps the reason a start failed", async () => {
-    const { instance, runs, started } = starter(claudeOnly, async () => {
+    const { instance, runs, started } = starter(startOn, async () => {
       throw new Error("claude exited with code 1: not logged in");
     });
     instance.observe(snapshot(idle(1000)));
@@ -169,7 +170,7 @@ describe("window starter", () => {
 
 describe("sign-in wake", () => {
   const rejected: ProviderUsage = { ...emptyProviderUsage(), status: "error", error_message: failureMessages.response };
-  const wakeOnly: WindowStartSettings = { ...claudeOnly, enabled: false, wake: true };
+  const wakeOnly: WindowStartSettings = { ...startOn, enabled: false, wake: true };
 
   it("wakes a rejected Claude sign-in at most once an hour", async () => {
     vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });

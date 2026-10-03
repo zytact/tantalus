@@ -2,13 +2,13 @@ import { useEffect, useId, useState } from "react";
 import { providerNames } from "../shared/usage";
 import type { ProviderId } from "../shared/usage";
 import { startProviderIds } from "../shared/window-start";
-import type { StartProviderId, StartProviderSettings, WindowStart } from "../shared/window-start";
+import type { StartProviderId, WindowStart } from "../shared/window-start";
 import type { Loadable } from "./busy";
 import { startStatus, wakeStatus } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { SettingPending, Toggle } from "./settings-controls";
 
-/** The switch for starting idle 5-hour windows, and under it each provider's switch and CLI. Read on
+/** The switch for starting idle 5-hour windows, and under it each provider's status and CLI. Read on
  * every visit, since the last start and the CLI found can change between visits. */
 export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId, boolean>> }) {
   const [start, setStart] = useState<Loadable<WindowStart>>("loading");
@@ -42,9 +42,6 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
     }
   };
 
-  const change = (current: WindowStart, id: StartProviderId, patch: Partial<StartProviderSettings>) =>
-    void save({ ...current, providers: { ...current.providers, [id]: { ...current.providers[id], ...patch } } });
-
   return (
     <>
       <section className="setting-row">
@@ -71,7 +68,9 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
             provider={start.providers[id]}
             polled={typeof polled !== "string" && polled[id]}
             saving={saving}
-            onChange={(patch) => change(start, id, patch)}
+            onSavePath={(path) =>
+              void save({ ...start, providers: { ...start.providers, [id]: { ...start.providers[id], path } } })
+            }
           />
         ))}
       <WakeRow start={start} saving={saving} onSave={(next) => void save(next)} />
@@ -136,13 +135,13 @@ function StartProviderRow({
   provider,
   polled,
   saving,
-  onChange,
+  onSavePath,
 }: {
   id: StartProviderId;
   provider: WindowStart["providers"][StartProviderId];
   polled: boolean;
   saving: boolean;
-  onChange: (patch: Partial<StartProviderSettings>) => void;
+  onSavePath: (path: string | null) => void;
 }) {
   const name = providerNames[id];
   return (
@@ -155,22 +154,8 @@ function StartProviderRow({
           </h2>
           <p>{polled ? startStatus(provider) : `Switch on ${name} above so Tantalus can see its window.`}</p>
         </div>
-        <Toggle
-          label={`Start ${name} windows`}
-          checked={provider.enabled}
-          busy={saving}
-          onToggle={() => onChange({ enabled: !provider.enabled })}
-        />
       </section>
-      {provider.enabled && (
-        <CliPathForm
-          key={provider.path}
-          name={name}
-          provider={provider}
-          saving={saving}
-          onSave={(path) => onChange({ path })}
-        />
-      )}
+      <CliPathForm key={provider.path} name={name} provider={provider} saving={saving} onSave={onSavePath} />
     </>
   );
 }
