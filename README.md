@@ -43,7 +43,7 @@ Tantalus looks for the CLI on the `PATH`, then in `~/.local/bin`, `/opt/homebrew
 
 ### Waking the Claude sign-in (beta)
 
-Claude's usage service starts rejecting the sign-in when Claude Code has not run for a while, and the window reads "The usage service returned an unexpected response" until you open Claude Code. The **Wake Claude sign-in** switch in Settings runs the same `claude -p OK` prompt when that happens, which renews the sign-in, then refreshes. It works whether or not window starts are on, uses the Claude CLI path set above, and runs at most once an hour so a wake that does not help never repeats every refresh. It starts off and is saved in `window-start.json`.
+The **Wake Claude sign-in** switch in Settings runs the same `claude -p OK` prompt when the credential file says the token has expired or the usage API returns HTTP 401, then refreshes. Tantalus checks the recorded expiry before calling the API. Other responses, including HTTP 429 and server errors, never trigger a wake. It works whether or not window starts are on, uses the Claude CLI path set above, and runs at most once an hour so a wake that does not help never repeats every refresh. It starts off and is saved in `window-start.json`. Each wake sends a prompt and can start an idle 5-hour window.
 
 ## Remote access
 
