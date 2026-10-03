@@ -5,7 +5,7 @@ import { dirname, join, win32 } from "node:path";
 import { claudeSubscription, subscriptionName } from "../shared/usage";
 import type { ProviderId } from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { parseCodexSubscription, stringAt } from "./parse";
+import { field, parseCodexSubscription, stringAt } from "./parse";
 
 export type Credentials = {
   accessToken: string;
@@ -13,6 +13,7 @@ export type Credentials = {
   email: string | null;
   plan: string | null;
   subscription_active_until_epoch: number | null;
+  expires_at_epoch: number | null;
 };
 
 /** Where each login keeps its credentials. The variable relocates the store: Codex and Claude point
@@ -115,7 +116,16 @@ export function parseCredentials(provider: ProviderId, raw: string): Credentials
   }
   const accessToken = firstString(value, tokenPaths);
   if (!accessToken) throw new ReadFailure("missingToken");
-  return { accessToken, accountId: firstString(value, accountPaths), ...credentialIdentity(provider, value) };
+  const expiresAt = provider === "claude" ? field(field(value, "claudeAiOauth"), "expiresAt") : null;
+  return {
+    accessToken,
+    accountId: firstString(value, accountPaths),
+    expires_at_epoch:
+      typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt > 0
+        ? Math.floor(expiresAt / 1000)
+        : null,
+    ...credentialIdentity(provider, value),
+  };
 }
 
 function credentialIdentity(

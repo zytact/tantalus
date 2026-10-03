@@ -1,4 +1,5 @@
 import type { PaceSnapshot } from "./pace";
+import type { ReadFailureReason } from "./failure";
 
 export type WindowUsage = {
   used_percent: number | null;
@@ -34,6 +35,7 @@ export type ProviderUsage = {
   last_successful_update_epoch: number | null;
   status: SnapshotStatus;
   error_message: string | null;
+  error_reason: ReadFailureReason | null;
 };
 export type ProviderId = "codex" | "claude" | "opencode";
 export type ProxyHubProviderId = Extract<ProviderId, "codex" | "claude">;
@@ -106,6 +108,7 @@ export const emptyProviderUsage = (): ProviderUsage => ({
   last_successful_update_epoch: null,
   status: "loading",
   error_message: null,
+  error_reason: null,
 });
 
 export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnapshot => ({

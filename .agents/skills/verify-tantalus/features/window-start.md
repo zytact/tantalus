@@ -16,11 +16,15 @@ Launch with `--mock idle`. Real CLIs would fail against the fixture credentials,
 
 ## Sign-in wake proof
 
-`WindowStarter` also runs the Claude CLI when a Claude reading fails with `The usage service returned an unexpected response`, at most once an hour.
+`WindowStarter` runs the Claude CLI only when a Claude reading carries the typed `expired` or `rejected` failure, at most once an hour. The credential file's `claudeAiOauth.expiresAt` is in milliseconds. An expired token fails before an API request; HTTP 401 produces `rejected`. HTTP 403, 429, server errors, invalid JSON, and display text alone never trigger a wake.
 
-1. Launch with `--mock error`, open Settings, and switch on Wake Claude sign-in. Its row carries a Beta label.
-2. Enter `/usr/bin/true` as the Claude path (switch on Start 5-hour windows to show the field), then press Refresh.
-3. Reopen Settings. The wake row should read `Woke Claude <time>.`
-4. Press Refresh again and reopen Settings. The time should not change, since the next wake waits an hour.
+1. Launch a fresh Preview process with `--mock error`, open Settings, and switch on Wake Claude sign-in. Its row carries a Beta label.
+2. Enter `/usr/bin/true` as the Claude path (switch on Start 5-hour windows to show the field), then switch window starts off again.
+3. Press Refresh. HTTP 500 should show an unexpected-response failure, with no wake time or CLI invocation. Check this before any successful wake, so the hourly cooldown cannot mask a false wake.
+4. Switch the fixture to `ready` with `mock-scenario.sh ready`, set `claudeAiOauth.expiresAt` to a past timestamp in the mock home's `.credentials.json`, then press Refresh. Claude should show `The sign-in has expired`; its usage endpoint should not appear in the fixture request log for that refresh. The wake row should read `Woke Claude <time>`. `/usr/bin/true` does not renew credentials, so usage stays expired.
+5. Press Refresh again. The wake time should not change, since the next wake waits an hour.
+6. Restore the mock expiry to a future timestamp and refresh. Usage should be ready again.
+
+A real renewal proof needs an actually expired token. After the real CLI runs, confirm the credential file's expiry advances and usage returns HTTP 200. A fake CLI or edited expiry on an unexpired real token does not prove provider renewal.
 
 Never point a real-mode preview at an idle real account with the feature on unless you mean to start that account's window.

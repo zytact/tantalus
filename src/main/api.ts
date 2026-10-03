@@ -68,6 +68,9 @@ export class UsageApi {
   }
 
   private async fetchClaude(credentials: Credentials): Promise<ProviderUsage> {
+    if (credentials.expires_at_epoch !== null && credentials.expires_at_epoch <= nowEpoch()) {
+      throw new ReadFailure("expired");
+    }
     const [usage, profile] = await Promise.all([
       this.json("claudeUsage", credentials, claudeHeaders),
       this.json("claudeProfile", credentials, claudeHeaders).catch(() => null),
@@ -107,7 +110,9 @@ export class UsageApi {
     }).catch((error: unknown) => {
       throw new ReadFailure(error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "request");
     });
-    if (response.status !== 200) throw new ReadFailure("response");
+    if (response.status !== 200) {
+      throw new ReadFailure(endpoint === "claudeUsage" && response.status === 401 ? "rejected" : "response");
+    }
     return response.json().catch((): never => {
       throw new ReadFailure("response");
     });

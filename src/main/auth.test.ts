@@ -18,6 +18,7 @@ describe("credentials", () => {
         email: null,
         plan: null,
         subscription_active_until_epoch: null,
+        expires_at_epoch: null,
       });
     }
   });
@@ -29,10 +30,18 @@ describe("credentials", () => {
       email: null,
       plan: null,
       subscription_active_until_epoch: null,
+      expires_at_epoch: null,
     });
     expect(
       parseCredentials("opencode", '{"google":{"type":"api","key":"g"},"opencode-go":{"type":"api","key":"a"}}'),
-    ).toEqual({ accessToken: "a", accountId: null, email: null, plan: "Go", subscription_active_until_epoch: null });
+    ).toEqual({
+      accessToken: "a",
+      accountId: null,
+      email: null,
+      plan: "Go",
+      subscription_active_until_epoch: null,
+      expires_at_epoch: null,
+    });
   });
 
   it("tells a file without a token from one that is not JSON", () => {
@@ -64,6 +73,7 @@ describe("credentials", () => {
       email: "codex@example.com",
       plan: "Plus",
       subscription_active_until_epoch: 4_070_908_800,
+      expires_at_epoch: null,
     });
     expect(
       parseCredentials(
@@ -76,7 +86,17 @@ describe("credentials", () => {
       email: null,
       plan: "Max 20x",
       subscription_active_until_epoch: null,
+      expires_at_epoch: null,
     });
+  });
+
+  it("reads Claude's expiry in milliseconds and leaves unknown expiry unreported", () => {
+    const credentials = (expiresAt: unknown) =>
+      parseCredentials("claude", JSON.stringify({ claudeAiOauth: { accessToken: "a", expiresAt } }));
+    expect(credentials(1_791_023_563_253).expires_at_epoch).toBe(1_791_023_563);
+    for (const expiresAt of [undefined, null, "1791023563253", 0, -1]) {
+      expect(credentials(expiresAt).expires_at_epoch).toBeNull();
+    }
   });
 
   it("reads WSL distribution names from either console encoding", () => {

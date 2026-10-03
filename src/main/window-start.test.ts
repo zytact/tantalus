@@ -7,13 +7,18 @@ import { emptyProviderUsage, fiveHourSeconds } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import type { WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
-import { failureMessages } from "./failure";
+import { failureMessages } from "../shared/failure";
+import { UsageApi } from "./api";
+import { parseCredentials } from "./auth";
+import { ReadFailure } from "./failure";
 import { saveSettings } from "./settings";
+import { applyReading } from "./usage-state";
 import { idleWindow, WindowStarter } from "./window-start";
 
 const directories: string[] = [];
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -169,7 +174,10 @@ describe("window starter", () => {
 });
 
 describe("sign-in wake", () => {
-  const rejected: ProviderUsage = { ...emptyProviderUsage(), status: "error", error_message: failureMessages.response };
+  const rejected = {
+    ...applyReading(emptyProviderUsage(), new ReadFailure("rejected")),
+    error_message: "Sign in again to continue.",
+  };
   const wakeOnly: WindowStartSettings = { ...startOn, enabled: false, wake: true };
 
   it("wakes a rejected Claude sign-in at most once an hour", async () => {
@@ -191,11 +199,74 @@ describe("sign-in wake", () => {
 
   it("leaves other failures and a switched off wake alone", async () => {
     const { instance, runs } = starter(wakeOnly);
-    instance.observe(snapshot({ ...rejected, error_message: failureMessages.timeout }));
+    instance.observe(snapshot(applyReading(emptyProviderUsage(), new ReadFailure("timeout"))));
     await settle();
     expect(runs).toHaveLength(0);
     await instance.set({ ...wakeOnly, wake: false });
     instance.observe(snapshot(rejected));
+    await settle();
+    expect(runs).toHaveLength(0);
+  });
+
+  it.each([
+    [401, "{}", 1],
+    [403, "{}", 0],
+    [429, "{}", 0],
+    [500, "{}", 0],
+    [503, "{}", 0],
+    [200, "not JSON", 0],
+  ])("checks HTTP %i with body %s before running the CLI", async (status, body, expectedRuns) => {
+    const fetch = vi.fn(async () => new Response(body, { status }));
+    vi.stubGlobal("fetch", fetch);
+    const credentials = parseCredentials("claude", '{"claudeAiOauth":{"accessToken":"fixture"}}');
+    const usage = await new UsageApi().fetch("claude", credentials).catch((error: unknown) => {
+      if (!(error instanceof Error)) throw error;
+      return applyReading(running(1000), error);
+    });
+    const { instance, runs } = starter(wakeOnly);
+    instance.observe(snapshot(usage));
+    await settle();
+    expect(runs).toHaveLength(expectedRuns);
+  });
+
+  it("renews an expired sign-in before reading usage and clears its failure after renewal", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const api = new UsageApi();
+    let credentials = parseCredentials("claude", '{"claudeAiOauth":{"accessToken":"old","expiresAt":1000000}}');
+    const usage = await api.fetch("claude", credentials).catch((error: unknown) => {
+      if (!(error instanceof Error)) throw error;
+      return applyReading(running(900), error);
+    });
+    expect(usage).toMatchObject({ status: "stale", error_reason: "expired" });
+    expect(fetch).not.toHaveBeenCalled();
+    const { instance, runs } = starter(wakeOnly, async () => {
+      credentials = parseCredentials("claude", '{"claudeAiOauth":{"accessToken":"new","expiresAt":2000000}}');
+    });
+    instance.observe(snapshot(usage));
+    await settle();
+    expect(runs).toHaveLength(1);
+    const renewed = await api.fetch("claude", credentials);
+    expect(renewed).toMatchObject({ status: "ready", error_reason: null, error_message: null });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["codex", "opencode"] as const)("keeps %s HTTP 401 failures generic", async (provider) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 401 })),
+    );
+    const credentials = parseCredentials(provider, '{"access_token":"fixture"}');
+    await expect(new UsageApi().fetch(provider, credentials)).rejects.toMatchObject({
+      reason: "response",
+      message: failureMessages.response,
+    });
+  });
+
+  it("does not infer a sign-in rejection from display text", async () => {
+    const { instance, runs } = starter(wakeOnly);
+    instance.observe(snapshot(applyReading(running(1000), new Error(failureMessages.response))));
     await settle();
     expect(runs).toHaveLength(0);
   });

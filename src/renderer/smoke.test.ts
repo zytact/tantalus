@@ -34,6 +34,7 @@ const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   last_successful_update_epoch: null,
   status: "ready",
   error_message: null,
+  error_reason: null,
   ...fields,
 });
 

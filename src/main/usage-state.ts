@@ -223,6 +223,7 @@ export function applyReading(previous: ProviderUsage, reading: ProviderUsage | E
     ...previous,
     status: previous.last_successful_update_epoch !== null ? "stale" : signedOut ? "auth_missing" : "error",
     error_message: reading.message,
+    error_reason: reading instanceof ReadFailure ? reading.reason : null,
   };
 }
 
