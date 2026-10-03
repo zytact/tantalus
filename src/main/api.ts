@@ -110,7 +110,9 @@ export class UsageApi {
     }).catch((error: unknown) => {
       throw new ReadFailure(error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "request");
     });
-    if (response.status !== 200) throw new ReadFailure(response.status === 401 ? "rejected" : "response");
+    if (response.status !== 200) {
+      throw new ReadFailure(endpoint === "claudeUsage" && response.status === 401 ? "rejected" : "response");
+    }
     return response.json().catch((): never => {
       throw new ReadFailure("response");
     });

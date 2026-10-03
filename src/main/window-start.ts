@@ -20,7 +20,7 @@ export function idleWindow(usage: ProviderUsage): boolean {
   return used === 0 && (reset === null || reset - epoch >= duration - SLACK);
 }
 
-export function signInRejected(usage: ProviderUsage): boolean {
+export function signInLapsed(usage: ProviderUsage): boolean {
   return (
     (usage.status === "error" || usage.status === "stale") &&
     (usage.error_reason === "expired" || usage.error_reason === "rejected")
@@ -29,7 +29,7 @@ export function signInRejected(usage: ProviderUsage): boolean {
 
 /** Starts a polled provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
  * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
- * With wake on, it also runs the Claude CLI when Claude's sign-in is rejected, at most once an hour. */
+ * With wake on, it also runs the Claude CLI when Claude's sign-in expires or is rejected, at most once an hour. */
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<StartProviderId, number>();
@@ -66,7 +66,7 @@ export class WindowStarter {
   }
 
   private observeSignIn(usage: ProviderUsage) {
-    if (!this.settings.wake || !signInRejected(usage) || this.running.has("claude")) return;
+    if (!this.settings.wake || !signInLapsed(usage) || this.running.has("claude")) return;
     if (this.lastWake && nowEpoch() - this.lastWake.epoch < WAKE_INTERVAL) return;
     void this.wake();
   }

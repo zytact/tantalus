@@ -252,6 +252,18 @@ describe("sign-in wake", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["codex", "opencode"] as const)("keeps %s HTTP 401 failures generic", async (provider) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 401 })),
+    );
+    const credentials = parseCredentials(provider, '{"access_token":"fixture"}');
+    await expect(new UsageApi().fetch(provider, credentials)).rejects.toMatchObject({
+      reason: "response",
+      message: failureMessages.response,
+    });
+  });
+
   it("does not infer a sign-in rejection from display text", async () => {
     const { instance, runs } = starter(wakeOnly);
     instance.observe(snapshot(applyReading(running(1000), new Error(failureMessages.response))));
