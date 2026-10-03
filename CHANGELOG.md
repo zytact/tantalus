@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.28](https://github.com/zytact/tantalus/compare/v0.0.27...v0.0.28) (2026-10-03)
+
+
+### Features
+
+* **usage:** wake a stale claude sign-in so usage reads again (beta) ([#85](https://github.com/zytact/tantalus/issues/85)) ([cba5efd](https://github.com/zytact/tantalus/commit/cba5efd9561dad5ca38e23326da26fa90c20d353))
+
 ## [0.0.27](https://github.com/zytact/tantalus/compare/v0.0.26...v0.0.27) (2026-10-01)
 
 
