@@ -151,6 +151,8 @@ SCENARIOS = {
     "no-windows": no_windows,
     "error": None,
     "hub-rejected": ready,
+    "hub-claude-only": ready,
+    "hub-codex-only": ready,
 }
 ROUTES = {
     "/backend-api/wham/usage": "codex_usage",
@@ -189,8 +191,7 @@ class Handler(BaseHTTPRequestHandler):
                 log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
             if self.headers.get("authorization") != MANAGEMENT_TOKEN:
                 return self.send_json(401, {"error": "fixture management key required"})
-            return self.send_json(200, {
-                "files": [
+            files = [
                     {
                         "id": "hub-codex.json",
                         "auth_index": "hub-codex",
@@ -205,7 +206,13 @@ class Handler(BaseHTTPRequestHandler):
                         "email": "claude@hub.test",
                     },
                 ]
-            })
+            if Handler.scenario == "hub-multiple-idle":
+                files += [{**file, "id": file["id"].replace(".json", "-two.json"), "auth_index": file["auth_index"] + "-two", "email": file["email"].replace("@", "2@")} for file in files[:]]
+            if Handler.scenario == "hub-claude-only":
+                files = [file for file in files if file["provider"] == "claude"]
+            if Handler.scenario == "hub-codex-only":
+                files = [file for file in files if file["provider"] == "codex"]
+            return self.send_json(200, {"files": files})
         key = ROUTES.get(urlparse(self.path).path)
         with open(Handler.request_log, "a") as log:
             log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")

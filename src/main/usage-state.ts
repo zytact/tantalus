@@ -8,6 +8,7 @@ import type {
   ProviderUsage,
   ProxyHubAccount,
   ProxyHubConfig,
+  ProxyHubProviderId,
   ProxyHubSettings,
   ProxyHubSnapshot,
   UsageSnapshot,
@@ -124,7 +125,7 @@ export class UsageState {
     const configs = this.hubConfigs.map((config) => {
       const hub = hubs.find((hub) => hub.id === config.id && hub.status === "ready");
       if (!hub) return config;
-      const providers = [...new Set(hub.accounts.map((account) => account.provider))].sort();
+      const providers = pooledProviders(hub.accounts);
       return JSON.stringify(providers) === JSON.stringify(config.providers) ? config : { ...config, providers };
     });
     if (configs.every((config, index) => config === this.hubConfigs[index])) return;
@@ -194,10 +195,7 @@ export class UsageState {
     const config: ProxyHubConfig = { id: randomUUID(), ...hubFields(input, null), enabled: true };
     const snapshot = await this.readHubSnapshot(config);
     return this.saveProxyHubs(
-      [
-        ...this.hubConfigs,
-        { ...config, providers: [...new Set(snapshot.accounts.map((account) => account.provider))].sort() },
-      ],
+      [...this.hubConfigs, { ...config, providers: pooledProviders(snapshot.accounts) }],
       false,
       [...this.snapshot.proxy_hubs, snapshot],
     );
@@ -215,7 +213,7 @@ export class UsageState {
     const config = {
       ...this.hubConfig(id),
       ...fields,
-      ...(snapshot && { providers: [...new Set(snapshot.accounts.map((account) => account.provider))].sort() }),
+      ...(snapshot && { providers: pooledProviders(snapshot.accounts) }),
     };
     return this.saveProxyHubs(
       this.hubConfigs.map((hub) => (hub.id === id ? config : hub)),
@@ -388,6 +386,11 @@ function hubFields(
 /** Only a `ProxyHubError` carries a message written to be shown. */
 function hubErrorMessage(error: unknown): string {
   return error instanceof ProxyHubError ? error.message : "The hub could not list accounts.";
+}
+
+/** The providers a hub pools, for ownership checks. */
+function pooledProviders(accounts: Pick<ProxyHubAccount, "provider">[]): ProxyHubProviderId[] {
+  return [...new Set(accounts.map((account) => account.provider))].sort();
 }
 
 const redact = ({ id, label, url, enabled }: ProxyHubConfig): ProxyHubSettings => ({ id, label, url, enabled });
