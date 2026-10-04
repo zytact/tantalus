@@ -310,15 +310,10 @@ describe("hub window starts and renewal", () => {
       const path = new URL(input instanceof Request ? input.url : input).pathname;
       const responses = new Map<string, unknown>([
         [
-          "/v0/management/oauth-model-alias",
-          {
-            "oauth-model-alias": {
-              claude: [{ alias: "helper", name: "claude-haiku-4-5-20251001" }],
-              codex: [{ alias: "helper", name: "gpt-5.1-codex-mini" }],
-            },
-          },
+          "/v0/management/model-definitions/claude",
+          { models: [{ id: "claude-sonnet-4-6" }, { id: "claude-haiku-4-5-20251001" }] },
         ],
-        ["/v0/management/auth-files/models", { models: [{ id: "team/helper" }] }],
+        ["/v0/management/model-definitions/codex", { models: [{ id: "gpt-5.5" }, { id: "gpt-6-luna" }] }],
       ]);
       if (responses.has(path)) return Response.json(responses.get(path));
       if (init?.method === "GET")
@@ -330,6 +325,8 @@ describe("hub window starts and renewal", () => {
               auth_index: "codex-auth",
               provider: "codex",
               id_token: { chatgpt_account_id: "account-a" },
+              prefix: "team",
+              models: [{ name: "gpt-6-luna", alias: "helper" }],
             },
           ],
         });
@@ -369,7 +366,7 @@ describe("hub window starts and renewal", () => {
         expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
         expect(call.header["Chatgpt-Account-Id"]).toBe("account-a");
         expect(body).toMatchObject({
-          model: "gpt-5.1-codex-mini",
+          model: "gpt-6-luna",
           stream: true,
           store: false,
           reasoning: { effort: "low" },

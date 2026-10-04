@@ -69,9 +69,8 @@ export class ProxyHubApi {
         if (field(result, "ok") !== true) throw new ProxyHubError("The hub could not renew this sign-in.");
         return;
       }
-      const models = await this.management(config, `auth-files/models?name=${encodeURIComponent(account.id)}`);
-      const aliases = await this.management(config, "oauth-model-alias");
-      const model = startModel(models, aliases, provider);
+      const models = await this.management(config, `model-definitions/${provider}`);
+      const model = startModel(models, provider);
       ensureAvailable();
       const claude = provider === "claude";
       const result = await this.apiCall(
@@ -292,23 +291,12 @@ function completedResponse(body: string): boolean {
     });
 }
 
-function startModel(value: unknown, aliasResponse: unknown, provider: ProxyHubProviderId): string {
+function startModel(value: unknown, provider: ProxyHubProviderId): string {
   const models = field(value, "models");
-  const aliases = field(field(aliasResponse, "oauth-model-alias"), provider);
-  const mappings = Array.isArray(aliases) ? aliases : [];
   const ids = Array.isArray(models)
     ? models.flatMap((model) => {
         const id = field(model, "id");
-        if (typeof id !== "string") return [];
-        const mapping = mappings.find((entry) => {
-          const alias = field(entry, "alias");
-          return (
-            typeof alias === "string" &&
-            (id.toLowerCase() === alias.toLowerCase() || id.toLowerCase().endsWith(`/${alias.toLowerCase()}`))
-          );
-        });
-        const original = mapping ? field(mapping, "name") : id.split("/").at(-1);
-        return typeof original === "string" ? [original] : [];
+        return typeof id === "string" ? [id] : [];
       })
     : [];
   const supported = ids.filter((id) => id.startsWith(provider === "claude" ? "claude-" : "gpt-"));

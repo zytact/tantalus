@@ -179,14 +179,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/__fixture/health":
             return self.send_json(200, {"scenario": Handler.scenario})
-        if self.path == "/v0/management/oauth-model-alias":
+        if self.path.startswith("/v0/management/model-definitions/"):
             if self.headers.get("authorization") != MANAGEMENT_TOKEN:
                 return self.send_json(401, {"error": "fixture management key required"})
-            return self.send_json(200, {"oauth-model-alias": {}})
-        if self.path.startswith("/v0/management/auth-files/models?"):
-            if self.headers.get("authorization") != MANAGEMENT_TOKEN:
-                return self.send_json(401, {"error": "fixture management key required"})
-            return self.send_json(200, {"models": [{"id": "gpt-5.1-codex-mini"}, {"id": "claude-haiku-4-5-20251001"}]})
+            return self.send_json(200, {"models": [{"id": "gpt-6-luna"}, {"id": "claude-haiku-4-5-20251001"}]})
         if self.path == "/v0/management/auth-files":
             with open(Handler.request_log, "a") as log:
                 log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
