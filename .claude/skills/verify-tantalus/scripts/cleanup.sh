@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Stop only the preview, fixture server, and virtual display started by launch.sh.
 set -u
-RUN_DIR="/tmp/opencode/tantalus-verify"
-BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
+source "$(dirname "$0")/run-dir.sh"
 SCAFFOLDING=("$RUN_DIR/coverage-home" "$RUN_DIR/mock-home")
 
 stop_owned() {
