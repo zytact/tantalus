@@ -7,7 +7,7 @@ description: Build and drive the isolated Tantalus Preview Electron app against 
 
 Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`. With remote access on, it also serves a read-only copy of that page over HTTP to other devices.
 
-Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process. The one exception is the remote access page, which is built for a plain browser. Load it from the running preview's own server with `drive.ts --web`.
+Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process. The one exception is the remote access page, which is built for a plain browser. Load it from the running preview's own server.
 
 ## Isolation
 
@@ -86,7 +86,7 @@ node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" sett
 
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
-Prefix a command with `--web <url>` to run it against the remote access page instead. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
+For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
 
 ```sh
 node .agents/skills/verify-tantalus/scripts/drive.ts --web http://127.0.0.1:4748/ snapshot

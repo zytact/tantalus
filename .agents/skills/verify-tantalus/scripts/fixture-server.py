@@ -133,7 +133,7 @@ def no_windows():
         "codex_subscription": {"active_until": None},
         "codex_usage": {"rate_limit": {}},
         "codex_credits": {},
-        "claude_usage": {},
+        "claude_usage": {"five_hour": None, "seven_day": None},
         "claude_profile": {
             "account": {"email": "claude@direct.test"},
             "organization": {"organization_type": "claude_max", "rate_limit_tier": "default_claude_max_5x"},
@@ -238,6 +238,7 @@ class Handler(BaseHTTPRequestHandler):
                 "credits": [
                     {
                         **credit,
+                        "expires_at": rfc3339(credit["expires_at"]),
                         "id": f"fixture-credit-{index}",
                         "status": "available",
                         "reset_type": "codex_rate_limits",

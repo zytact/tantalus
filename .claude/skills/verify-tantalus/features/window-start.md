@@ -1,18 +1,18 @@
 # Window start
 
-Settings has a Start 5-hour windows switch. It starts off. Switching it on shows a row each for Claude and Codex, with a CLI path field. Starts cover every provider switched on at the top of Settings, with no switch per provider. Each row says what would run, the last start, or why it failed. A provider switched off at the top reads `Switch on <name> above so Tantalus can see its window.` The choice is saved to `window-start.json` in the preview's settings directory.
+Settings has a Start 5-hour windows switch. It starts off. Switching it on shows a row each for direct Claude and Codex, with a CLI path field. Starts cover those providers when switched on at the top of Settings, with no switch per provider. Opencode and hub accounts cannot start windows. Each row says what would run, the last start, or why it failed. A provider switched off at the top reads `Switch on <name> above so Tantalus can see its window.` The choice and CLI paths are saved to `window-start.json` in the preview's settings directory. Attempt results and the wake cooldown reset when the process restarts.
 
 `WindowStarter` in `src/main/window-start.ts` watches every published snapshot. Two ready readings at least 5 minutes apart that both show the 5-hour window idle make it run the CLI once. A reading that is not idle starts the wait over. `src/main/cli.ts` finds the CLI and runs it in the temporary directory.
 
 ## Preview proof
 
-Launch with `--mock idle`. Real CLIs would fail against the fixture credentials, so their failure proves the error path. Set a Claude path of `/usr/bin/true` to prove the success path without spending usage.
+Launch with `--mock idle`. Set the Claude path to `/usr/bin/true` and Codex to `/usr/bin/false` for deterministic command success and failure without spending usage. These commands do not create a provider window; an end-to-end start needs the real CLI and an idle signed-in account.
 
 1. Open Settings, switch on Start 5-hour windows, and capture the Claude and Codex rows. Each should name the CLI it found, or say none was found.
-2. Enter `/usr/bin/true` as the Claude path, and Save.
+2. Fill `Claude CLI Leave blank to look it up` with `/usr/bin/true` and click `Save Claude CLI`. Fill the equivalent Codex field with `/usr/bin/false` and click `Save Codex CLI`.
 3. Press Refresh, wait at least 5 minutes, then press Refresh again. Reopen Settings.
-4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with the CLI's last stderr line.
-5. Run `launch.sh --restart` and confirm the switch and the Claude path survive.
+4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with an exit-code error. There are no start controls for Opencode or hub accounts.
+5. Run `launch.sh --restart`, then doctor, and confirm the switch and both paths survive while attempt results clear.
 
 ## Sign-in wake proof
 
