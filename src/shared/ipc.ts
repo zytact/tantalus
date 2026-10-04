@@ -41,6 +41,7 @@ export type Commands = {
   updateProxyHub: (id: string, input: ProxyHubInput) => ProxyHubSettings[];
   setProxyHubEnabled: (id: string, enabled: boolean) => ProxyHubSettings[];
   removeProxyHub: (id: string) => ProxyHubSettings[];
+  openProxyHubManagement: (id: string) => void;
   checkForUpdate: () => AvailableUpdate | null;
   installUpdate: (acknowledgedNoticeIds: string[]) => void;
   openLatestRelease: () => void;
@@ -58,6 +59,7 @@ export type Commands = {
  * latest value of each, which is null until there is one. */
 export type Events = {
   usageSnapshot: UsageSnapshot;
+  toast: string;
   updateAvailable: AvailableUpdate;
   /** Null once an install ends without relaunching. */
   installProgress: InstallProgress | null;

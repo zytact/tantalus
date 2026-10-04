@@ -141,10 +141,20 @@ function proxyHubConfig(value: unknown): ProxyHubConfig | null {
       url: requiredHttpUrl(value, "url"),
       managementKey: requiredString(value, "managementKey"),
       enabled: requiredBoolean(value, "enabled"),
+      providers: hubProviders(field(value, "providers")),
     };
   } catch {
     return null;
   }
+}
+
+function hubProviders(value: unknown): ProxyHubConfig["providers"] {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error("Invalid hub providers.");
+  return value.map((provider) => {
+    if (provider !== "claude" && provider !== "codex") throw new Error("Invalid hub provider.");
+    return provider;
+  });
 }
 
 function requiredString(value: unknown, key: string): string {

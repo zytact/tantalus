@@ -1001,3 +1001,27 @@ footer {
     opacity: 0.4;
   }
 }
+
+.toast {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px #0003;
+  font-size: 0.8125rem;
+}
+
+.management-link {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-underline-offset: 0.2em;
+}

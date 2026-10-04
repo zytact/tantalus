@@ -141,7 +141,7 @@ describe("usage state", () => {
     const directory = join(path, "..");
     rmSync(directory, { recursive: true });
     writeFileSync(directory, "not a directory");
-    expect(() => state.setProviderEnabled("codex", false)).toThrow();
+    await expect(state.setProviderEnabled("codex", false)).rejects.toThrow();
     expect(state.snapshot.enabled.codex).toBe(true);
     expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
   });
@@ -450,4 +450,84 @@ it("preserves a hub account's typed sign-in failure across cached readings", () 
   failed.usage = { ...emptyProviderUsage(), status: "error", error_reason: "rejected", error_message: "rejected" };
   const result = applyHubReading(previous, hubConfig, [failed]);
   expect(result.accounts[0]?.usage).toMatchObject({ status: "stale", error_reason: "rejected" });
+});
+
+it("uses hub providers exclusively and explains automatic and blocked switches", async () => {
+  const notices: string[] = [];
+  const providers = settingsPath();
+  const hubs = join(providers, "..", "proxy-hubs.json");
+  const accounts = [hubAccount(42), { ...hubAccount(16), id: "claude.json", provider: "claude" as const }];
+  const state = new UsageState(
+    providers,
+    hubs,
+    async () => ready(1),
+    async () => accounts,
+    () => {},
+    paceTracker(),
+    (message) => notices.push(message),
+  );
+  await state.addProxyHub({ label: "Hub", url: hubConfig.url, managementKey: hubConfig.managementKey });
+  expect(state.snapshot.enabled).toEqual({ codex: false, claude: false, opencode: false });
+  expect(JSON.parse(readFileSync(providers, "utf8"))).toEqual(state.snapshot.enabled);
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toContain("Codex and Claude");
+  await state.setProviderEnabled("claude", true);
+  expect(state.snapshot.enabled.claude).toBe(false);
+  expect(notices.at(-1)).toContain("Remove Claude from Hub first");
+  state.setProxyHubEnabled(state.proxyHubs()[0].id, false);
+  await state.setProviderEnabled("claude", true);
+  expect(state.snapshot.enabled.claude).toBe(true);
+  state.setProxyHubEnabled(state.proxyHubs()[0].id, true);
+  expect(state.snapshot.enabled.claude).toBe(false);
+  await state.refresh();
+});
+
+it("discovers hub providers before polling direct and releases a removed provider", async () => {
+  const providers = settingsPath();
+  const hubs = join(providers, "..", "proxy-hubs.json");
+  saveSettings(hubs, [hubConfig]);
+  const read: ProviderId[] = [];
+  let accounts = [hubAccount(42)];
+  const state = new UsageState(
+    providers,
+    hubs,
+    async (id) => {
+      read.push(id);
+      return ready(1);
+    },
+    async () => accounts,
+    () => {},
+    paceTracker(),
+  );
+  await state.refresh();
+  expect(read).toEqual(["claude"]);
+  expect(state.snapshot.enabled.codex).toBe(false);
+  expect(state.snapshot.enabled.claude).toBe(true);
+  accounts = [];
+  await state.refresh();
+  await state.setProviderEnabled("codex", true);
+  expect(state.snapshot.enabled.codex).toBe(true);
+});
+
+it("keeps known hub ownership across rejection and restart", async () => {
+  const providers = settingsPath();
+  const hubs = join(providers, "..", "proxy-hubs.json");
+  saveSettings(hubs, [{ ...hubConfig, providers: ["codex"] }]);
+  const state = new UsageState(
+    providers,
+    hubs,
+    async () => ready(1),
+    async () => {
+      throw new ProxyHubRejected("Refused");
+    },
+    () => {},
+    paceTracker(),
+  );
+  expect(state.snapshot.enabled.codex).toBe(false);
+  await state.refresh();
+  await state.setProviderEnabled("codex", true);
+  expect(state.snapshot.enabled.codex).toBe(false);
+  state.removeProxyHub("hub");
+  await state.setProviderEnabled("codex", true);
+  expect(state.snapshot.enabled.codex).toBe(true);
 });

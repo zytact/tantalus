@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useId, useState } from "react";
 import type { ProxyHubInput } from "../shared/ipc";
+import { proxyHubManagementUrl } from "../shared/usage";
 import type { ProxyHubSettings } from "../shared/usage";
 import type { Loadable } from "./busy";
 import { SettingPending, Toggle } from "./settings-controls";
@@ -145,6 +146,16 @@ function HubRow({
       <div className="setting-copy">
         <h2>{hub.label}</h2>
         <p>{hub.url}</p>
+        <a
+          className="management-link"
+          href={proxyHubManagementUrl(hub.url)}
+          onClick={(event) => {
+            event.preventDefault();
+            void window.tantalus.invoke("openProxyHubManagement", hub.id);
+          }}
+        >
+          Manage hub
+        </a>
       </div>
       <div className="setting-actions">
         <Toggle label={`${hub.label} proxy hub`} checked={hub.enabled} busy={busy} onToggle={onToggle} />

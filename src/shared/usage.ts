@@ -46,8 +46,9 @@ export type ProxyHubConfig = {
   url: string;
   managementKey: string;
   enabled: boolean;
+  providers?: ProxyHubProviderId[];
 };
-export type ProxyHubSettings = Omit<ProxyHubConfig, "managementKey">;
+export type ProxyHubSettings = Omit<ProxyHubConfig, "managementKey" | "providers">;
 export type ProxyHubAccount = {
   id: string;
   email: string | null;
@@ -202,4 +203,8 @@ export function refreshedAgo(epoch: number | null, now: number): string {
 
 function ago(count: number, unit: "minute" | "hour" | "day"): string {
   return `Refreshed ${count} ${unit}${count === 1 ? "" : "s"} ago`;
+}
+
+export function proxyHubManagementUrl(url: string): string {
+  return new URL("/management.html", url).href;
 }

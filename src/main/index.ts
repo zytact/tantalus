@@ -8,7 +8,7 @@ import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
-import { nowEpoch, providerIds } from "../shared/usage";
+import { nowEpoch, providerIds, proxyHubManagementUrl } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
@@ -68,6 +68,7 @@ function start() {
   );
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const proxyHubs = new ProxyHubApi();
+  let toast: string | null = null;
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
     join(app.getPath("userData"), "proxy-hubs.json"),
@@ -85,6 +86,10 @@ function start() {
       join(app.getPath("userData"), "pace-creatures.json"),
       () => readActivity(),
     ),
+    (message) => {
+      toast = message;
+      publish("toast", message);
+    },
   );
   const starter = new WindowStarter(
     join(app.getPath("userData"), "window-start.json"),
@@ -132,6 +137,7 @@ function start() {
 
   const current: { [E in keyof Events]: () => Events[E] | null } = {
     usageSnapshot: () => state.snapshot,
+    toast: () => toast,
     updateAvailable: () => updater.available(),
     installProgress: () => updater.installProgress(),
     serverEpoch: nowEpoch,
@@ -246,6 +252,11 @@ function registerUsageHandlers(state: UsageState) {
   handle("setProxyHubEnabled", (id, enabled) => {
     if (typeof id !== "string" || typeof enabled !== "boolean") throw new Error("Unknown proxy hub setting.");
     return state.setProxyHubEnabled(id, enabled);
+  });
+  handle("openProxyHubManagement", async (id) => {
+    const hub = state.proxyHubs().find((hub) => hub.id === id);
+    if (!hub) throw new Error("Unknown proxy hub.");
+    await shell.openExternal(proxyHubManagementUrl(hub.url));
   });
   handle("removeProxyHub", (id) => {
     if (typeof id !== "string") throw new Error("Unknown proxy hub setting.");

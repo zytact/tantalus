@@ -41,6 +41,7 @@ import {
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
+import { Toast } from "./toast";
 import { UpdateNotice } from "./update-notice";
 import { webBridge } from "./web-bridge";
 import "./styles.css";
@@ -560,6 +561,7 @@ function App() {
 
   return (
     <main>
+      {!remote && <Toast />}
       {page === "settings" ? (
         <SettingsPage
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
