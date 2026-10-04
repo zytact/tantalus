@@ -140,20 +140,31 @@ function StartToggle({
 
 function WakeRow({
   snapshot,
+  ...props
+}: {
+  snapshot: UsageSnapshot | null;
+  start: Loadable<WindowStart>;
+  saving: boolean;
+  onSave: (start: WindowStart) => void;
+}) {
+  if (!snapshot) return null;
+  if (
+    !snapshot.enabled.claude &&
+    !snapshot.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === "claude"))
+  )
+    return null;
+  return <WakeControl {...props} />;
+}
+
+function WakeControl({
   start,
   saving,
   onSave,
 }: {
   start: Loadable<WindowStart>;
-  snapshot: UsageSnapshot | null;
   saving: boolean;
   onSave: (start: WindowStart) => void;
 }) {
-  if (!snapshot) return null;
-  const hasClaude =
-    snapshot.enabled.claude ||
-    snapshot.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === "claude"));
-  if (!hasClaude) return null;
   const loaded = typeof start !== "string";
   return (
     <section className="setting-row">
