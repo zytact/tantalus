@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { startProviderIds } from "../shared/window-start";
-import type { StartProviderId, WindowStart } from "../shared/window-start";
+import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 import type { Loadable } from "./busy";
 import { startStatus, wakeStatus } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
@@ -75,14 +75,13 @@ export function WindowStartRows({
               key={id}
               id={id}
               provider={start.providers[id]}
-              throughHub={typeof polled !== "string" && !polled[id]}
+              status={providerStatus(start, snapshot, id)}
               saving={saving}
               onSavePath={(path) =>
                 void save({ ...start, providers: { ...start.providers, [id]: { ...start.providers[id], path } } })
               }
             />
           ))}
-      <HubStartRows start={start} snapshot={snapshot} />
       <WakeRow snapshot={snapshot} start={start} saving={saving} onSave={(next) => void save(next)} />
     </>
   );
@@ -92,36 +91,43 @@ function hasHubProvider(snapshot: UsageSnapshot | null, provider: StartProviderI
   return snapshot?.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === provider)) ?? false;
 }
 
-function HubStartRows({ start, snapshot }: { start: Loadable<WindowStart>; snapshot: UsageSnapshot | null }) {
-  if (typeof start === "string") return null;
-  if (!snapshot) return null;
-  if (![start.enabled, start.wake].some(Boolean)) return null;
-  return start.hubs
-    .filter((account) =>
-      snapshot.proxy_hubs.some(
+function currentHubAccounts(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {
+  return start.hubs.filter(
+    (account) =>
+      account.provider === provider &&
+      snapshot?.proxy_hubs.some(
         (hub) =>
           hub.id === account.hubId &&
-          hub.accounts.some((current) => current.id === account.accountId && current.provider === account.provider),
+          hub.accounts.some((current) => current.id === account.accountId && current.provider === provider),
       ),
-    )
-    .filter((account) => start.enabled || account.provider === "claude")
-    .map((account) => <HubStartRow key={account.key} start={start} account={account} />);
+  );
 }
 
-function HubStartRow({ start, account }: { start: WindowStart; account: WindowStart["hubs"][number] }) {
-  return (
-    <section className="setting-row">
-      <div className="setting-copy">
-        <h2>
-          <ProviderIcon id={account.provider} />
-          {account.label}
-        </h2>
-        {start.enabled && (
-          <p>{startStatus({ command: "an account-specific prompt through the hub", last: account.last })}</p>
-        )}
-      </div>
-    </section>
-  );
+function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | null {
+  const recent = attempts.flatMap((attempt) => (attempt ? [attempt] : [])).toSorted((a, b) => b.epoch - a.epoch);
+  return recent.find((attempt) => attempt.error !== null) ?? recent[0] ?? null;
+}
+
+function automationAttempt(
+  start: WindowStart,
+  snapshot: UsageSnapshot | null,
+  provider: StartProviderId,
+) {
+  const attempts = currentHubAccounts(start, snapshot, provider).map((account) => account.last);
+  if (snapshot?.enabled[provider]) attempts.push(start.providers[provider].last);
+  return lastAttempt(attempts);
+}
+
+function providerStatus(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId): string {
+  const command = snapshot?.enabled[provider]
+    ? start.providers[provider].command
+    : "an account-specific prompt through the hub";
+  return startStatus({ command, last: automationAttempt(start, snapshot, provider) });
+}
+
+function wakeStart(start: Loadable<WindowStart>, snapshot: UsageSnapshot): Loadable<WindowStart> {
+  if (typeof start === "string") return start;
+  return { ...start, lastWake: snapshot.enabled.claude ? start.lastWake : null };
 }
 
 function StartToggle({
@@ -155,7 +161,7 @@ function WakeRow({
 }) {
   if (!snapshot) return null;
   if (!snapshot.enabled.claude && !hasHubProvider(snapshot, "claude")) return null;
-  return <WakeControl {...props} />;
+  return <WakeControl {...props} start={wakeStart(props.start, snapshot)} />;
 }
 
 function WakeControl({
@@ -193,13 +199,13 @@ function WakeControl({
 function StartProviderRow({
   id,
   provider,
-  throughHub,
+  status,
   saving,
   onSavePath,
 }: {
   id: StartProviderId;
   provider: WindowStart["providers"][StartProviderId];
-  throughHub: boolean;
+  status: string;
   saving: boolean;
   onSavePath: (path: string | null) => void;
 }) {
@@ -212,11 +218,7 @@ function StartProviderRow({
             <ProviderIcon id={id} />
             {name}
           </h2>
-          <p>
-            {throughHub
-              ? `Starts ${name} accounts through their hubs. The CLI path is used for direct sign-ins.`
-              : startStatus(provider)}
-          </p>
+          <p>{status}</p>
         </div>
       </section>
       <CliPathForm key={provider.path} name={name} provider={provider} saving={saving} onSave={onSavePath} />
