@@ -1,6 +1,6 @@
 import { nowEpoch, providerNames } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
-import { startProviderIds } from "../shared/window-start";
+import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart, WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
 import { loadWindowStartSettings, saveSettings } from "./settings";
@@ -56,6 +56,10 @@ export class WindowStarter {
     this.settings = loadWindowStartSettings(path);
   }
 
+  results(): NonNullable<UsageSnapshot["window_starts"]> {
+    return Object.fromEntries(this.last);
+  }
+
   async read(): Promise<WindowStart> {
     const [claude, codex] = await Promise.all([this.provider("claude"), this.provider("codex")]);
     const { enabled, wake } = this.settings;
@@ -93,7 +97,7 @@ export class WindowStarter {
     }));
     this.hubs = snapshot.proxy_hubs.flatMap((hub) =>
       hub.accounts.map((account) => ({
-        key: JSON.stringify([hub.id, account.provider, account.id]),
+        key: windowStartKey(account.provider, { hubId: hub.id, accountId: account.id }),
         hubId: hub.id,
         accountId: account.id,
         label: `${hub.label} · ${providerNames[account.provider]} · ${account.email ?? account.id}`,
@@ -104,7 +108,7 @@ export class WindowStarter {
     for (const hub of snapshot.proxy_hubs) {
       for (const account of hub.accounts)
         targets.push({
-          key: JSON.stringify([hub.id, account.provider, account.id]),
+          key: windowStartKey(account.provider, { hubId: hub.id, accountId: account.id }),
           provider: account.provider,
           usage: account.usage,
           polled: hub.status === "ready",
@@ -166,11 +170,15 @@ export class WindowStarter {
   private async start(target: StartTarget) {
     this.attempted.add(target.key);
     this.idleSince.delete(target.key);
-    this.last.set(target.key, await this.runProvider(target, false));
+    const attempt = await this.runProvider(target, false);
+    this.last.set(target.key, attempt);
+    if (!attempt.error) this.started();
   }
 
   private async wake(target: StartTarget) {
-    this.wakes.set(target.key, await this.runProvider(target, true));
+    const attempt = await this.runProvider(target, true);
+    this.wakes.set(target.key, attempt);
+    if (!attempt.error) this.started();
   }
 
   private async runProvider(target: StartTarget, wake: boolean): Promise<StartAttempt> {
@@ -189,7 +197,6 @@ export class WindowStarter {
         if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
         await this.run(cli);
       }
-      this.started();
       return { epoch, error: null };
     } catch (error) {
       return { epoch, error: error instanceof Error ? error.message : String(error) };

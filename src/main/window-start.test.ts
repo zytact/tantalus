@@ -326,6 +326,48 @@ describe("hub automation", () => {
     expect(runHub).toHaveBeenCalledTimes(4);
   });
 
+  it.each(["codex", "claude"] as const)("keeps pooled %s timers and results separate", async (provider) => {
+    const runHub = vi.fn(async (hub: string) => {
+      if (hub === "other") throw new Error("Account unavailable");
+    });
+    const { instance } = starter(startOn, undefined, runHub);
+    const pooled = (at: number, secondIdle: boolean): UsageSnapshot => {
+      const source = hubSnapshot(at);
+      const hub = source.proxy_hubs[0];
+      const account = hub.accounts.find((account) => account.provider === provider)!;
+      return {
+        ...source,
+        proxy_hubs: [
+          {
+            ...hub,
+            accounts: [
+              { ...account, id: "first" },
+              { ...account, id: "second", usage: secondIdle ? idle(at) : running(at) },
+            ],
+          },
+          { ...hub, id: "other", accounts: [{ ...account, id: "first" }] },
+        ],
+      };
+    };
+    instance.observe(pooled(1000, false));
+    instance.observe(pooled(1300, true));
+    await settle();
+    expect(runHub.mock.calls).toEqual([
+      ["hub", "first", provider, expect.any(Function)],
+      ["other", "first", provider, expect.any(Function)],
+    ]);
+    expect(instance.results()).toEqual({
+      [JSON.stringify(["hub", provider, "first"])]: { epoch: expect.any(Number), error: null },
+      [JSON.stringify(["other", provider, "first"])]: { epoch: expect.any(Number), error: "Account unavailable" },
+    });
+    instance.observe(pooled(1600, true));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(3);
+    expect(runHub.mock.calls[2]).toEqual(["hub", "second", provider, expect.any(Function)]);
+    expect(Object.keys(instance.results())).toHaveLength(3);
+    expect((await instance.read()).hubs.find((account) => account.accountId === "second")?.last?.error).toBeNull();
+  });
+
   it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
     const notices: string[] = [];
     const runHub = vi.fn(async () => {});

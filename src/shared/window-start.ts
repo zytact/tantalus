@@ -30,3 +30,7 @@ export type WindowStart = {
   }[];
   providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
 };
+
+export function windowStartKey(provider: ProviderId, hub?: { hubId: string; accountId: string }): string {
+  return hub ? JSON.stringify([hub.hubId, provider, hub.accountId]) : provider;
+}

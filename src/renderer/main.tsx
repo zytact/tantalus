@@ -15,10 +15,13 @@ import type {
   UsageSnapshot,
   WindowUsage,
 } from "../shared/usage";
+import { windowStartKey } from "../shared/window-start";
+import type { StartAttempt } from "../shared/window-start";
 import { BusyButton, PendingLabel } from "./busy";
 import { CreatureIcon } from "./creature-icon";
 import {
   absoluteTime,
+  startStatus,
   countdown,
   creatureTip,
   learningByUse,
@@ -210,12 +213,14 @@ function ProviderSection({
   now,
   account,
   paceOf,
+  lastStart,
 }: {
   id: ProviderId;
   provider: ProviderUsage;
   now: number;
   account?: { email: string | null; plan: string | null; label?: string };
   paceOf: (duration: number) => WindowPace | undefined;
+  lastStart?: StartAttempt;
 }) {
   const name = providerNames[id];
   const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
@@ -255,6 +260,7 @@ function ProviderSection({
       {entries.map((entry) => (
         <Entry key={entry.label} {...entry} now={now} speed={paceOf(entry.duration)} />
       ))}
+      {lastStart && <p className="subscription-date">{startStatus({ command: null, last: lastStart })}</p>}
       <Extras id={id} provider={provider} />
     </div>
   );
@@ -339,7 +345,17 @@ const hubStatusTones = {
   rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
-function HubSection({ hub, now, paces }: { hub: ProxyHubSnapshot; now: number; paces: PaceSnapshot["windows"] }) {
+function HubSection({
+  hub,
+  now,
+  paces,
+  starts,
+}: {
+  hub: ProxyHubSnapshot;
+  now: number;
+  paces: PaceSnapshot["windows"];
+  starts: UsageSnapshot["window_starts"];
+}) {
   return (
     <section className="hub">
       <div className="hub-row">
@@ -349,7 +365,7 @@ function HubSection({ hub, now, paces }: { hub: ProxyHubSnapshot; now: number; p
         </span>
       </div>
       <HubMessage hub={hub} />
-      <HubAccounts hub={hub} now={now} paces={paces} />
+      <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />
     </section>
   );
 }
@@ -378,12 +394,23 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
   return messages[hub.status];
 }
 
-function HubAccounts({ hub, now, paces }: { hub: ProxyHubSnapshot; now: number; paces: PaceSnapshot["windows"] }) {
+function HubAccounts({
+  hub,
+  now,
+  paces,
+  starts,
+}: {
+  hub: ProxyHubSnapshot;
+  now: number;
+  paces: PaceSnapshot["windows"];
+  starts: UsageSnapshot["window_starts"];
+}) {
   return hub.accounts.map((account, index) => (
     <ProviderSection
       key={`${account.provider}:${account.id}`}
       id={account.provider}
       provider={account.usage}
+      lastStart={starts?.[windowStartKey(account.provider, { hubId: hub.id, accountId: account.id })]}
       now={now}
       account={{
         email: account.email,
@@ -582,6 +609,7 @@ function App() {
                 key={id}
                 id={id}
                 provider={snapshot[id]}
+                lastStart={snapshot.window_starts?.[windowStartKey(id)]}
                 now={now}
                 account={{ email: snapshot[id].email, plan: snapshot[id].plan }}
                 paceOf={(duration) => snapshot.pace.windows[paceKey(duration, id)]}
@@ -590,7 +618,13 @@ function App() {
 
           {snapshot &&
             snapshot.proxy_hubs.map((hub) => (
-              <HubSection key={hub.id} hub={hub} now={now} paces={snapshot.pace.windows} />
+              <HubSection
+                key={hub.id}
+                hub={hub}
+                now={now}
+                paces={snapshot.pace.windows}
+                starts={snapshot.window_starts}
+              />
             ))}
 
           <footer>Auto-refreshes every 5 minutes</footer>

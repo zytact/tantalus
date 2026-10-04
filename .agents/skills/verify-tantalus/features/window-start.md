@@ -31,6 +31,6 @@ Never point a real-mode preview at an idle real account with the feature on unle
 
 ## Hub proof
 
-On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm both hub rows report a successful start. The fixture request log must contain one `START hub-codex` and one `START hub-claude`. Refresh again and confirm those counts remain one.
+On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm both hub rows report a successful start. For multiple accounts, use `--mock hub-multiple-idle`. The fixture request log must contain one start for each of `hub-codex`, `hub-codex-two`, `hub-claude`, and `hub-claude-two`. Each dashboard account must have its own last-start status. Refresh again and confirm those counts remain one.
 
 Wake Claude only uses the direct CLI. A hub Claude account switches wake off, and an attempt to enable it leaves it off. Management-key refusals stop hub reads and starts until the hub is re-enabled or repaired.

@@ -74,10 +74,11 @@ function start() {
     async (provider) => api.fetch(provider, await readCredentials(provider)),
     (config) => proxyHubs.read(config),
     (snapshot) => {
+      starter.observe(snapshot);
+      snapshot.window_starts = starter.results();
       renderTray();
       publish("usageSnapshot", snapshot);
       web.publish(snapshot);
-      starter.observe(snapshot);
     },
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),

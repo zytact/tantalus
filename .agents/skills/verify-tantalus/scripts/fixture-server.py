@@ -147,6 +147,7 @@ SCENARIOS = {
     "monthly-only": monthly_only,
     "blocked": blocked,
     "idle": idle,
+    "hub-multiple-idle": idle,
     "no-windows": no_windows,
     "error": None,
     "hub-rejected": ready,
@@ -246,12 +247,12 @@ class Handler(BaseHTTPRequestHandler):
             if request.get("method") == "POST" and path in ["/v1/messages", "/backend-api/codex/responses"]:
                 account = request.get("auth_index")
                 expected = "hub-claude" if path == "/v1/messages" else "hub-codex"
-                if account != expected or request.get("header", {}).get("Authorization") != "Bearer $TOKEN$":
+                if account not in [expected, expected + "-two"] or request.get("header", {}).get("Authorization") != "Bearer $TOKEN$":
                     return self.send_json(400, {"error": "wrong start account"})
                 Handler.started.add(account)
                 with open(Handler.request_log, "a") as log:
                     log.write(f"{int(time.time())} START {account}\n")
-                body = json.dumps({"type": "message"}) if account == "hub-claude" else 'data: {"type":"response.completed"}\n\n'
+                body = json.dumps({"type": "message"}) if path == "/v1/messages" else 'data: {"type":"response.completed"}\n\n'
                 return self.send_json(200, {"status_code": 200, "body": body})
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return self.send_json(400, {"error": "invalid management request"})
@@ -262,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
         body = {"error": "fixture error scenario"} if build is None else build()[key]
         if Handler.scenario == "hub-rejected" and key == "claude_usage" and not Handler.renewed:
             status, body = 401, {"error": "fixture rejected sign-in"}
-        if Handler.scenario == "idle" and request.get("auth_index") in Handler.started and key in ["codex_usage", "claude_usage"]:
+        if Handler.scenario in ["idle", "hub-multiple-idle"] and request.get("auth_index") in Handler.started and key in ["codex_usage", "claude_usage"]:
             body = ready()[key]
         if build is not None and key == "codex_credits":
             body = {
