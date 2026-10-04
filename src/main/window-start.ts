@@ -126,12 +126,7 @@ export class WindowStarter {
   }
 
   private observeWakeAvailability(snapshot: UsageSnapshot) {
-    // Only a hub that is actually serving accounts provides Claude. A hub that failed its last
-    // read keeps its previous accounts for display, but it is not providing anything until it
-    // succeeds again, so it must not switch wake off.
-    this.hubClaude = snapshot.proxy_hubs.some(
-      (hub) => hub.status === "ready" && hub.accounts.some((account) => account.provider === "claude"),
-    );
+    this.hubClaude = snapshot.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === "claude"));
     if (this.hubClaude && this.settings.wake) {
       const settings = { ...this.settings, wake: false };
       saveSettings(this.path, settings);
