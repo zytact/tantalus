@@ -135,6 +135,7 @@ describe("local activity", () => {
       provider: "codex",
       owner: key,
       plan: null,
+      identity: null,
       duration: fiveHourSeconds,
       window: { used_percent: 0, limit_window_seconds: fiveHourSeconds, reset_at_epoch: null },
       epoch: null,

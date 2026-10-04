@@ -81,6 +81,7 @@ export type PaceWindow = {
   provider: ProviderId;
   owner: string;
   plan: string | null;
+  identity: string | null;
   duration: number;
   window: WindowUsage;
   epoch: number | null;
@@ -94,12 +95,13 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
     owner: string,
     keyOf: (duration: number) => string,
     plan = usage.plan,
+    identity = usage.email,
   ) =>
     [usage.five_hour, usage.seven_day, usage.monthly].flatMap((window) => {
       const duration = window.limit_window_seconds;
       if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
       const epoch = usage.last_successful_update_epoch;
-      return [{ key: keyOf(duration), provider, owner, plan, duration, window, epoch }];
+      return [{ key: keyOf(duration), provider, owner, plan, identity, duration, window, epoch }];
     });
   return [
     ...providerIds
@@ -113,6 +115,7 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
           `${hub.label} · ${providerNames[provider]} ${index + 1}`,
           (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
           plan,
+          id,
         ),
       ),
     ),
@@ -124,9 +127,10 @@ export function paceHistoryKeys({
   provider,
   plan,
   duration,
-}: Pick<PaceWindow, "key" | "provider" | "plan" | "duration">) {
+  identity,
+}: Pick<PaceWindow, "key" | "provider" | "plan" | "duration" | "identity">) {
   const tier = plan?.trim().replace(/\s+/g, " ").toLowerCase() || null;
-  const account = JSON.stringify(["account", key, tier]);
+  const account = JSON.stringify(["account", key, tier, identity]);
   return { account, usual: tier ? JSON.stringify(["usual", provider, tier, duration]) : account };
 }
 

@@ -201,3 +201,26 @@ it("keeps providers, window lengths, and unknown tiers separate", () => {
       ?.status,
   ).toBe("learning");
 });
+
+it("shares the usual baseline when direct sign-ins change without reusing their current stretch", () => {
+  const saved = tracker();
+  seed(saved.path, "codex");
+  const pace = saved.create();
+  const first = snapshotFor("codex", "Pro");
+  first.codex.email = "first@example.test";
+  pace.track(first, noActivity, epoch);
+  for (let tick = 1; tick <= 4; tick++) {
+    first.codex = { ...usage("Pro", 10 + tick, epoch + tick * 300), email: first.codex.email };
+    pace.track(first, noActivity, epoch + tick * 300);
+  }
+  const second = snapshotFor("codex", "Pro");
+  second.codex = { ...usage("Pro", 80, epoch + 1500), email: "second@example.test" };
+  const current = pace.track(second, noActivity, epoch + 1500);
+  expect(current.codex.five_hour.used_percent).toBe(80);
+  expect(current.pace.windows[paceKey(fiveHourSeconds, "codex")]).toMatchObject({
+    status: "learned",
+    usual_rate: 4,
+    current: { kind: "idle" },
+    creature: null,
+  });
+});
