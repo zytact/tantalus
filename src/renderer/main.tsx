@@ -385,19 +385,8 @@ function HubSection({
           void window.tantalus.invoke("openProxyHubManagement", hub.id);
         }}
       >
-        <svg
-          viewBox="0 0 56 34"
-          width="56"
-          height="34"
-          aria-hidden="true"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M5 5 4 16M12 5l-1 11M5 11l7-1M17 9l-1 6q0 4 6-1l1-5-1 8M29 4l-2 13 1-7q7-4 6 2t-7 4M43 16l7-11m-6 3 6-3-1 7M5 29l18-1" />
-        </svg>
+        <span>Hub</span>
+        <span aria-hidden="true">↗</span>
       </a>
       <HubMessage hub={hub} />
       <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />

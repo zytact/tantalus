@@ -1029,4 +1029,11 @@ footer {
 .management-link {
   color: var(--text-muted);
   display: inline-flex;
+  gap: 0.3em;
+  text-decoration: none;
+}
+
+.management-link span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
 }
