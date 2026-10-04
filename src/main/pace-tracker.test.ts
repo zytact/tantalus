@@ -224,3 +224,19 @@ it("shares the usual baseline when direct sign-ins change without reusing their 
     creature: null,
   });
 });
+
+it.each(providerIds)("retains %s learning while absent and reuses it after restart", (provider) => {
+  const saved = tracker();
+  seed(saved.path, provider);
+  const pace = saved.create();
+  const direct = snapshotFor(provider, "Pro");
+  const key = paceKey(fiveHourSeconds, provider);
+  pace.track(direct, noActivity, epoch);
+  const later = epoch + 365 * 86_400;
+  pace.track({ ...direct, enabled: { codex: false, claude: false, opencode: false } }, noActivity, later);
+  const returning = snapshotFor(provider, "Pro");
+  returning[provider] = usage("Pro", 80, later);
+  const resumed = saved.create().track(returning, noActivity, later);
+  expect(resumed.pace.windows[key]).toMatchObject({ status: "learned", usual_rate: 3, current: { kind: "idle" } });
+  expect(resumed[provider].five_hour.used_percent).toBe(80);
+});

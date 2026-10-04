@@ -6,9 +6,6 @@ import { loadPaceLogs, loadPaceSettings, saveSettings } from "./settings";
 
 export const noActivity: Activity = { codex: null, claude: null, opencode: null };
 
-/** A log with no sample for this long belongs to an account that is gone. */
-const FORGET_AFTER = 60 * 86_400;
-
 /** Learns usual pace by provider, tier and window length, while tracking each account's current
  * pace separately. It owns the log, just as `UsageState` owns the snapshot. */
 export class PaceTracker {
@@ -37,9 +34,6 @@ export class PaceTracker {
     );
     this.active = claimActivity(windows, current, activity);
     for (const window of windows) this.recordWindow(window);
-    for (const [key, log] of this.logs) {
-      if (now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);
-    }
     // The log only speeds up learning, so a failed write should not fail the reading that led to it.
     try {
       saveSettings(this.logPath, Object.fromEntries(this.logs));
