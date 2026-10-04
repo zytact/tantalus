@@ -153,9 +153,9 @@ export class UsageState {
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. Switching a provider
-   * off keeps its last reading; switching one on reads it straight away. */
+   * off keeps its last reading; switching one on reads it straight away. A hub whose roster is not
+   * known yet corrects a conflicting choice on the read that enabling triggers. */
   async setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
-    if (enabled && this.hubConfigs.some((hub) => hub.enabled && hub.providers === undefined)) await this.refresh();
     const hub = enabled ? this.providerHub(provider) : undefined;
     if (hub) {
       this.notify(

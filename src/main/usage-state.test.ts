@@ -528,6 +528,31 @@ it("discovers hub providers before polling direct and releases a removed provide
   expect(state.snapshot.enabled.codex).toBe(true);
 });
 
+it("corrects a conflicting choice on the enabling read when the hub roster is unknown", async () => {
+  const notices: string[] = [];
+  const providers = settingsPath();
+  const hubs = join(providers, "..", "proxy-hubs.json");
+  saveSettings(hubs, [hubConfig]);
+  const hubReads: ProxyHubAccount[][] = [];
+  const state = new UsageState(
+    providers,
+    hubs,
+    async () => ready(1),
+    async () => {
+      const accounts = [hubAccount(42)];
+      hubReads.push(accounts);
+      return accounts;
+    },
+    () => {},
+    paceTracker(),
+    (message) => notices.push(message),
+  );
+  await state.setProviderEnabled("codex", true);
+  expect(hubReads).toHaveLength(1);
+  expect(state.snapshot.enabled.codex).toBe(false);
+  expect(notices.at(-1)).toContain("switched off because");
+});
+
 it("keeps known hub ownership across rejection and restart", async () => {
   const providers = settingsPath();
   const hubs = join(providers, "..", "proxy-hubs.json");
