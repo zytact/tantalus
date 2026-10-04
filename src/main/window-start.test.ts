@@ -55,6 +55,7 @@ function starter(
   settings: WindowStartSettings,
   run: (cli: Cli) => Promise<void> = async () => {},
   runHub?: ConstructorParameters<typeof WindowStarter>[4],
+  locate?: () => Promise<Cli | null>,
   notify?: ConstructorParameters<typeof WindowStarter>[5],
 ) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
@@ -66,7 +67,7 @@ function starter(
   let started = 0;
   const instance = new WindowStarter(
     path,
-    async () => cli,
+    locate ?? (async () => cli),
     (command) => {
       runs.push(command);
       return run(command);
@@ -371,7 +372,7 @@ describe("hub automation", () => {
   it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
     const notices: string[] = [];
     const runHub = vi.fn(async () => {});
-    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, (message) =>
+    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, undefined, (message) =>
       notices.push(message),
     );
     instance.observe(hubSnapshot(1000, true));
@@ -395,4 +396,23 @@ it("rechecks the automation switch before queued hub work runs", async () => {
   await settle();
   await instance.set({ ...startOn, enabled: false });
   expect(checks[0]).toThrow("switched off");
+});
+
+it("cancels a direct start when its provider is disabled during CLI lookup", async () => {
+  let release!: (cli: Cli) => void;
+  const { instance, runs } = starter(
+    startOn,
+    undefined,
+    undefined,
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  instance.observe(snapshot(idle(1000)));
+  instance.observe(snapshot(idle(1300)));
+  instance.observe(snapshot(idle(1600), false));
+  release({ file: "claude", args: [], shell: false, label: "claude" });
+  await settle();
+  expect(runs).toHaveLength(0);
 });

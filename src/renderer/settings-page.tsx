@@ -301,7 +301,7 @@ export function SettingsPage({
 
         <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
 
-        <WindowStartRows polled={providers} />
+        <WindowStartRows polled={providers} snapshot={snapshot} />
 
         <section className="setting-row">
           <div className="setting-copy">

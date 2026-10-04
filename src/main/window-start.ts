@@ -1,5 +1,5 @@
 import { nowEpoch, providerNames } from "../shared/usage";
-import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
+import type { ProviderSettings, ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart, WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
@@ -40,6 +40,7 @@ export class WindowStarter {
   private readonly wakes = new Map<string, StartAttempt>();
   private hubs: WindowStart["hubs"] = [];
   private hubClaude = false;
+  private polled: ProviderSettings = { claude: false, codex: false, opencode: false };
 
   constructor(
     private readonly path: string,
@@ -89,6 +90,7 @@ export class WindowStarter {
 
   observe(snapshot: UsageSnapshot) {
     this.observeWakeAvailability(snapshot);
+    this.polled = snapshot.enabled;
     const targets: StartTarget[] = startProviderIds.map((provider) => ({
       key: provider,
       provider,
@@ -196,6 +198,8 @@ export class WindowStarter {
         const cli = await this.locate(provider, this.settings.providers[provider].path);
         if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
         if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
+        if (!this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
+          throw new Error("Automation was switched off.");
         await this.run(cli);
       }
       return { epoch, error: null };
