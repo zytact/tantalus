@@ -116,6 +116,9 @@ function automationAttempt(start: WindowStart, snapshot: UsageSnapshot | null, p
 }
 
 function providerStatus(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId): string {
+  const accounts = currentHubAccounts(start, snapshot, provider);
+  if (accounts.length > 1)
+    return `Starts each of the ${accounts.length} hub accounts separately. See each account's last start on the dashboard.`;
   const command = snapshot?.enabled[provider]
     ? start.providers[provider].command
     : "an account-specific prompt through the hub";
