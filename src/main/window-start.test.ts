@@ -395,7 +395,7 @@ it("rechecks the automation switch before queued hub work runs", async () => {
   instance.observe(hubSnapshot(1300));
   await settle();
   await instance.set({ ...startOn, enabled: false });
-  expect(checks[0]).toThrow("switched off");
+  expect(checks[0]).toThrow("no longer enabled");
 });
 
 it("cancels a direct start when its provider is disabled during CLI lookup", async () => {

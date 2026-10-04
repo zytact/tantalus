@@ -81,16 +81,23 @@ export function WindowStartRows({
               }
             />
           ))}
-      <HubStartRows start={start} />
+      <HubStartRows start={start} snapshot={snapshot} />
       <WakeRow snapshot={snapshot} start={start} saving={saving} onSave={(next) => void save(next)} />
     </>
   );
 }
 
-function HubStartRows({ start }: { start: Loadable<WindowStart> }) {
-  if (typeof start === "string") return null;
+function HubStartRows({ start, snapshot }: { start: Loadable<WindowStart>; snapshot: UsageSnapshot | null }) {
+  if (typeof start === "string" || !snapshot) return null;
   if (!start.enabled && !start.wake) return null;
   return start.hubs
+    .filter((account) =>
+      snapshot.proxy_hubs.some(
+        (hub) =>
+          hub.id === account.hubId &&
+          hub.accounts.some((current) => current.id === account.accountId && current.provider === account.provider),
+      ),
+    )
     .filter((account) => start.enabled || account.provider === "claude")
     .map((account) => <HubStartRow key={account.key} start={start} account={account} />);
 }

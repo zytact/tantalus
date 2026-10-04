@@ -192,7 +192,8 @@ export class WindowStarter {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
         await this.runHub(hub.id, hub.accountId, provider, () => {
-          if (!this.settings.enabled) throw new Error("Automation was switched off.");
+          if (!this.settings.enabled || !this.hubs.some((account) => account.key === key))
+            throw new Error("Automation is no longer enabled for this account.");
         });
       } else {
         const cli = await this.locate(provider, this.settings.providers[provider].path);
