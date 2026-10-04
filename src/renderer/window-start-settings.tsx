@@ -104,9 +104,9 @@ function currentHubAccounts(start: WindowStart, snapshot: UsageSnapshot | null, 
   );
 }
 
-function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | null {
+export function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | null {
   const recent = attempts.flatMap((attempt) => (attempt ? [attempt] : [])).toSorted((a, b) => b.epoch - a.epoch);
-  return recent.find((attempt) => attempt.error !== null) ?? recent[0] ?? null;
+  return recent[0] ?? null;
 }
 
 function automationAttempt(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {

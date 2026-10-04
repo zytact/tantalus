@@ -18,6 +18,7 @@ import {
   usageValueText,
 } from "./presentation";
 import type { Chord } from "./presentation";
+import { lastAttempt } from "./window-start-settings";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   email: null,
@@ -159,6 +160,14 @@ describe("window start status", () => {
     expect(startStatus({ ...provider, last: { epoch, error: "claude exited with code 1" } })).toBe(
       `Could not start a window ${absoluteTime(epoch)}. claude exited with code 1`,
     );
+  });
+
+  it("summarizes multiple accounts with the newest attempt, not the newest failure", () => {
+    const failure = { epoch: 100, error: "boom" };
+    const success = { epoch: 200, error: null };
+    expect(lastAttempt([failure, success])).toEqual(success);
+    expect(lastAttempt([{ ...success, epoch: 50 }, failure])).toEqual(failure);
+    expect(lastAttempt([null, null])).toBeNull();
   });
 });
 
