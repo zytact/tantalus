@@ -473,7 +473,7 @@ it("uses hub providers exclusively and explains automatic and blocked switches",
   expect(notices[0]).toContain("Codex and Claude");
   await state.setProviderEnabled("claude", true);
   expect(state.snapshot.enabled.claude).toBe(false);
-  expect(notices.at(-1)).toContain("Remove Claude from Hub first");
+  expect(notices.at(-1)).toContain("Remove Hub or remove Claude from it first");
   state.setProxyHubEnabled(state.proxyHubs()[0].id, false);
   await state.setProviderEnabled("claude", true);
   expect(state.snapshot.enabled.claude).toBe(true);

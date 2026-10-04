@@ -160,7 +160,7 @@ export class UsageState {
     const hub = enabled ? this.providerHub(provider) : undefined;
     if (hub) {
       this.notify(
-        `Remove ${providerNames[provider]} from ${hub.label} first, then turn on direct ${providerNames[provider]}.`,
+        `Remove ${hub.label} or remove ${providerNames[provider]} from it first, then turn on direct ${providerNames[provider]}.`,
       );
       return this.snapshot;
     }
