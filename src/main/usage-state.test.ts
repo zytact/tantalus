@@ -476,10 +476,13 @@ it("uses hub providers exclusively and explains automatic and blocked switches",
   expect(notices.at(-1)).toContain("Remove Hub or remove Claude from it first");
   state.setProxyHubEnabled(state.proxyHubs()[0].id, false);
   await state.setProviderEnabled("claude", true);
-  expect(state.snapshot.enabled.claude).toBe(true);
+  expect(state.snapshot.enabled.claude).toBe(false);
   state.setProxyHubEnabled(state.proxyHubs()[0].id, true);
   expect(state.snapshot.enabled.claude).toBe(false);
   await state.refresh();
+  state.removeProxyHub(state.proxyHubs()[0].id);
+  await state.setProviderEnabled("claude", true);
+  expect(state.snapshot.enabled.claude).toBe(true);
 });
 
 it("discovers hub providers before polling direct and releases a removed provider", async () => {
