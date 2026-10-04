@@ -186,6 +186,7 @@ export class WindowStarter {
       } else {
         const cli = await this.locate(provider, this.settings.providers[provider].path);
         if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
+        if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
         await this.run(cli);
       }
       this.started();
