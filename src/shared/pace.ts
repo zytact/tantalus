@@ -47,13 +47,13 @@ export type PaceSample = PaceTick & { resetAt: number | null };
  * how many came since the last reading was taken. */
 type Stretch = { ticks: PaceTick[]; pending: number; activeAt: number | null };
 
-/** The history one window's pace is learned from. */
+/** The sample history of a window, or the usual pace shared by a provider and tier. */
 export type PaceLog = { firstSeen: number; last: PaceSample; stretch: Stretch | null; readings: number[] };
 
 /** How many ticks a rate is measured across. */
 const RATE_TICKS = 3;
 /** The recent readings the usual pace is the median of, so it follows changes in habit. */
-const MAX_READINGS = 60;
+export const maxPaceReadings = 60;
 /** Two samples further apart than this cannot time a rise between them, for example after a sleep. */
 const MAX_SAMPLE_GAP = 15 * 60;
 /** Codex reports its reset as a countdown, so the reset time drifts a little between readings. */
@@ -80,6 +80,7 @@ export type PaceWindow = {
   key: string;
   provider: ProviderId;
   owner: string;
+  plan: string | null;
   duration: number;
   window: WindowUsage;
   epoch: number | null;
@@ -87,25 +88,46 @@ export type PaceWindow = {
 
 /** Every window with a pace, for the direct providers switched on and then every hub account. */
 export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
-  const windows = (usage: ProviderUsage, provider: ProviderId, owner: string, keyOf: (duration: number) => string) =>
+  const windows = (
+    usage: ProviderUsage,
+    provider: ProviderId,
+    owner: string,
+    keyOf: (duration: number) => string,
+    plan = usage.plan,
+  ) =>
     [usage.five_hour, usage.seven_day, usage.monthly].flatMap((window) => {
       const duration = window.limit_window_seconds;
       if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
       const epoch = usage.last_successful_update_epoch;
-      return [{ key: keyOf(duration), provider, owner, duration, window, epoch }];
+      return [{ key: keyOf(duration), provider, owner, plan, duration, window, epoch }];
     });
   return [
     ...providerIds
       .filter((id) => snapshot.enabled[id])
       .flatMap((id) => windows(snapshot[id], id, providerNames[id], (duration) => paceKey(duration, id))),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      hub.accounts.flatMap(({ id, provider, usage }, index) =>
-        windows(usage, provider, `${hub.label} · ${providerNames[provider]} ${index + 1}`, (duration) =>
-          paceKey(duration, provider, { hubId: hub.id, accountId: id }),
+      hub.accounts.flatMap(({ id, provider, usage, plan }, index) =>
+        windows(
+          usage,
+          provider,
+          `${hub.label} · ${providerNames[provider]} ${index + 1}`,
+          (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
+          plan,
         ),
       ),
     ),
   ];
+}
+
+export function paceHistoryKeys({
+  key,
+  provider,
+  plan,
+  duration,
+}: Pick<PaceWindow, "key" | "provider" | "plan" | "duration">) {
+  const tier = plan?.trim().replace(/\s+/g, " ").toLowerCase() || null;
+  const account = JSON.stringify(["account", key, tier]);
+  return { account, usual: tier ? JSON.stringify(["usual", provider, tier, duration]) : account };
 }
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
@@ -165,7 +187,7 @@ export function recordSample(
   return {
     ...next,
     stretch: { ...stretch, ticks, pending: 0 },
-    readings: [...log.readings, rate(ticks[0], tick, tick.epoch)].slice(-MAX_READINGS),
+    readings: [...log.readings, rate(ticks[0], tick, tick.epoch)].slice(-maxPaceReadings),
   };
 }
 
@@ -178,29 +200,30 @@ export function windowPace(
   now: number,
   preset: PacePreset,
   active: boolean,
+  usualLog = log,
 ): WindowPace | null {
   const tuning = windowTuning.get(duration);
   if (!tuning) return null;
-  const watched = now - log.firstSeen;
-  if (watched < tuning.learnSeconds || log.readings.length === 0) {
+  const watched = now - usualLog.firstSeen;
+  if (watched < tuning.learnSeconds || usualLog.readings.length === 0) {
     return {
       status: "learning",
       watched_seconds: Math.min(watched, tuning.learnSeconds),
       learn_seconds: tuning.learnSeconds,
       until:
         watched < tuning.learnSeconds
-          ? { kind: "time", epoch: log.firstSeen + tuning.learnSeconds }
+          ? { kind: "time", epoch: usualLog.firstSeen + tuning.learnSeconds }
           : { kind: "reading", in_use: active || openStretch(log, duration, now) !== null },
     };
   }
-  const usual = median(log.readings);
+  const usual = median(usualLog.readings);
   const current = currentPace(log, duration, now, active);
   return {
     status: "learned",
     usual_rate: usual,
     current,
     creature: rider(current, usual, preset, active),
-    readings: log.readings,
+    readings: usualLog.readings,
   };
 }
 
