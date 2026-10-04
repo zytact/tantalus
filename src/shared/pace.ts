@@ -95,7 +95,7 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
     owner: string,
     keyOf: (duration: number) => string,
     plan = usage.plan,
-    identity = usage.email,
+    identity = usage.account_key ?? usage.email,
   ) =>
     [usage.five_hour, usage.seven_day, usage.monthly].flatMap((window) => {
       const duration = window.limit_window_seconds;

@@ -1,15 +1,19 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, providerIds } from "../shared/usage";
 import type { ProviderId, ProxyHubProviderId, UsageSnapshot } from "../shared/usage";
 import { defaultPaceSettings, paceKey } from "../shared/pace";
+import { UsageApi } from "./api";
+import { parseCredentials } from "./auth";
 import { noActivity, PaceTracker } from "./pace-tracker";
 import { loadPaceLogs, saveSettings } from "./settings";
 
 const directories: string[] = [];
 afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -255,4 +259,63 @@ it.each(providerIds)("adopts a previous %s log under the reported tier only once
     usual_rate: 3,
   });
   expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
+});
+
+it.each(providerIds)("isolates %s sign-ins even without a unique email", async (provider) => {
+  vi.useFakeTimers();
+  let used = 10;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              allowed: true,
+              primary_window: { used_percent: used, limit_window_seconds: fiveHourSeconds },
+            },
+            credits: [],
+            five_hour: { utilization: used, resets_at: null },
+            usage: { rolling: { percent: used, resetsAt: null, status: "ok" } },
+          }),
+        ),
+    ),
+  );
+  const token = `e30.${Buffer.from(JSON.stringify({ email: "same@example.test", "https://api.openai.com/auth": { chatgpt_plan_type: "pro" } })).toString("base64url")}.signature`;
+  const credentialsFor = (account: string) =>
+    parseCredentials(
+      provider,
+      JSON.stringify(
+        provider === "codex"
+          ? { tokens: { access_token: "same-token", account_id: account, id_token: token } }
+          : provider === "claude"
+            ? { claudeAiOauth: { accessToken: account, subscriptionType: "pro" } }
+            : { "opencode-go": { key: account } },
+      ),
+    );
+  const api = new UsageApi();
+  const saved = tracker();
+  seed(saved.path, provider);
+  const pace = saved.create();
+  const snapshot = snapshotFor(provider, provider === "opencode" ? "Go" : "Pro");
+  for (let tick = 0; tick <= 4; tick++) {
+    vi.setSystemTime((epoch + tick * 300) * 1000);
+    used = 10 + tick;
+    snapshot[provider] = await api.fetch(provider, credentialsFor("first"));
+    pace.track(snapshot, noActivity, epoch + tick * 300);
+  }
+  const firstKey = snapshot[provider].account_key;
+  vi.setSystemTime((epoch + 1500) * 1000);
+  used = 80;
+  snapshot[provider] = await api.fetch(provider, credentialsFor("second"));
+  const current = pace.track(snapshot, noActivity, epoch + 1500);
+  expect(snapshot[provider].account_key).not.toBe(firstKey);
+  expect(JSON.stringify(current)).not.toContain(JSON.stringify(credentialsFor("second").accessToken));
+  expect(current[provider].five_hour.used_percent).toBe(80);
+  expect(current.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
+    status: "learned",
+    usual_rate: 4,
+    current: { kind: "idle" },
+    creature: null,
+  });
 });

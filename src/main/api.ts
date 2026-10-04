@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { emptyProviderUsage, nowEpoch } from "../shared/usage";
 import type { ProviderId, ProviderUsage } from "../shared/usage";
 import type { Credentials } from "./auth";
@@ -36,14 +37,13 @@ export class UsageApi {
   }
 
   async fetch(provider: ProviderId, credentials: Credentials): Promise<ProviderUsage> {
-    switch (provider) {
-      case "codex":
-        return this.fetchCodex(credentials);
-      case "claude":
-        return this.fetchClaude(credentials);
-      case "opencode":
-        return this.fetchOpencode(credentials);
-    }
+    const reads = {
+      codex: () => this.fetchCodex(credentials),
+      claude: () => this.fetchClaude(credentials),
+      opencode: () => this.fetchOpencode(credentials),
+    };
+    const usage = await reads[provider]();
+    return { ...usage, account_key: accountKey(credentials, usage.email) };
   }
 
   private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
@@ -117,6 +117,15 @@ export class UsageApi {
       throw new ReadFailure("response");
     });
   }
+}
+
+function accountKey(credentials: Credentials, email: string | null): string {
+  const identity = credentials.accountId
+    ? ["account", credentials.accountId]
+    : email
+      ? ["email", email.trim().toLowerCase()]
+      : ["credential", credentials.accessToken];
+  return createHash("sha256").update(JSON.stringify(identity)).digest("hex");
 }
 
 function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {

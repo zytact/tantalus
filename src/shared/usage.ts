@@ -21,6 +21,7 @@ export type SnapshotStatus = "ready" | "loading" | "stale" | "auth_missing" | "e
  * here rather than on the snapshot. */
 export type ProviderUsage = {
   email: string | null;
+  account_key: string | null;
   plan: string | null;
   subscription_active_until_epoch: number | null;
   five_hour: WindowUsage;
@@ -99,6 +100,7 @@ export const unreportedWindow = (): WindowUsage => ({
 /** A provider nothing has been read for yet. */
 export const emptyProviderUsage = (): ProviderUsage => ({
   email: null,
+  account_key: null,
   plan: null,
   subscription_active_until_epoch: null,
   five_hour: unreportedWindow(),
