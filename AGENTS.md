@@ -4,8 +4,6 @@ Tantalus is an Electron tray app written in TypeScript. The main process is in `
 
 Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit either by hand. PRs are squash-merged, so the PR title sets the bump. Below 1.0, `fix` and `feat` bump the patch version, and `!` (`feat!:`) or a `BREAKING CHANGE:` footer bumps the minor version. Mark anything that breaks updates or saved settings for installed apps as breaking. The README's Releasing section covers the pipeline.
 
-The `.claude` and `.agents` skill directories must stay byte identical (excluding ignored local state such as `.claude/worktrees/`). Every edit to one side must be mirrored to the other in the same commit.
-
 ## Usage features
 
 Tantalus reads three providers: Codex, Claude and Opencode. Each one is read directly from local sign-ins, and Codex and Claude can also come through a CLIProxyAPI hub account. A usage feature covers every provider and every hub account unless the request names one. When a provider or the hub has no field for the feature, say so in the PR. Do not quietly skip it.
