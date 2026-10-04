@@ -180,6 +180,38 @@ export class UsageState {
     );
   }
 
+  async withProxyHub(
+    id: string,
+    run: (config: ProxyHubConfig, ensureAvailable: () => void) => Promise<void>,
+  ): Promise<void> {
+    const config = this.hubConfig(id);
+    const ensureAvailable = () => {
+      const hub = this.snapshot.proxy_hubs.find((hub) => hub.id === id);
+      if (this.hubConfigs.find((hub) => hub.id === id) !== config || !config.enabled || hub?.status !== "ready")
+        throw new ProxyHubError("The hub is not available.");
+    };
+    ensureAvailable();
+    try {
+      await run(config, ensureAvailable);
+    } catch (error) {
+      const current = this.hubConfigs.find((hub) => hub.id === id);
+      if (
+        error instanceof ProxyHubRejected &&
+        current?.url === config.url &&
+        current.managementKey === config.managementKey
+      ) {
+        this.snapshot = {
+          ...this.snapshot,
+          proxy_hubs: this.snapshot.proxy_hubs.map((hub) =>
+            hub.id === id ? applyHubReading(hub, redact(config), error) : hub,
+          ),
+        };
+        this.publish(this.snapshot);
+      }
+      throw error;
+    }
+  }
+
   private hubConfig(id: string): ProxyHubConfig {
     const config = this.hubConfigs.find((hub) => hub.id === id);
     if (!config) throw new Error("Unknown proxy hub.");
@@ -253,7 +285,15 @@ export function applyHubReading(
   const accounts = reading.map((account) => {
     const prior = previousAccounts.get(`${account.provider}:${account.id}`);
     return account.usage.status === "error" && prior
-      ? { ...account, usage: applyReading(prior.usage, new Error(account.usage.error_message ?? "Could not refresh.")) }
+      ? {
+          ...account,
+          usage: applyReading(
+            prior.usage,
+            account.usage.error_reason
+              ? new ReadFailure(account.usage.error_reason)
+              : new Error(account.usage.error_message ?? "Could not refresh."),
+          ),
+        }
       : account;
   });
   return {

@@ -418,3 +418,11 @@ describe("polling", () => {
     expect(settled({ ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0]!, accounts: [] }] })).toBe(true);
   });
 });
+
+it("preserves a hub account's typed sign-in failure across cached readings", () => {
+  const previous = { ...emptyProxyHubSnapshot(hubConfig), accounts: [hubAccount(23)] };
+  const failed = hubAccount(0);
+  failed.usage = { ...emptyProviderUsage(), status: "error", error_reason: "rejected", error_message: "rejected" };
+  const result = applyHubReading(previous, hubConfig, [failed]);
+  expect(result.accounts[0]?.usage).toMatchObject({ status: "stale", error_reason: "rejected" });
+});

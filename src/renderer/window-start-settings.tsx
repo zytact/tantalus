@@ -49,7 +49,8 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
           <h2>Start 5-hour windows</h2>
           <p>
             When a 5-hour window has sat idle for 5 minutes, Tantalus sends a one-word prompt through the CLI to start
-            it. Each start uses a little of your weekly limit.
+            it. Hub accounts receive the prompt through their hub, without a local CLI. Each start uses a little of your
+            weekly limit.
           </p>
         </div>
         <StartToggle start={start} saving={saving} onSave={(next) => void save(next)} />
@@ -72,6 +73,28 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
               void save({ ...start, providers: { ...start.providers, [id]: { ...start.providers[id], path } } })
             }
           />
+        ))}
+      {typeof start !== "string" &&
+        (start.enabled || start.wake) &&
+        start.hubs.map((account) => (
+          <section className="setting-row" key={account.key}>
+            <div className="setting-copy">
+              <h2>
+                <ProviderIcon id={account.provider} />
+                {account.label}
+              </h2>
+              {start.enabled && (
+                <p>{startStatus({ command: "an account-specific prompt through the hub", last: account.last })}</p>
+              )}
+              {start.wake && account.provider === "claude" && (
+                <p>
+                  {account.lastWake
+                    ? wakeStatus({ lastWake: account.lastWake })
+                    : "Renews this account through the hub when its usage sign-in is rejected, at most once an hour."}
+                </p>
+              )}
+            </div>
+          </section>
         ))}
       <WakeRow start={start} saving={saving} onSave={(next) => void save(next)} />
     </>

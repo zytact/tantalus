@@ -51,7 +51,11 @@ const startOn: WindowStartSettings = {
   providers: { claude: { path: null }, codex: { path: null } },
 };
 
-function starter(settings: WindowStartSettings, run: (cli: Cli) => Promise<void> = async () => {}) {
+function starter(
+  settings: WindowStartSettings,
+  run: (cli: Cli) => Promise<void> = async () => {},
+  runHub?: ConstructorParameters<typeof WindowStarter>[4],
+) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
   directories.push(directory);
   const path = join(directory, "window-start.json");
@@ -67,6 +71,7 @@ function starter(settings: WindowStartSettings, run: (cli: Cli) => Promise<void>
       return run(command);
     },
     () => started++,
+    runHub,
   );
   return { instance, runs, started: () => started };
 }
@@ -269,5 +274,97 @@ describe("sign-in wake", () => {
     instance.observe(snapshot(applyReading(running(1000), new Error(failureMessages.response))));
     await settle();
     expect(runs).toHaveLength(0);
+  });
+});
+
+function hubSnapshot(epoch: number, rejected = false): UsageSnapshot {
+  const usage = rejected ? applyReading(idle(epoch), new ReadFailure("rejected")) : idle(epoch);
+  return {
+    ...snapshot(emptyProviderUsage(), false),
+    proxy_hubs: [
+      {
+        id: "hub",
+        label: "Hub",
+        status: "ready",
+        error_message: null,
+        last_successful_update_epoch: epoch,
+        accounts: (["claude", "codex"] as const).map((provider) => ({
+          id: `${provider}.json`,
+          email: null,
+          plan: null,
+          provider,
+          usage,
+        })),
+      },
+    ],
+  };
+}
+
+describe("hub automation", () => {
+  it("starts each hub account independently of direct switches and stops when removed", async () => {
+    const runHub = vi.fn(async () => {});
+    const { instance, runs } = starter(startOn, undefined, runHub);
+    instance.observe(hubSnapshot(1000));
+    instance.observe(hubSnapshot(1300));
+    await settle();
+    expect(runs).toHaveLength(0);
+    expect(runHub.mock.calls).toEqual([
+      ["hub", "claude.json", "claude", false],
+      ["hub", "codex.json", "codex", false],
+    ]);
+    expect((await instance.read()).hubs.every((hub) => hub.last?.error === null)).toBe(true);
+    instance.observe(hubSnapshot(1600));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(2);
+    instance.observe(snapshot(emptyProviderUsage(), false));
+    expect((await instance.read()).hubs).toEqual([]);
+    instance.observe(hubSnapshot(1900));
+    instance.observe(hubSnapshot(2200));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(4);
+  });
+
+  it("renews only rejected Claude accounts, preserving cooldown through hub errors", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
+    const runHub = vi.fn(async () => {
+      throw new Error("renewal failed");
+    });
+    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub);
+    instance.observe(hubSnapshot(1000, true));
+    await settle();
+    expect(runHub.mock.calls).toEqual([["hub", "claude.json", "claude", true]]);
+    expect((await instance.read()).hubs[0]?.lastWake?.error).toBe("renewal failed");
+    const stale = hubSnapshot(1000, true);
+    stale.proxy_hubs[0]!.status = "stale";
+    instance.observe(stale);
+    instance.observe(hubSnapshot(1000, true));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(4_600_000);
+    instance.observe(hubSnapshot(4600, true));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(2);
+    expect(runs).toHaveLength(0);
+  });
+
+  it("does not overlap a pending renewal or wake on transient account failures", async () => {
+    let finish!: () => void;
+    const runHub = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { instance } = starter({ ...startOn, wake: true }, undefined, runHub);
+    const transient = hubSnapshot(1000);
+    transient.proxy_hubs[0]!.accounts[0]!.usage = applyReading(idle(1000), new Error("server error"));
+    instance.observe(transient);
+    await settle();
+    expect(runHub).not.toHaveBeenCalled();
+    instance.observe(hubSnapshot(1000, true));
+    instance.observe(hubSnapshot(1000, true));
+    expect(runHub).toHaveBeenCalledTimes(1);
+    finish();
+    await settle();
   });
 });

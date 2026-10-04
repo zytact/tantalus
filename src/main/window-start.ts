@@ -27,22 +27,29 @@ export function signInLapsed(usage: ProviderUsage): boolean {
   );
 }
 
-/** Starts a polled provider's 5-hour window through its CLI once readings have shown it idle for `GRACE`.
+/** Starts a polled provider or hub account's 5-hour window through its CLI or hub once readings have shown it idle for `GRACE`.
  * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
- * With wake on, it also runs the Claude CLI when Claude's sign-in expires or is rejected, at most once an hour. */
+ * With wake on, it also renews a Claude sign-in through the CLI or hub, at most once an hour per account. */
 export class WindowStarter {
   private settings: WindowStartSettings;
-  private readonly idleSince = new Map<StartProviderId, number>();
-  private readonly attempted = new Set<StartProviderId>();
-  private readonly running = new Set<StartProviderId>();
-  private readonly last = new Map<StartProviderId, StartAttempt>();
-  private lastWake: StartAttempt | null = null;
+  private readonly idleSince = new Map<string, number>();
+  private readonly attempted = new Set<string>();
+  private readonly running = new Set<string>();
+  private readonly last = new Map<string, StartAttempt>();
+  private readonly wakes = new Map<string, StartAttempt>();
+  private hubs: WindowStart["hubs"] = [];
 
   constructor(
     private readonly path: string,
     private readonly locate: (provider: StartProviderId, configured: string | null) => Promise<Cli | null>,
     private readonly run: (cli: Cli) => Promise<void>,
     private readonly started: () => void,
+    private readonly runHub?: (
+      hubId: string,
+      accountId: string,
+      provider: StartProviderId,
+      wake: boolean,
+    ) => Promise<void>,
   ) {
     this.settings = loadWindowStartSettings(path);
   }
@@ -50,7 +57,17 @@ export class WindowStarter {
   async read(): Promise<WindowStart> {
     const [claude, codex] = await Promise.all([this.provider("claude"), this.provider("codex")]);
     const { enabled, wake } = this.settings;
-    return { enabled, wake, lastWake: this.lastWake, providers: { claude, codex } };
+    return {
+      enabled,
+      wake,
+      lastWake: this.wakes.get("claude") ?? null,
+      providers: { claude, codex },
+      hubs: this.hubs.map((hub) => ({
+        ...hub,
+        last: this.last.get(hub.key) ?? null,
+        lastWake: this.wakes.get(hub.key) ?? null,
+      })),
+    };
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
@@ -61,30 +78,66 @@ export class WindowStarter {
   }
 
   observe(snapshot: UsageSnapshot) {
-    for (const id of startProviderIds) this.observeProvider(id, snapshot[id], snapshot.enabled[id]);
-    this.observeSignIn(snapshot.claude);
+    const targets: StartTarget[] = startProviderIds.map((provider) => ({
+      key: provider,
+      provider,
+      usage: snapshot[provider],
+      polled: snapshot.enabled[provider],
+      hub: null,
+    }));
+    this.hubs = snapshot.proxy_hubs.flatMap((hub) =>
+      hub.accounts.map((account) => ({
+        key: JSON.stringify([hub.id, account.provider, account.id]),
+        hubId: hub.id,
+        accountId: account.id,
+        label: `${hub.label} · ${providerNames[account.provider]} · ${account.email ?? account.id}`,
+        provider: account.provider,
+        last: null,
+        lastWake: null,
+      })),
+    );
+    for (const hub of snapshot.proxy_hubs) {
+      for (const account of hub.accounts)
+        targets.push({
+          key: JSON.stringify([hub.id, account.provider, account.id]),
+          provider: account.provider,
+          usage: account.usage,
+          polled: hub.status === "ready",
+          hub: { id: hub.id, accountId: account.id },
+        });
+    }
+    const keys = new Set(targets.map(({ key }) => key));
+    for (const collection of [this.idleSince, this.attempted, this.last, this.wakes]) {
+      for (const key of collection.keys()) if (!keys.has(key)) collection.delete(key);
+    }
+    for (const target of targets) {
+      this.observeProvider(target);
+      if (target.provider === "claude") this.observeSignIn(target);
+    }
   }
 
-  private observeSignIn(usage: ProviderUsage) {
-    if (!this.settings.wake || !signInLapsed(usage) || this.running.has("claude")) return;
-    if (this.lastWake && nowEpoch() - this.lastWake.epoch < WAKE_INTERVAL) return;
-    void this.wake();
+  private observeSignIn(target: StartTarget) {
+    if (!target.polled || !this.settings.wake || !signInLapsed(target.usage) || this.running.has(target.key)) return;
+    const lastWake = this.wakes.get(target.key);
+    if (lastWake && nowEpoch() - lastWake.epoch < WAKE_INTERVAL) return;
+    void this.wake(target);
   }
 
-  private observeProvider(id: StartProviderId, usage: ProviderUsage, polled: boolean) {
+  private observeProvider(target: StartTarget) {
+    const { key, usage, polled } = target;
     const epoch = usage.last_successful_update_epoch;
     if (!idleWindow(usage)) {
-      this.idleSince.delete(id);
-      this.attempted.delete(id);
+      this.idleSince.delete(key);
+      this.attempted.delete(key);
       return;
     }
     if (!this.settings.enabled || !polled || epoch === null) {
-      this.idleSince.delete(id);
+      this.idleSince.delete(key);
       return;
     }
-    const since = this.idleSince.get(id) ?? epoch;
-    this.idleSince.set(id, since);
-    if (epoch - since >= GRACE && !this.attempted.has(id) && !this.running.has(id)) void this.start(id);
+    const since = this.idleSince.get(key) ?? epoch;
+    this.idleSince.set(key, since);
+    if (epoch - since >= GRACE && !this.attempted.has(key) && !this.running.has(key)) void this.start(target);
   }
 
   private async provider(id: StartProviderId): Promise<WindowStart["providers"][StartProviderId]> {
@@ -93,29 +146,43 @@ export class WindowStarter {
     return { ...settings, command: cli?.label ?? null, last: this.last.get(id) ?? null };
   }
 
-  private async start(id: StartProviderId) {
-    this.attempted.add(id);
-    this.idleSince.delete(id);
-    this.last.set(id, await this.runProvider(id));
+  private async start(target: StartTarget) {
+    this.attempted.add(target.key);
+    this.idleSince.delete(target.key);
+    this.last.set(target.key, await this.runProvider(target, false));
   }
 
-  private async wake() {
-    this.lastWake = await this.runProvider("claude");
+  private async wake(target: StartTarget) {
+    this.wakes.set(target.key, await this.runProvider(target, true));
   }
 
-  private async runProvider(id: StartProviderId): Promise<StartAttempt> {
-    this.running.add(id);
+  private async runProvider(target: StartTarget, wake: boolean): Promise<StartAttempt> {
+    const { key, provider, hub } = target;
+    this.running.add(key);
     const epoch = nowEpoch();
     try {
-      const cli = await this.locate(id, this.settings.providers[id].path);
-      if (!cli) throw new Error(`Could not find the ${providerNames[id]} CLI. Set its path.`);
-      await this.run(cli);
+      if (hub) {
+        if (!this.runHub) throw new Error("Hub automation is unavailable.");
+        await this.runHub(hub.id, hub.accountId, provider, wake);
+      } else {
+        const cli = await this.locate(provider, this.settings.providers[provider].path);
+        if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
+        await this.run(cli);
+      }
       this.started();
       return { epoch, error: null };
     } catch (error) {
       return { epoch, error: error instanceof Error ? error.message : String(error) };
     } finally {
-      this.running.delete(id);
+      this.running.delete(key);
     }
   }
 }
+
+type StartTarget = {
+  key: string;
+  provider: StartProviderId;
+  usage: ProviderUsage;
+  polled: boolean;
+  hub: { id: string; accountId: string } | null;
+};

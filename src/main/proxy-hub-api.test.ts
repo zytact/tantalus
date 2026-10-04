@@ -302,3 +302,90 @@ function requestBody(init: RequestInit | undefined): string {
   if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
   return init.body;
 }
+
+describe("hub window starts and renewal", () => {
+  function automation(status = 200, completed = true) {
+    const calls: (ManagementCall & { data?: string; name?: string })[] = [];
+    const request: typeof fetch = async (input, init) => {
+      if (typeof input === "string" && input.includes("auth-files/models?"))
+        return Response.json({ models: [{ id: "claude-haiku-4-5-20251001" }, { id: "gpt-5.1-codex-mini" }] });
+      if (init?.method === "GET")
+        return Response.json({
+          files: [
+            { id: "claude.json", auth_index: "claude-auth", provider: "claude" },
+            {
+              id: "codex.json",
+              auth_index: "codex-auth",
+              provider: "codex",
+              id_token: { chatgpt_account_id: "account-a" },
+            },
+          ],
+        });
+      const call = JSON.parse(requestBody(init)) as (typeof calls)[number];
+      calls.push(call);
+      if (typeof input === "string" && input.endsWith("/auth-files/refresh")) return Response.json({ ok: true });
+      const body =
+        call.auth_index === "claude-auth"
+          ? JSON.stringify({ type: "message" })
+          : `data: ${JSON.stringify({ type: completed ? "response.completed" : "response.failed" })}\n\n`;
+      return Response.json({ status_code: status, body });
+    };
+    return { api: new ProxyHubApi(request), calls };
+  }
+
+  it.each(["claude", "codex"] as const)(
+    "targets the selected %s account with a minimal upstream prompt",
+    async (provider) => {
+      const test = automation();
+      await test.api.runAccount(config, `${provider}.json`, provider, false);
+      expect(test.calls).toHaveLength(1);
+      const call = test.calls[0]!;
+      expect(call).toMatchObject({
+        auth_index: `${provider}-auth`,
+        method: "POST",
+        header: { Authorization: "Bearer $TOKEN$" },
+      });
+      const body = JSON.parse(call.data!);
+      if (provider === "claude") {
+        expect(call.url).toBe("https://api.anthropic.com/v1/messages");
+        expect(body).toMatchObject({ max_tokens: 1, messages: [{ role: "user", content: "OK" }] });
+      } else {
+        expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
+        expect(call.header["Chatgpt-Account-Id"]).toBe("account-a");
+        expect(body).toMatchObject({ stream: true, store: false, reasoning: { effort: "low" } });
+      }
+    },
+  );
+
+  it("renews only the selected credential without generating a prompt", async () => {
+    const test = automation();
+    await test.api.runAccount(config, "claude.json", "claude", true);
+    expect(test.calls).toEqual([{ name: "claude.json", auth_index: "claude-auth" }]);
+  });
+
+  it("refuses missing, mismatched, or newly disabled accounts before sending a prompt", async () => {
+    const test = automation();
+    await expect(test.api.runAccount(config, "missing", "claude", false)).rejects.toThrow("no longer enabled");
+    await expect(test.api.runAccount(config, "codex.json", "claude", false)).rejects.toThrow("no longer enabled");
+    await expect(
+      test.api.runAccount(config, "codex.json", "codex", false, () => {
+        throw new Error("disabled");
+      }),
+    ).rejects.toThrow("disabled");
+    expect(test.calls).toEqual([]);
+  });
+
+  it("does not report a failed Codex stream as a successful window start", async () => {
+    const test = automation(200, false);
+    await expect(test.api.runAccount(config, "codex.json", "codex", false)).rejects.toThrow("did not complete");
+  });
+
+  it.each([401, 403, 429, 500])("classifies upstream HTTP %i separately from management refusals", async (status) => {
+    const test = automation(status);
+    const accounts = await test.api.read(config);
+    expect(accounts.find((account) => account.provider === "claude")?.usage.error_reason).toBe(
+      status === 401 ? "rejected" : null,
+    );
+    expect(accounts.find((account) => account.provider === "codex")?.usage.error_reason).toBeNull();
+  });
+});

@@ -1,8 +1,8 @@
 # Window start
 
-Settings has a Start 5-hour windows switch. It starts off. Switching it on shows a row each for direct Claude and Codex, with a CLI path field. Starts cover those providers when switched on at the top of Settings, with no switch per provider. Opencode and hub accounts cannot start windows. Each row says what would run, the last start, or why it failed. A provider switched off at the top reads `Switch on <name> above so Tantalus can see its window.` The choice and CLI paths are saved to `window-start.json` in the preview's settings directory. Attempt results and the wake cooldown reset when the process restarts.
+Settings has a Start 5-hour windows switch. It starts off. Switching it on shows a row each for direct Claude and Codex, with a CLI path field. Starts cover those providers when switched on at the top of Settings, with no switch per provider. Hub accounts use account-specific upstream prompts through CLIProxyAPI and have their own result rows. Opencode cannot start windows. Each row says what would run, the last start, or why it failed. A provider switched off at the top reads `Switch on <name> above so Tantalus can see its window.` The choice and CLI paths are saved to `window-start.json` in the preview's settings directory. Attempt results and the wake cooldown reset when the process restarts.
 
-`WindowStarter` in `src/main/window-start.ts` watches every published snapshot. Two ready readings at least 5 minutes apart that both show the 5-hour window idle make it run the CLI once. A reading that is not idle starts the wait over. `src/main/cli.ts` finds the CLI and runs it in the temporary directory.
+`WindowStarter` in `src/main/window-start.ts` watches every published snapshot. Two ready readings at least 5 minutes apart that both show the 5-hour window idle make it send a prompt once through the CLI or hub. A reading that is not idle starts the wait over. `src/main/cli.ts` finds the CLI and runs it in the temporary directory.
 
 ## Preview proof
 
@@ -11,7 +11,7 @@ Launch with `--mock idle`. Set the Claude path to `/usr/bin/true` and Codex to `
 1. Open Settings, switch on Start 5-hour windows, and capture the Claude and Codex rows. Each should name the CLI it found, or say none was found.
 2. Fill `Claude CLI Leave blank to look it up` with `/usr/bin/true` and click `Save Claude CLI`. Fill the equivalent Codex field with `/usr/bin/false` and click `Save Codex CLI`.
 3. Press Refresh, wait at least 5 minutes, then press Refresh again. Reopen Settings.
-4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with an exit-code error. There are no start controls for Opencode or hub accounts.
+4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with an exit-code error. Hub account rows show their start results without CLI path fields. Opencode has no start control.
 5. Run `launch.sh --restart`, then doctor, and confirm the switch and both paths survive while attempt results clear.
 
 ## Sign-in wake proof
@@ -28,3 +28,9 @@ Launch with `--mock idle`. Set the Claude path to `/usr/bin/true` and Codex to `
 A real renewal proof needs an actually expired token. After the real CLI runs, confirm the credential file's expiry advances and usage returns HTTP 200. A fake CLI or edited expiry on an unexpired real token does not prove provider renewal.
 
 Never point a real-mode preview at an idle real account with the feature on unless you mean to start that account's window.
+
+## Hub proof
+
+On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm both hub rows report a successful start. The fixture request log must contain one `START hub-codex` and one `START hub-claude`. Refresh again and confirm those counts remain one.
+
+Switch to `hub-rejected`, disable window starts, enable Wake Claude sign-in, and refresh. The log must contain one `RENEW hub-claude`, no Codex renewal, and no additional starts. Refresh again and confirm Claude usage succeeds and renewal is not repeated. Renewal uses `/v0/management/auth-files/refresh`; older hubs without that endpoint must show a renewal failure. Management-key refusals stop all hub reads and actions until the hub is re-enabled or repaired.
