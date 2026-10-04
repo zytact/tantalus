@@ -206,6 +206,8 @@ class Handler(BaseHTTPRequestHandler):
                         "email": "claude@hub.test",
                     },
                 ]
+            if Handler.scenario == "hub-multiple-idle":
+                files += [{**file, "id": file["id"].replace(".json", "-two.json"), "auth_index": file["auth_index"] + "-two", "email": file["email"].replace("@", "2@")} for file in files[:]]
             if Handler.scenario == "hub-claude-only":
                 files = [file for file in files if file["provider"] == "claude"]
             if Handler.scenario == "hub-codex-only":
