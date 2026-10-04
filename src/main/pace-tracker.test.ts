@@ -282,17 +282,13 @@ it.each(providerIds)("isolates %s sign-ins even without a unique email", async (
     ),
   );
   const token = `e30.${Buffer.from(JSON.stringify({ email: "same@example.test", "https://api.openai.com/auth": { chatgpt_plan_type: "pro" } })).toString("base64url")}.signature`;
+  const credentialJson: Record<ProviderId, (account: string) => unknown> = {
+    codex: (account) => ({ tokens: { access_token: "same-token", account_id: account, id_token: token } }),
+    claude: (account) => ({ claudeAiOauth: { accessToken: account, subscriptionType: "pro" } }),
+    opencode: (account) => ({ "opencode-go": { key: account } }),
+  };
   const credentialsFor = (account: string) =>
-    parseCredentials(
-      provider,
-      JSON.stringify(
-        provider === "codex"
-          ? { tokens: { access_token: "same-token", account_id: account, id_token: token } }
-          : provider === "claude"
-            ? { claudeAiOauth: { accessToken: account, subscriptionType: "pro" } }
-            : { "opencode-go": { key: account } },
-      ),
-    );
+    parseCredentials(provider, JSON.stringify(credentialJson[provider](account)));
   const api = new UsageApi();
   const saved = tracker();
   seed(saved.path, provider);

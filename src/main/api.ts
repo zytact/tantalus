@@ -120,12 +120,12 @@ export class UsageApi {
 }
 
 function accountKey(credentials: Credentials, email: string | null): string {
-  const identity = credentials.accountId
+  const parts = credentials.accountId
     ? ["account", credentials.accountId]
     : email
       ? ["email", email.trim().toLowerCase()]
       : ["credential", credentials.accessToken];
-  return createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
 
 function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {
