@@ -1,6 +1,6 @@
 # Window start
 
-Settings has a Start 5-hour windows switch. It starts off. Switching it on shows a row each for direct Claude and Codex, with a CLI path field. Starts cover those providers when switched on at the top of Settings, with no switch per provider. Hub accounts use account-specific upstream prompts through CLIProxyAPI and have their own result rows. Opencode cannot start windows. Each row says what would run, the last start, or why it failed. A provider switched off at the top reads `Switch on <name> above so Tantalus can see its window.` The choice and CLI paths are saved to `window-start.json` in the preview's settings directory. Attempt results and the wake cooldown reset when the process restarts.
+Settings has a Start 5-hour windows switch. It starts off. Switching it on shows one row and CLI path field per provider available through an enabled direct sign-in or hub. Starts cover those providers when switched on at the top of Settings, with no switch per provider. Hub accounts use account-specific upstream prompts through CLIProxyAPI. Their results appear in the provider row, with no extra account rows. Opencode cannot start windows. Each row says what would run, the last start, or why it failed. A provider absent from both routes has no row. Hub-only providers retain their CLI paths for direct sign-ins. The choice and CLI paths are saved to `window-start.json` in the preview's settings directory. Attempt results and the wake cooldown reset when the process restarts.
 
 `WindowStarter` in `src/main/window-start.ts` watches every published snapshot. Two ready readings at least 5 minutes apart that both show the 5-hour window idle make it send a prompt once through the CLI or hub. A reading that is not idle starts the wait over. `src/main/cli.ts` finds the CLI and runs it in the temporary directory.
 
@@ -11,7 +11,7 @@ Launch with `--mock idle`. Set the Claude path to `/usr/bin/true` and Codex to `
 1. Open Settings, switch on Start 5-hour windows, and capture the Claude and Codex rows. Each should name the CLI it found, or say none was found.
 2. Fill `Claude CLI Leave blank to look it up` with `/usr/bin/true` and click `Save Claude CLI`. Fill the equivalent Codex field with `/usr/bin/false` and click `Save Codex CLI`.
 3. Press Refresh, wait at least 5 minutes, then press Refresh again. Reopen Settings.
-4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with an exit-code error. Hub account rows show their start results without CLI path fields. Opencode has no start control.
+4. Claude should read `Started a window <time>.`, and Codex should read `Could not start a window <time>.` with an exit-code error. Hub-only provider rows show their start results and retain CLI path fields. Opencode has no start control.
 5. Run `launch.sh --restart`, then doctor, and confirm the switch and both paths survive while attempt results clear.
 
 ## Sign-in wake proof
@@ -31,6 +31,6 @@ Never point a real-mode preview at an idle real account with the feature on unle
 
 ## Hub proof
 
-On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm both hub rows report a successful start. For multiple accounts, use `--mock hub-multiple-idle`. The fixture request log must contain one start for each of `hub-codex`, `hub-codex-two`, `hub-claude`, and `hub-claude-two`. Each dashboard account must have its own last-start status. Refresh again and confirm those counts remain one.
+On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm the Claude and Codex provider rows report a successful start. For multiple accounts, use `--mock hub-multiple-idle`. The fixture request log must contain one start for each of `hub-codex`, `hub-codex-two`, `hub-claude`, and `hub-claude-two`. Each dashboard account must have its own last-start status. Refresh again and confirm those counts remain one.
 
 Wake Claude only uses the direct CLI. A hub Claude account switches wake off, and an attempt to enable it leaves it off. Management-key refusals stop hub reads and starts until the hub is re-enabled or repaired.
