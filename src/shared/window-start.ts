@@ -27,7 +27,6 @@ export type WindowStart = {
     label: string;
     provider: StartProviderId;
     last: StartAttempt | null;
-    lastWake: StartAttempt | null;
   }[];
   providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
 };

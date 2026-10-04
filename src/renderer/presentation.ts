@@ -94,7 +94,7 @@ export function startStatus({
 export function wakeStatus({ lastWake }: Pick<WindowStart, "lastWake">): string {
   if (lastWake?.error) return `Could not wake Claude ${absoluteTime(lastWake.epoch)}. ${lastWake.error}`;
   if (lastWake) return `Woke Claude ${absoluteTime(lastWake.epoch)}.`;
-  return "When Claude's sign-in expires or the usage service rejects it, Tantalus sends a one-word prompt through the Claude CLI, then refreshes. For hub accounts it asks the hub to renew the sign-in. It tries at most once an hour per account.";
+  return "When Claude's sign-in expires or the usage service rejects it, Tantalus sends a one-word prompt through the Claude CLI, then refreshes. It tries at most once an hour.";
 }
 
 /** Credits expire weeks out, so a weekday alone would not say which week. */

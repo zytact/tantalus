@@ -55,6 +55,7 @@ function starter(
   settings: WindowStartSettings,
   run: (cli: Cli) => Promise<void> = async () => {},
   runHub?: ConstructorParameters<typeof WindowStarter>[4],
+  notify?: ConstructorParameters<typeof WindowStarter>[5],
 ) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
   directories.push(directory);
@@ -72,6 +73,7 @@ function starter(
     },
     () => started++,
     runHub,
+    notify,
   );
   return { instance, runs, started: () => started };
 }
@@ -308,9 +310,9 @@ describe("hub automation", () => {
     instance.observe(hubSnapshot(1300));
     await settle();
     expect(runs).toHaveLength(0);
-    expect(runHub.mock.calls.map((call) => [...call].slice(0, 4))).toEqual([
-      ["hub", "claude.json", "claude", false],
-      ["hub", "codex.json", "codex", false],
+    expect(runHub.mock.calls.map((call) => [...call].slice(0, 3))).toEqual([
+      ["hub", "claude.json", "claude"],
+      ["hub", "codex.json", "codex"],
     ]);
     expect((await instance.read()).hubs.every((hub) => hub.last?.error === null)).toBe(true);
     instance.observe(hubSnapshot(1600));
@@ -324,54 +326,26 @@ describe("hub automation", () => {
     expect(runHub).toHaveBeenCalledTimes(4);
   });
 
-  it("renews only rejected Claude accounts, preserving cooldown through hub errors", async () => {
-    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date"] });
-    const runHub = vi.fn(async () => {
-      throw new Error("renewal failed");
-    });
-    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub);
-    instance.observe(hubSnapshot(1000, true));
-    await settle();
-    expect(runHub.mock.calls.map((call) => [...call].slice(0, 4))).toEqual([["hub", "claude.json", "claude", true]]);
-    expect((await instance.read()).hubs[0]?.lastWake?.error).toBe("renewal failed");
-    const stale = hubSnapshot(1000, true);
-    stale.proxy_hubs[0]!.status = "stale";
-    instance.observe(stale);
-    instance.observe(hubSnapshot(1000, true));
-    await settle();
-    expect(runHub).toHaveBeenCalledTimes(1);
-    vi.setSystemTime(4_600_000);
-    instance.observe(hubSnapshot(4600, true));
-    await settle();
-    expect(runHub).toHaveBeenCalledTimes(2);
-    expect(runs).toHaveLength(0);
-  });
-
-  it("does not overlap a pending renewal or wake on transient account failures", async () => {
-    let finish!: () => void;
-    const runHub = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
+  it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
+    const notices: string[] = [];
+    const runHub = vi.fn(async () => {});
+    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, (message) =>
+      notices.push(message),
     );
-    const { instance } = starter({ ...startOn, wake: true }, undefined, runHub);
-    const transient = hubSnapshot(1000);
-    transient.proxy_hubs[0]!.accounts[0]!.usage = applyReading(idle(1000), new Error("server error"));
-    instance.observe(transient);
+    instance.observe(hubSnapshot(1000, true));
     await settle();
+    expect((await instance.read()).wake).toBe(false);
+    expect((await instance.set({ ...startOn, enabled: false, wake: true })).wake).toBe(false);
+    expect(notices).toHaveLength(2);
+    expect(notices.at(-1)).toContain("direct sign-ins");
     expect(runHub).not.toHaveBeenCalled();
-    instance.observe(hubSnapshot(1000, true));
-    instance.observe(hubSnapshot(1000, true));
-    expect(runHub).toHaveBeenCalledTimes(1);
-    finish();
-    await settle();
+    expect(runs).toHaveLength(0);
   });
 });
 
 it("rechecks the automation switch before queued hub work runs", async () => {
   const checks: (() => void)[] = [];
-  const { instance } = starter(startOn, undefined, async (_hub, _account, _provider, _wake, check) => {
+  const { instance } = starter(startOn, undefined, async (_hub, _account, _provider, check) => {
     checks.push(check);
   });
   instance.observe(hubSnapshot(1000));

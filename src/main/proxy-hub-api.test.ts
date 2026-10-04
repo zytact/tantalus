@@ -303,9 +303,9 @@ function requestBody(init: RequestInit | undefined): string {
   return init.body;
 }
 
-describe("hub window starts and renewal", () => {
+describe("hub window starts", () => {
   function automation(status = 200, completed = true) {
-    const calls: (ManagementCall & { data?: string; name?: string })[] = [];
+    const calls: (ManagementCall & { data?: string })[] = [];
     const request: typeof fetch = async (input, init) => {
       const path = new URL(input instanceof Request ? input.url : input).pathname;
       const responses = new Map<string, unknown>([
@@ -332,7 +332,6 @@ describe("hub window starts and renewal", () => {
         });
       const call = JSON.parse(requestBody(init)) as (typeof calls)[number];
       calls.push(call);
-      if (path.endsWith("/auth-files/refresh")) return Response.json({ ok: true });
       const body =
         call.auth_index === "claude-auth"
           ? JSON.stringify({ type: "message" })
@@ -346,7 +345,7 @@ describe("hub window starts and renewal", () => {
     "targets the selected %s account with a minimal upstream prompt",
     async (provider) => {
       const test = automation();
-      await test.api.runAccount(config, `${provider}.json`, provider, false);
+      await test.api.runAccount(config, `${provider}.json`, provider);
       expect(test.calls).toHaveLength(1);
       const call = test.calls[0]!;
       expect(call).toMatchObject({
@@ -375,18 +374,12 @@ describe("hub window starts and renewal", () => {
     },
   );
 
-  it("renews only the selected credential without generating a prompt", async () => {
-    const test = automation();
-    await test.api.runAccount(config, "claude.json", "claude", true);
-    expect(test.calls).toEqual([{ name: "claude.json", auth_index: "claude-auth" }]);
-  });
-
   it("refuses missing, mismatched, or newly disabled accounts before sending a prompt", async () => {
     const test = automation();
-    await expect(test.api.runAccount(config, "missing", "claude", false)).rejects.toThrow("no longer enabled");
-    await expect(test.api.runAccount(config, "codex.json", "claude", false)).rejects.toThrow("no longer enabled");
+    await expect(test.api.runAccount(config, "missing", "claude")).rejects.toThrow("no longer enabled");
+    await expect(test.api.runAccount(config, "codex.json", "claude")).rejects.toThrow("no longer enabled");
     await expect(
-      test.api.runAccount(config, "codex.json", "codex", false, () => {
+      test.api.runAccount(config, "codex.json", "codex", () => {
         throw new Error("disabled");
       }),
     ).rejects.toThrow("disabled");
@@ -395,7 +388,7 @@ describe("hub window starts and renewal", () => {
 
   it("does not report a failed Codex stream as a successful window start", async () => {
     const test = automation(200, false);
-    await expect(test.api.runAccount(config, "codex.json", "codex", false)).rejects.toThrow("did not complete");
+    await expect(test.api.runAccount(config, "codex.json", "codex")).rejects.toThrow("did not complete");
   });
 
   it.each([401, 403, 429, 500])("classifies upstream HTTP %i separately from management refusals", async (status) => {
@@ -415,7 +408,7 @@ it("stops queued account discovery after a management refusal", async () => {
     return Response.json({}, { status: 401 });
   });
   const results = await Promise.allSettled(
-    Array.from({ length: 8 }, () => api.runAccount(config, "claude.json", "claude", true)),
+    Array.from({ length: 8 }, () => api.runAccount(config, "claude.json", "claude")),
   );
   expect(results.every((result) => result.status === "rejected")).toBe(true);
   expect(requests).toBeLessThanOrEqual(4);

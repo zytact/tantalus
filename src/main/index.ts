@@ -90,9 +90,9 @@ function start() {
     startCli,
     runCli,
     () => void state.refresh(),
-    (hubId, accountId, provider, wake, ensureEnabled) =>
+    (hubId, accountId, provider, ensureEnabled) =>
       state.withProxyHub(hubId, (config, ensureAvailable) =>
-        proxyHubs.runAccount(config, accountId, provider, wake, () => {
+        proxyHubs.runAccount(config, accountId, provider, () => {
           ensureEnabled();
           ensureAvailable();
         }),

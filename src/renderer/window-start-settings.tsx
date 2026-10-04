@@ -49,8 +49,8 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
           <h2>Start 5-hour windows</h2>
           <p>
             When a 5-hour window has sat idle for 5 minutes, Tantalus sends a one-word prompt through the CLI to start
-            it. Hub accounts receive the prompt through their hub, without a local CLI. Each start uses a little of your
-            weekly limit.
+            it. For hub accounts, Tantalus sends the prompt through CLIProxyAPI. Each start uses a little of your weekly
+            limit.
           </p>
         </div>
         <StartToggle start={start} saving={saving} onSave={(next) => void save(next)} />
@@ -97,18 +97,9 @@ function HubStartRow({ start, account }: { start: WindowStart; account: WindowSt
         {start.enabled && (
           <p>{startStatus({ command: "an account-specific prompt through the hub", last: account.last })}</p>
         )}
-        {start.wake && <HubWakeStatus account={account} />}
       </div>
     </section>
   );
-}
-
-function HubWakeStatus({ account }: { account: WindowStart["hubs"][number] }) {
-  if (account.provider !== "claude") return null;
-  const wake = account.lastWake
-    ? wakeStatus({ lastWake: account.lastWake })
-    : "Renews this account through the hub when its usage sign-in is rejected, at most once an hour.";
-  return <p>{wake}</p>;
 }
 
 function StartToggle({

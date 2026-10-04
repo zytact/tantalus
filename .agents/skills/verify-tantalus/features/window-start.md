@@ -33,4 +33,4 @@ Never point a real-mode preview at an idle real account with the feature on unle
 
 On `--mock idle`, add the fixture hub as described in `proxy-hubs.md`. Switch direct Codex and Claude off and enable Start 5-hour windows. Refresh, wait at least 5 minutes, then refresh again. Reopen Settings and confirm both hub rows report a successful start. The fixture request log must contain one `START hub-codex` and one `START hub-claude`. Refresh again and confirm those counts remain one.
 
-Switch to `hub-rejected`, disable window starts, enable Wake Claude sign-in, and refresh. The log must contain one `RENEW hub-claude`, no Codex renewal, and no additional starts. Refresh again and confirm Claude usage succeeds and renewal is not repeated. Renewal uses `/v0/management/auth-files/refresh`; older hubs without that endpoint must show a renewal failure. Management-key refusals stop all hub reads and actions until the hub is re-enabled or repaired.
+Wake Claude only uses the direct CLI. A hub Claude account switches wake off, and an attempt to enable it leaves it off. Management-key refusals stop hub reads and starts until the hub is re-enabled or repaired.

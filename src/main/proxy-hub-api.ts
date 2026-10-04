@@ -51,7 +51,6 @@ export class ProxyHubApi {
     config: ProxyHubConfig,
     id: string,
     provider: ProxyHubProviderId,
-    wake: boolean,
     ensureAvailable: () => void = () => {},
   ): Promise<void> {
     await this.accountReads.run(async () => {
@@ -61,14 +60,6 @@ export class ProxyHubApi {
       );
       if (!account) throw new ProxyHubError("The hub account is no longer enabled or available.");
       ensureAvailable();
-      if (wake) {
-        const result = await this.management(config, "auth-files/refresh", {
-          name: account.id,
-          auth_index: account.authIndex,
-        });
-        if (field(result, "ok") !== true) throw new ProxyHubError("The hub could not renew this sign-in.");
-        return;
-      }
       const models = await this.management(config, `model-definitions/${provider}`);
       const model = startModel(models, provider);
       ensureAvailable();
@@ -223,7 +214,7 @@ export class ProxyHubApi {
       throw new ProxyHubError("The hub management request failed.");
     }
     if (response.status === 401 || response.status === 403) this.rejected.add(config);
-    if (!response.ok) throw managementFailure(response.status, path);
+    if (!response.ok) throw managementFailure(response.status);
     try {
       return await response.json();
     } catch {
@@ -305,9 +296,7 @@ function startModel(value: unknown, provider: ProxyHubProviderId): string {
   return model;
 }
 
-function managementFailure(status: number, path: string): ProxyHubError {
-  if (status === 404 && path === "auth-files/refresh")
-    return new ProxyHubError("This hub does not support sign-in renewal. Update CLIProxyAPI.");
+function managementFailure(status: number): ProxyHubError {
   if (status === 401) return new ProxyHubRejected("The hub rejected the management key.");
   if (status === 403) return new ProxyHubRejected("The hub refused management access.");
   return new ProxyHubError("The hub management request failed.");

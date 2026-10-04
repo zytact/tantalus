@@ -29,7 +29,7 @@ export function signInLapsed(usage: ProviderUsage): boolean {
 
 /** Starts a polled provider or hub account's 5-hour window through its CLI or hub once readings have shown it idle for `GRACE`.
  * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
- * With wake on, it also renews a Claude sign-in through the CLI or hub, at most once an hour per account. */
+ * With wake on, it also renews a Claude sign-in through the local CLI, at most once an hour. */
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<string, number>();
@@ -38,6 +38,7 @@ export class WindowStarter {
   private readonly last = new Map<string, StartAttempt>();
   private readonly wakes = new Map<string, StartAttempt>();
   private hubs: WindowStart["hubs"] = [];
+  private hubClaude = false;
 
   constructor(
     private readonly path: string,
@@ -48,9 +49,9 @@ export class WindowStarter {
       hubId: string,
       accountId: string,
       provider: StartProviderId,
-      wake: boolean,
       ensureEnabled: () => void,
     ) => Promise<void>,
+    private readonly notify: (message: string) => void = () => {},
   ) {
     this.settings = loadWindowStartSettings(path);
   }
@@ -66,19 +67,23 @@ export class WindowStarter {
       hubs: this.hubs.map((hub) => ({
         ...hub,
         last: this.last.get(hub.key) ?? null,
-        lastWake: this.wakes.get(hub.key) ?? null,
       })),
     };
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
   set(settings: WindowStartSettings): Promise<WindowStart> {
+    if (settings.wake && this.hubClaude) {
+      this.notify("Wake Claude only works with direct sign-ins. Claude is currently provided by a hub.");
+      return this.read();
+    }
     saveSettings(this.path, settings);
     this.settings = settings;
     return this.read();
   }
 
   observe(snapshot: UsageSnapshot) {
+    this.observeWakeAvailability(snapshot);
     const targets: StartTarget[] = startProviderIds.map((provider) => ({
       key: provider,
       provider,
@@ -94,7 +99,6 @@ export class WindowStarter {
         label: `${hub.label} · ${providerNames[account.provider]} · ${account.email ?? account.id}`,
         provider: account.provider,
         last: null,
-        lastWake: null,
       })),
     );
     for (const hub of snapshot.proxy_hubs) {
@@ -113,7 +117,19 @@ export class WindowStarter {
     }
     for (const target of targets) {
       this.observeProvider(target);
-      if (target.provider === "claude") this.observeSignIn(target);
+      if (target.provider === "claude" && !target.hub) this.observeSignIn(target);
+    }
+  }
+
+  private observeWakeAvailability(snapshot: UsageSnapshot) {
+    this.hubClaude = snapshot.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === "claude"));
+    if (this.hubClaude && this.settings.wake) {
+      const settings = { ...this.settings, wake: false };
+      saveSettings(this.path, settings);
+      this.settings = settings;
+      this.notify(
+        "Wake Claude was switched off because Claude is provided by a hub. It only works with direct sign-ins.",
+      );
     }
   }
 
@@ -164,8 +180,8 @@ export class WindowStarter {
     try {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
-        await this.runHub(hub.id, hub.accountId, provider, wake, () => {
-          if (!(wake ? this.settings.wake : this.settings.enabled)) throw new Error("Automation was switched off.");
+        await this.runHub(hub.id, hub.accountId, provider, () => {
+          if (!this.settings.enabled) throw new Error("Automation was switched off.");
         });
       } else {
         const cli = await this.locate(provider, this.settings.providers[provider].path);
