@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Read-only check that the isolated preview is worth driving.
 set -u
-RUN_DIR="/tmp/opencode/tantalus-verify"
-BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
+source "$(dirname "$0")/run-dir.sh"
 fail=0
 
 if grep -q 'productName: "Tantalus Preview"' src/main/identity.ts &&

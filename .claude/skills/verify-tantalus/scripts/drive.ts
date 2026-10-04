@@ -7,11 +7,15 @@
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a fresh
 // headless Chrome at phone size. TANTALUS_CHROME overrides the Chrome executable.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
-const RUN_DIR = "/tmp/opencode/tantalus-verify";
+// Matches run-dir.sh, so this drives the preview launched from the same checkout.
+const ROOT = realpathSync(fileURLToPath(new URL("../../../..", import.meta.url)));
+const RUN_DIR = `/tmp/opencode/tantalus-verify/${basename(ROOT)}-${createHash("sha1").update(ROOT).digest("hex").slice(0, 8)}`;
 const argv = process.argv.slice(2);
 const webUrl = argv[0] === "--web" ? argv[1] : null;
 const [command, ...args] = webUrl ? argv.slice(2) : argv;

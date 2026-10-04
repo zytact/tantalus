@@ -6,4 +6,4 @@ Each hub row has a `<label> proxy hub` switch, `Edit <label>`, and `Remove`. A s
 
 ## Preview proof
 
-On `--mock ready`, open Settings, click `Add hub`, then `drive.ts fill textbox "Hub URL" http://127.0.0.1:<fixture port>` (from `/tmp/opencode/tantalus-verify/fixture.port`), `fill textbox "Management key" fixture-management`, and `fill textbox "Label Optional" "Fixture hub"`. Click the form's `Add hub`. Settings must list `Fixture hub` with its switch on, and Allowance must show `Fixture hub` with a Codex Pro and a Claude Max 5x account. Any other key gets a 401 from the fixture and must not be saved. Click `Remove` before teardown.
+On `--mock ready`, open Settings, click `Add hub`, then `drive.ts fill textbox "Hub URL" http://127.0.0.1:<fixture port>` (from `fixture.port` in the run directory), `fill textbox "Management key" fixture-management`, and `fill textbox "Label Optional" "Fixture hub"`. Click the form's `Add hub`. Settings must list `Fixture hub` with its switch on, and Allowance must show `Fixture hub` with a Codex Pro and a Claude Max 5x account. Any other key gets a 401 from the fixture and must not be saved. Click `Remove` before teardown.

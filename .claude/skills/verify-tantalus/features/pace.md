@@ -12,4 +12,4 @@ Use mock mode, since a real account needs days to learn. After `launch.sh --mock
 
 The allowance view shows `Learning your usual pace` with each window's done time until a window learns. No fixture changes its figures between polls, so no creature can ride a bar in mock mode; the creatures and the one-time explainer are covered by `src/shared/pace.test.ts` and need a real account in active use to see live.
 
-Never reset in real mode unless the preview's settings directory is `~/.config/dev.arnab.tantalus.preview/`. The release app's log in `~/.config/dev.arnab.tantalus/` is off limits.
+Reset only in a harness launch, whose settings directory is under the run directory. The release app's log in `~/.config/dev.arnab.tantalus/` and an installed preview's log in `~/.config/dev.arnab.tantalus.preview/` are off limits.

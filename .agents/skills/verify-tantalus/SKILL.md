@@ -26,7 +26,7 @@ That identity keeps the preview's settings directory, open-at-login entry, singl
 Run from the repo root. The launch needs Xvfb, `curl`, and `python3`.
 
 ```sh
-EVIDENCE=/tmp/opencode/tantalus-verify/$(date +%Y%m%d-%H%M%S)
+EVIDENCE=$(.agents/skills/verify-tantalus/scripts/run-dir.sh)/evidence/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$EVIDENCE"
 .agents/skills/verify-tantalus/scripts/build-preview.sh 2>&1 | tee "$EVIDENCE/preview-build.log"
 .agents/skills/verify-tantalus/scripts/launch.sh 2>&1 | tee "$EVIDENCE/launch.log"
@@ -39,7 +39,11 @@ Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Wit
 
 If `build-preview.sh` fails with `The specified electronDist does not exist`, the install skipped Electron's download, which happens in a fresh worktree. Run `node node_modules/electron/install.js` and build again.
 
-`build-preview.sh` runs `vp build`, `vp pack`, and `node scripts/package.ts --preview --dir`, then checks for `release/tantalus-preview/linux-unpacked/tantalus-preview`. It does not install or package anything. `launch.sh` starts only that executable on an isolated Xvfb display with `--remote-debugging-port` on a free local port, and records the PIDs and the port under `/tmp/opencode/tantalus-verify/`. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
+`build-preview.sh` runs `vp build`, `vp pack`, and `node scripts/package.ts --preview --dir`, then checks for `release/tantalus-preview/linux-unpacked/tantalus-preview`. It does not install anything. `launch.sh` starts only that executable on an isolated Xvfb display with `--remote-debugging-port` on a free local port, and records the PIDs and the port in the checkout's run directory. Set `TANTALUS_XVFB` when Xvfb is not on `PATH`.
+
+Each checkout gets its own run directory under `/tmp/opencode/tantalus-verify/`, named after the checkout and printed by `run-dir.sh` and by `launch.sh` when ready. Every script and `drive.ts` resolve it from their own location, so agents in separate worktrees can build, launch, drive and clean up at the same time. The one shared resource is the preview's remote access ports, so verify remote access in one worktree at a time.
+
+When the user wants to install a preview and test it by hand, run `build-preview.sh --package`. It also writes the preview's deb and rpm to `release/tantalus-preview/` and lists them. The package installs as `tantalus-preview` beside the release app, with its own settings, so give the user the path rather than installing it yourself. The rpm keeps the `package.json` version, so replacing an installed preview of the same version needs `dnf reinstall`.
 
 Ready means `doctor.sh` confirms the preview identity, executable, recorded process, isolated display, DevTools port, and usage mode. Run doctor before the first drive and again after any failed or surprising interaction.
 
@@ -47,7 +51,7 @@ Ready means `doctor.sh` confirms the preview identity, executable, recorded proc
 
 **Real.** `launch.sh` reads the local credential files and calls the live usage APIs. It proves real credential paths, real response shapes, and the account's actual plan. Doctor fails if a harness fixture server is still running.
 
-**Mock.** `launch.sh --mock` starts `fixture-server.py` on a free 127.0.0.1 port and launches the preview with `TANTALUS_USAGE_BASE_URL` pointing at it. Only preview builds honor that variable, so release builds always call the providers. The preview still runs its real main process, parsers, IPC, and window; only the network answers change. The launch also writes fixture credentials for all three providers under `/tmp/opencode/tantalus-verify/mock-home/` and points `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `HOME` there, so real credentials, saved provider settings, and the preview's autostart entry are never touched. On Linux both the settings directory and the autostart entry follow `XDG_CONFIG_HOME`. In real mode they land in your real config directory, so restore Open at login before teardown. Chromium rewrites its own process environment, so doctor proves mock mode from the fixture request log instead of the preview's environment.
+**Mock.** `launch.sh --mock` starts `fixture-server.py` on a free 127.0.0.1 port and launches the preview with `TANTALUS_USAGE_BASE_URL` pointing at it. Only preview builds honor that variable, so release builds always call the providers. The preview still runs its real main process, parsers, IPC, and window; only the network answers change. The launch also writes fixture credentials for all three providers under `mock-home/` in the run directory and points `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `HOME` there, so real credentials, saved provider settings, and the preview's autostart entry are never touched. On Linux the settings directory, the single-instance lock and the autostart entry all follow `XDG_CONFIG_HOME`. Real mode points it at `real-config/` in the run directory, which keeps saved settings between launches from the same checkout and never touches an installed preview. Chromium rewrites its own process environment, so doctor proves mock mode from the fixture request log instead of the preview's environment.
 
 The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios while the preview runs, then Refresh:
 
@@ -62,7 +66,7 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
 
-Every fixture request is logged with its timestamp, scenario, and path in `/tmp/opencode/tantalus-verify/fixture-requests.log`. Use it to prove which provider was read and the retry cadence. Copy it into the evidence directory before cleanup. A request without a fixture token gets 401, so a logged 200 path also proves the preview read the fixture credentials.
+Every fixture request is logged with its timestamp, scenario, and path in `fixture-requests.log` in the run directory. Use it to prove which provider was read and the retry cadence. Copy it into the evidence directory before cleanup. A request without a fixture token gets 401, so a logged 200 path also proves the preview read the fixture credentials.
 
 Use mock mode for states a real account cannot produce on demand and for every feature proof that depends on specific figures. Use real mode at least once per run to prove live credentials and response shapes still parse.
 
@@ -117,11 +121,11 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 
 6. Capture screenshots after each materially different state.
 
-In real mode the preview reads local credential files and calls the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `/tmp/opencode/tantalus-verify/coverage-home/`. Restore a normal preview launch before proving live readings.
+In real mode the preview reads local credential files and calls the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `coverage-home/` in the run directory. Restore a normal preview launch before proving live readings.
 
 ## Evidence
 
-Keep each run under `/tmp/opencode/tantalus-verify/<timestamp>/`:
+Keep each run under `evidence/<timestamp>/` in the run directory:
 
 - `preview-build.log`, `launch.log`, and `doctor.log`
 - `vitest.log`

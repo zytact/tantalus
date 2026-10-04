@@ -3,7 +3,7 @@
 # --mock serves fixture usage instead of the live APIs. --restart relaunches only the preview, keeping the
 # display, the usage mode, the fixture server, and every saved setting, to prove what survives a restart.
 set -euo pipefail
-RUN_DIR="/tmp/opencode/tantalus-verify"
+source "$(dirname "$0")/run-dir.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOCK_HOME="$RUN_DIR/mock-home"
 MODE="real"
@@ -15,11 +15,10 @@ case "${1:-}" in
   --restart) RESTART=1; MODE="$(cat "$RUN_DIR/run.mode" 2>/dev/null || echo real)" ;;
   *) echo "usage: launch.sh [--mock [SCENARIO] | --restart]" >&2; exit 1 ;;
 esac
-BIN="release/tantalus-preview/linux-unpacked/tantalus-preview"
 XVFB="${TANTALUS_XVFB:-$(command -v Xvfb || true)}"
 mkdir -p "$RUN_DIR"
 
-[ -x "$BIN" ] || { echo "Preview binary missing. Run scripts/build-preview.sh first." >&2; exit 1; }
+[ -x "$BIN" ] || { echo "Preview binary missing. Run build-preview.sh first." >&2; exit 1; }
 [ -x "$XVFB" ] || { echo "Xvfb is required. Install it or set TANTALUS_XVFB." >&2; exit 1; }
 
 preview_running() {
@@ -97,7 +96,12 @@ if [ "$MODE" = mock ] && [ "$RESTART" = 0 ]; then
   done
   [ -s "$RUN_DIR/fixture.port" ] || { echo "Fixture server did not start:" >&2; cat "$RUN_DIR/fixture.log" >&2; exit 1; }
 fi
-if [ "$MODE" = mock ]; then
+if [ "$MODE" = real ]; then
+  # Settings, the single-instance lock and the autostart entry all follow XDG_CONFIG_HOME on Linux, so a
+  # private one lets previews from other worktrees, or an installed preview, run at the same time.
+  mkdir -p "$RUN_DIR/real-config"
+  preview_env+=(XDG_CONFIG_HOME="$RUN_DIR/real-config")
+else
   preview_env+=(
     TANTALUS_USAGE_BASE_URL="http://127.0.0.1:$(cat "$RUN_DIR/fixture.port")"
     CODEX_HOME="$MOCK_HOME/codex"
@@ -119,7 +123,7 @@ for _ in $(seq 1 30); do
     exit 1
   }
   if curl -fsS "http://127.0.0.1:$cdp_port/json/list" 2>/dev/null | grep -q '"type": "page"'; then
-    echo "Ready: Tantalus Preview ($MODE usage) on isolated display $display (pid $preview_pid, DevTools port $cdp_port)"
+    echo "Ready: Tantalus Preview ($MODE usage) on isolated display $display (pid $preview_pid, DevTools port $cdp_port, run directory $RUN_DIR)"
     exit 0
   fi
   sleep 1
