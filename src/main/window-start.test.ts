@@ -279,7 +279,7 @@ describe("sign-in wake", () => {
   });
 });
 
-function hubSnapshot(epoch: number, rejected = false): UsageSnapshot {
+function hubSnapshot(epoch: number, rejected = false, status: "ready" | "error" = "ready"): UsageSnapshot {
   const usage = rejected ? applyReading(idle(epoch), new ReadFailure("rejected")) : idle(epoch);
   return {
     ...snapshot(emptyProviderUsage(), false),
@@ -287,7 +287,7 @@ function hubSnapshot(epoch: number, rejected = false): UsageSnapshot {
       {
         id: "hub",
         label: "Hub",
-        status: "ready",
+        status,
         error_message: null,
         last_successful_update_epoch: epoch,
         accounts: (["claude", "codex"] as const).map((provider) => ({
@@ -382,6 +382,18 @@ describe("hub automation", () => {
     expect(notices.at(-1)).toContain("direct sign-ins");
     expect(runHub).not.toHaveBeenCalled();
     expect(runs).toHaveLength(0);
+  });
+
+  it("leaves wake alone when the hub Claude account comes from a failed read", async () => {
+    const notices: string[] = [];
+    const { instance } = starter({ ...startOn, enabled: false, wake: true }, undefined, undefined, (message) =>
+      notices.push(message),
+    );
+    instance.observe(hubSnapshot(1000, false, "error"));
+    await settle();
+    expect((await instance.read()).wake).toBe(true);
+    expect((await instance.set({ ...startOn, enabled: false, wake: true })).wake).toBe(true);
+    expect(notices).toHaveLength(0);
   });
 });
 
