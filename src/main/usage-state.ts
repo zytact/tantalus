@@ -143,7 +143,6 @@ export class UsageState {
     const next = { ...snapshot, enabled };
     for (const id of conflicts) {
       enabled[id] = false;
-      next[id] = emptyProviderUsage();
     }
     saveSettings(this.providerSettingsPath, enabled);
     const names = conflicts.map((id) => providerNames[id]).join(" and ");
@@ -154,7 +153,7 @@ export class UsageState {
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. Switching a provider
-   * off drops its reading; switching one on reads it straight away. */
+   * off keeps its last reading; switching one on reads it straight away. */
   async setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
     if (enabled && this.hubConfigs.some((hub) => hub.enabled && hub.providers === undefined)) await this.refresh();
     const hub = enabled ? this.providerHub(provider) : undefined;
@@ -167,7 +166,6 @@ export class UsageState {
     const settings: ProviderSettings = { ...this.snapshot.enabled, [provider]: enabled };
     saveSettings(this.providerSettingsPath, settings);
     const next = { ...this.snapshot, enabled: settings };
-    if (!enabled) next[provider] = emptyProviderUsage();
     this.snapshot = this.pace.annotate(next);
     this.publish(this.snapshot);
     return enabled ? this.refresh() : Promise.resolve(this.snapshot);

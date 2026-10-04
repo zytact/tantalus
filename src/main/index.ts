@@ -69,6 +69,10 @@ function start() {
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const proxyHubs = new ProxyHubApi();
   let toast: string | null = null;
+  const notify = (message: string) => {
+    toast = message;
+    publish("toast", message);
+  };
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
     join(app.getPath("userData"), "proxy-hubs.json"),
@@ -86,10 +90,7 @@ function start() {
       join(app.getPath("userData"), "pace-creatures.json"),
       () => readActivity(),
     ),
-    (message) => {
-      toast = message;
-      publish("toast", message);
-    },
+    notify,
   );
   const starter = new WindowStarter(
     join(app.getPath("userData"), "window-start.json"),
@@ -103,6 +104,7 @@ function start() {
           ensureAvailable();
         }),
       ),
+    notify,
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
   const updater = new Updater(

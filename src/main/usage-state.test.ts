@@ -98,6 +98,22 @@ describe("usage state", () => {
     expect((await refreshed).claude.status).toBe("ready");
   });
 
+  it("retains the last reading while a provider is disabled or moved to a hub", async () => {
+    const state = createState(
+      async () => ready(42),
+      () => {},
+      async () => [hubAccount(17)],
+    );
+    await state.refresh();
+    await state.setProviderEnabled("codex", false);
+    expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+    await state.setProviderEnabled("codex", true);
+    await state.addProxyHub({ label: hubConfig.label, url: hubConfig.url, managementKey: hubConfig.managementKey });
+    expect(state.snapshot.enabled.codex).toBe(false);
+    expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+    expect(state.snapshot.proxy_hubs[0].accounts[0].usage.seven_day.used_percent).toBe(17);
+  });
+
   it("folds a refresh asked for mid-read into one more pass that both callers get", async () => {
     const { reads, read } = heldReads();
     const published: UsageSnapshot[] = [];
