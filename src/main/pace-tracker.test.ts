@@ -241,21 +241,18 @@ it.each(providerIds)("retains %s learning while absent and reuses it after resta
   expect(resumed[provider].five_hour.used_percent).toBe(80);
 });
 
-it.each(["codex", "claude"] as const)(
-  "adopts a previous %s log under the reported tier only once it is seen again",
-  (provider) => {
-    const saved = tracker();
-    seed(saved.path, provider);
-    const pace = saved.create();
-    const absent = snapshotFor(provider, "Pro");
-    absent[provider] = emptyProviderUsage();
-    pace.track(absent, noActivity, epoch);
-    expect(Object.keys(loadPaceLogs(saved.path))).toEqual([paceKey(fiveHourSeconds, provider)]);
-    const seen = pace.track(snapshotFor(provider, "Pro"), noActivity, epoch);
-    expect(seen.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
-      status: "learned",
-      usual_rate: 3,
-    });
-    expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
-  },
-);
+it.each(providerIds)("adopts a previous %s log under the reported tier only once it is seen again", (provider) => {
+  const saved = tracker();
+  seed(saved.path, provider);
+  const pace = saved.create();
+  const absent = snapshotFor(provider, "Pro");
+  absent[provider] = emptyProviderUsage();
+  pace.track(absent, noActivity, epoch);
+  expect(Object.keys(loadPaceLogs(saved.path))).toEqual([paceKey(fiveHourSeconds, provider)]);
+  const seen = pace.track(snapshotFor(provider, "Pro"), noActivity, epoch);
+  expect(seen.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
+    status: "learned",
+    usual_rate: 3,
+  });
+  expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
+});
