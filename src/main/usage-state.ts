@@ -133,7 +133,7 @@ export class UsageState {
   }
 
   private providerHub(provider: ProviderId) {
-    return this.hubConfigs.find((hub) => hub.enabled && hub.providers?.some((id) => id === provider));
+    return this.hubConfigs.find((hub) => hub.providers?.some((id) => id === provider));
   }
 
   private enforceHubProviders(snapshot: UsageSnapshot): UsageSnapshot {
@@ -148,7 +148,7 @@ export class UsageState {
     saveSettings(this.providerSettingsPath, enabled);
     const names = conflicts.map((id) => providerNames[id]).join(" and ");
     this.notify(
-      `Direct ${names} ${conflicts.length === 1 ? "was" : "were"} switched off because enabled proxy hubs have these providers. Tantalus will use the hub accounts.`,
+      `Direct ${names} ${conflicts.length === 1 ? "was" : "were"} switched off because saved proxy hubs have these providers. Tantalus will use the hub accounts.`,
     );
     return next;
   }
