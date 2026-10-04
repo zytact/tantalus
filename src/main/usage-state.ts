@@ -360,6 +360,7 @@ export function applyHubReading(
   });
   return {
     id: settings.id,
+    url: settings.url,
     label: settings.label,
     accounts,
     last_successful_update_epoch: nowEpoch(),

@@ -60,6 +60,7 @@ export type ProxyHubAccount = {
 export type ProxyHubStatus = "loading" | "ready" | "stale" | "error" | "rejected";
 export type ProxyHubSnapshot = {
   id: string;
+  url: string;
   label: string;
   accounts: ProxyHubAccount[];
   last_successful_update_epoch: number | null;
@@ -116,6 +117,7 @@ export const emptyProviderUsage = (): ProviderUsage => ({
 
 export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnapshot => ({
   id: settings.id,
+  url: settings.url,
   label: settings.label,
   accounts: [],
   last_successful_update_epoch: null,

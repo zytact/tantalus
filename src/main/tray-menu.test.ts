@@ -94,6 +94,7 @@ describe("tray menu", () => {
     usage.proxy_hubs = [
       {
         id: "home",
+        url: "http://hub.test:8317",
         label: "Home hub",
         last_successful_update_epoch: 940,
         status: "ready",
@@ -117,6 +118,7 @@ describe("tray menu", () => {
       },
       {
         id: "work",
+        url: "http://hub.test:8317",
         label: "Work hub",
         last_successful_update_epoch: null,
         status: "error",
@@ -145,6 +147,7 @@ describe("tray menu", () => {
     usage.proxy_hubs = [
       {
         id: "home",
+        url: "http://hub.test:8317",
         label: "Home hub",
         last_successful_update_epoch: null,
         status: "loading",

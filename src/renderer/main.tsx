@@ -5,7 +5,15 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { firstRider, paceKey, riderOf } from "../shared/pace";
 import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
-import { clockEpoch, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import {
+  clockEpoch,
+  providerIds,
+  providerNames,
+  proxyHubManagementUrl,
+  refreshedAgo,
+  refreshedEpoch,
+  usagePace,
+} from "../shared/usage";
 import type {
   ExtraUsage,
   ProviderId,
@@ -365,6 +373,20 @@ function HubSection({
           {hubStatusLabels[hub.status]}
         </span>
       </div>
+      <a
+        className="management-link"
+        href={proxyHubManagementUrl(hub.url)}
+        aria-label={`Manage ${hub.label}`}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => {
+          if (remote) return;
+          event.preventDefault();
+          void window.tantalus.invoke("openProxyHubManagement", hub.id);
+        }}
+      >
+        {hub.url}
+      </a>
       <HubMessage hub={hub} />
       <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />
     </section>
