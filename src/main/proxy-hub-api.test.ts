@@ -307,8 +307,20 @@ describe("hub window starts and renewal", () => {
   function automation(status = 200, completed = true) {
     const calls: (ManagementCall & { data?: string; name?: string })[] = [];
     const request: typeof fetch = async (input, init) => {
-      if (typeof input === "string" && input.includes("auth-files/models?"))
-        return Response.json({ models: [{ id: "claude-haiku-4-5-20251001" }, { id: "gpt-5.1-codex-mini" }] });
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const responses = new Map<string, unknown>([
+        [
+          "/v0/management/oauth-model-alias",
+          {
+            "oauth-model-alias": {
+              claude: [{ alias: "helper", name: "claude-haiku-4-5-20251001" }],
+              codex: [{ alias: "helper", name: "gpt-5.1-codex-mini" }],
+            },
+          },
+        ],
+        ["/v0/management/auth-files/models", { models: [{ id: "team/helper" }] }],
+      ]);
+      if (responses.has(path)) return Response.json(responses.get(path));
       if (init?.method === "GET")
         return Response.json({
           files: [
@@ -323,7 +335,7 @@ describe("hub window starts and renewal", () => {
         });
       const call = JSON.parse(requestBody(init)) as (typeof calls)[number];
       calls.push(call);
-      if (typeof input === "string" && input.endsWith("/auth-files/refresh")) return Response.json({ ok: true });
+      if (path.endsWith("/auth-files/refresh")) return Response.json({ ok: true });
       const body =
         call.auth_index === "claude-auth"
           ? JSON.stringify({ type: "message" })
@@ -348,11 +360,20 @@ describe("hub window starts and renewal", () => {
       const body = JSON.parse(call.data!);
       if (provider === "claude") {
         expect(call.url).toBe("https://api.anthropic.com/v1/messages");
-        expect(body).toMatchObject({ max_tokens: 1, messages: [{ role: "user", content: "OK" }] });
+        expect(body).toMatchObject({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "OK" }],
+        });
       } else {
         expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
         expect(call.header["Chatgpt-Account-Id"]).toBe("account-a");
-        expect(body).toMatchObject({ stream: true, store: false, reasoning: { effort: "low" } });
+        expect(body).toMatchObject({
+          model: "gpt-5.1-codex-mini",
+          stream: true,
+          store: false,
+          reasoning: { effort: "low" },
+        });
       }
     },
   );
@@ -388,4 +409,17 @@ describe("hub window starts and renewal", () => {
     );
     expect(accounts.find((account) => account.provider === "codex")?.usage.error_reason).toBeNull();
   });
+});
+
+it("stops queued account discovery after a management refusal", async () => {
+  let requests = 0;
+  const api = new ProxyHubApi(async () => {
+    requests++;
+    return Response.json({}, { status: 401 });
+  });
+  const results = await Promise.allSettled(
+    Array.from({ length: 8 }, () => api.runAccount(config, "claude.json", "claude", true)),
+  );
+  expect(results.every((result) => result.status === "rejected")).toBe(true);
+  expect(requests).toBeLessThanOrEqual(4);
 });

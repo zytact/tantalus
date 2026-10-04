@@ -308,7 +308,7 @@ describe("hub automation", () => {
     instance.observe(hubSnapshot(1300));
     await settle();
     expect(runs).toHaveLength(0);
-    expect(runHub.mock.calls).toEqual([
+    expect(runHub.mock.calls.map((call) => [...call].slice(0, 4))).toEqual([
       ["hub", "claude.json", "claude", false],
       ["hub", "codex.json", "codex", false],
     ]);
@@ -332,7 +332,7 @@ describe("hub automation", () => {
     const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub);
     instance.observe(hubSnapshot(1000, true));
     await settle();
-    expect(runHub.mock.calls).toEqual([["hub", "claude.json", "claude", true]]);
+    expect(runHub.mock.calls.map((call) => [...call].slice(0, 4))).toEqual([["hub", "claude.json", "claude", true]]);
     expect((await instance.read()).hubs[0]?.lastWake?.error).toBe("renewal failed");
     const stale = hubSnapshot(1000, true);
     stale.proxy_hubs[0]!.status = "stale";
@@ -367,4 +367,16 @@ describe("hub automation", () => {
     finish();
     await settle();
   });
+});
+
+it("rechecks the automation switch before queued hub work runs", async () => {
+  const checks: (() => void)[] = [];
+  const { instance } = starter(startOn, undefined, async (_hub, _account, _provider, _wake, check) => {
+    checks.push(check);
+  });
+  instance.observe(hubSnapshot(1000));
+  instance.observe(hubSnapshot(1300));
+  await settle();
+  await instance.set({ ...startOn, enabled: false });
+  expect(checks[0]).toThrow("switched off");
 });

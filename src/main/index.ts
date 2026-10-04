@@ -90,9 +90,12 @@ function start() {
     startCli,
     runCli,
     () => void state.refresh(),
-    (hubId, accountId, provider, wake) =>
+    (hubId, accountId, provider, wake, ensureEnabled) =>
       state.withProxyHub(hubId, (config, ensureAvailable) =>
-        proxyHubs.runAccount(config, accountId, provider, wake, ensureAvailable),
+        proxyHubs.runAccount(config, accountId, provider, wake, () => {
+          ensureEnabled();
+          ensureAvailable();
+        }),
       ),
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);

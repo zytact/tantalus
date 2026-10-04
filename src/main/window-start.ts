@@ -49,6 +49,7 @@ export class WindowStarter {
       accountId: string,
       provider: StartProviderId,
       wake: boolean,
+      ensureEnabled: () => void,
     ) => Promise<void>,
   ) {
     this.settings = loadWindowStartSettings(path);
@@ -163,7 +164,9 @@ export class WindowStarter {
     try {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
-        await this.runHub(hub.id, hub.accountId, provider, wake);
+        await this.runHub(hub.id, hub.accountId, provider, wake, () => {
+          if (!(wake ? this.settings.wake : this.settings.enabled)) throw new Error("Automation was switched off.");
+        });
       } else {
         const cli = await this.locate(provider, this.settings.providers[provider].path);
         if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);

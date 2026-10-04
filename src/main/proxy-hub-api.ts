@@ -38,6 +38,7 @@ export class ProxyHubRejected extends ProxyHubError {}
 
 export class ProxyHubApi {
   private readonly accountReads = new ConcurrencyLimit(4);
+  private readonly rejected = new WeakSet<ProxyHubConfig>();
 
   constructor(private readonly request: typeof fetch = fetch) {}
 
@@ -53,11 +54,12 @@ export class ProxyHubApi {
     wake: boolean,
     ensureAvailable: () => void = () => {},
   ): Promise<void> {
-    const account = (await this.authFiles(config)).find(
-      (account) => account.id === id && account.provider === provider,
-    );
-    if (!account) throw new ProxyHubError("The hub account is no longer enabled or available.");
     await this.accountReads.run(async () => {
+      ensureAvailable();
+      const account = (await this.authFiles(config)).find(
+        (account) => account.id === id && account.provider === provider,
+      );
+      if (!account) throw new ProxyHubError("The hub account is no longer enabled or available.");
       ensureAvailable();
       if (wake) {
         const result = await this.management(config, "auth-files/refresh", {
@@ -67,18 +69,9 @@ export class ProxyHubApi {
         if (field(result, "ok") !== true) throw new ProxyHubError("The hub could not renew this sign-in.");
         return;
       }
-      const value = await this.management(config, `auth-files/models?name=${encodeURIComponent(account.id)}`);
-      const models = field(value, "models");
-      const ids = Array.isArray(models)
-        ? models
-            .flatMap((model) => {
-              const id = field(model, "id");
-              return typeof id === "string" ? [id] : [];
-            })
-            .filter((id) => id.startsWith(provider === "claude" ? "claude-" : "gpt-"))
-        : [];
-      const model = ids.find((id) => /haiku|luna|mini/.test(id)) ?? ids[0];
-      if (!model) throw new ProxyHubError("The hub account has no supported model for starting a window.");
+      const models = await this.management(config, `auth-files/models?name=${encodeURIComponent(account.id)}`);
+      const aliases = await this.management(config, "oauth-model-alias");
+      const model = startModel(models, aliases, provider);
       ensureAvailable();
       const claude = provider === "claude";
       const result = await this.apiCall(
@@ -187,27 +180,6 @@ export class ProxyHubApi {
   }
 
   private async apiCall(config: ProxyHubConfig, account: AuthFile, url: string, data?: unknown): Promise<unknown> {
-    const headers =
-      account.provider === "codex"
-        ? {
-            Authorization: "Bearer $TOKEN$",
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "codex-1",
-            Originator: "Codex Desktop",
-            ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
-          }
-        : {
-            Authorization: "Bearer $TOKEN$",
-            ...claudeHeaders,
-            ...(data === undefined
-              ? {}
-              : {
-                  "Content-Type": "application/json",
-                  "anthropic-version": "2023-06-01",
-                  "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
-                  "x-app": "cli",
-                }),
-          };
     const response = await this.management(
       config,
       "api-call",
@@ -216,29 +188,13 @@ export class ProxyHubApi {
         method: data === undefined ? "GET" : "POST",
         ...(data === undefined ? {} : { data: JSON.stringify(data) }),
         url,
-        header: headers,
+        header: upstreamHeaders(account, data !== undefined),
       },
       data === undefined ? TIMEOUT_MILLISECONDS : 120_000,
     );
-    const status = field(response, "status_code");
-    const body = field(response, "body");
-    if (typeof status !== "number" || !Number.isInteger(status) || typeof body !== "string") {
-      throw new ProxyHubError("The hub returned an unexpected provider response.");
-    }
-    if (status === 401 && account.provider === "claude") throw new ReadFailure("rejected");
-    if (status < 200 || status >= 300) throw new ProxyHubError(`The provider refused the hub request (${status}).`);
+    const body = providerBody(response, account.provider);
     if (data !== undefined && account.provider === "codex") {
-      const completed = body
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .some((line) => {
-          try {
-            return field(JSON.parse(line.slice(5).trim()), "type") === "response.completed";
-          } catch {
-            return false;
-          }
-        });
-      if (!completed) throw new ProxyHubError("The hub did not complete the window-start prompt.");
+      if (!completedResponse(body)) throw new ProxyHubError("The hub did not complete the window-start prompt.");
       return null;
     }
     try {
@@ -254,6 +210,7 @@ export class ProxyHubApi {
     body?: unknown,
     timeout = TIMEOUT_MILLISECONDS,
   ): Promise<unknown> {
+    if (this.rejected.has(config)) throw new ProxyHubRejected("The hub refused management access.");
     let url: string;
     try {
       url = new URL(`/v0/management/${path}`, config.url).toString();
@@ -262,22 +219,12 @@ export class ProxyHubApi {
     }
     let response: Response;
     try {
-      response = await this.request(url, {
-        method: body === undefined ? "GET" : "POST",
-        headers: {
-          authorization: `Bearer ${config.managementKey}`,
-          accept: "application/json",
-          ...(body === undefined ? {} : { "content-type": "application/json" }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(timeout),
-      });
+      response = await this.request(url, managementRequest(config, body, timeout));
     } catch {
       throw new ProxyHubError("The hub management request failed.");
     }
-    if (response.status === 404 && path === "auth-files/refresh")
-      throw new ProxyHubError("This hub does not support sign-in renewal. Update CLIProxyAPI.");
-    if (!response.ok) throw managementFailure(response.status);
+    if (response.status === 401 || response.status === 403) this.rejected.add(config);
+    if (!response.ok) throw managementFailure(response.status, path);
     try {
       return await response.json();
     } catch {
@@ -286,7 +233,93 @@ export class ProxyHubApi {
   }
 }
 
-function managementFailure(status: number): ProxyHubError {
+function managementRequest(config: ProxyHubConfig, body: unknown, timeout: number): RequestInit {
+  return {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      authorization: `Bearer ${config.managementKey}`,
+      accept: "application/json",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(timeout),
+  };
+}
+
+function upstreamHeaders(account: AuthFile, generating: boolean) {
+  if (account.provider === "codex")
+    return {
+      Authorization: "Bearer $TOKEN$",
+      "Content-Type": "application/json",
+      "OpenAI-Beta": "codex-1",
+      Originator: "Codex Desktop",
+      ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
+    };
+  return {
+    Authorization: "Bearer $TOKEN$",
+    ...claudeHeaders,
+    ...(generating
+      ? {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
+          "x-app": "cli",
+        }
+      : {}),
+  };
+}
+
+function providerBody(response: unknown, provider: ProxyHubProviderId): string {
+  const status = field(response, "status_code");
+  const body = field(response, "body");
+  if (typeof status !== "number" || !Number.isInteger(status) || typeof body !== "string")
+    throw new ProxyHubError("The hub returned an unexpected provider response.");
+  if (status === 401 && provider === "claude") throw new ReadFailure("rejected");
+  if (status < 200 || status >= 300) throw new ProxyHubError(`The provider refused the hub request (${status}).`);
+  return body;
+}
+
+function completedResponse(body: string): boolean {
+  return body
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .some((line) => {
+      try {
+        return field(JSON.parse(line.slice(5).trim()), "type") === "response.completed";
+      } catch {
+        return false;
+      }
+    });
+}
+
+function startModel(value: unknown, aliasResponse: unknown, provider: ProxyHubProviderId): string {
+  const models = field(value, "models");
+  const aliases = field(field(aliasResponse, "oauth-model-alias"), provider);
+  const mappings = Array.isArray(aliases) ? aliases : [];
+  const ids = Array.isArray(models)
+    ? models.flatMap((model) => {
+        const id = field(model, "id");
+        if (typeof id !== "string") return [];
+        const mapping = mappings.find((entry) => {
+          const alias = field(entry, "alias");
+          return (
+            typeof alias === "string" &&
+            (id.toLowerCase() === alias.toLowerCase() || id.toLowerCase().endsWith(`/${alias.toLowerCase()}`))
+          );
+        });
+        const original = mapping ? field(mapping, "name") : id.split("/").at(-1);
+        return typeof original === "string" ? [original] : [];
+      })
+    : [];
+  const supported = ids.filter((id) => id.startsWith(provider === "claude" ? "claude-" : "gpt-"));
+  const model = supported.find((id) => /haiku|luna|mini/.test(id)) ?? supported[0];
+  if (!model) throw new ProxyHubError("The hub account has no supported model for starting a window.");
+  return model;
+}
+
+function managementFailure(status: number, path: string): ProxyHubError {
+  if (status === 404 && path === "auth-files/refresh")
+    return new ProxyHubError("This hub does not support sign-in renewal. Update CLIProxyAPI.");
   if (status === 401) return new ProxyHubRejected("The hub rejected the management key.");
   if (status === 403) return new ProxyHubRejected("The hub refused management access.");
   return new ProxyHubError("The hub management request failed.");

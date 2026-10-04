@@ -179,6 +179,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/__fixture/health":
             return self.send_json(200, {"scenario": Handler.scenario})
+        if self.path == "/v0/management/oauth-model-alias":
+            if self.headers.get("authorization") != MANAGEMENT_TOKEN:
+                return self.send_json(401, {"error": "fixture management key required"})
+            return self.send_json(200, {"oauth-model-alias": {}})
         if self.path.startswith("/v0/management/auth-files/models?"):
             if self.headers.get("authorization") != MANAGEMENT_TOKEN:
                 return self.send_json(401, {"error": "fixture management key required"})

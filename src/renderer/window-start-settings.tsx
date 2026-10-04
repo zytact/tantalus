@@ -74,31 +74,41 @@ export function WindowStartRows({ polled }: { polled: Loadable<Record<ProviderId
             }
           />
         ))}
-      {typeof start !== "string" &&
-        (start.enabled || start.wake) &&
-        start.hubs.map((account) => (
-          <section className="setting-row" key={account.key}>
-            <div className="setting-copy">
-              <h2>
-                <ProviderIcon id={account.provider} />
-                {account.label}
-              </h2>
-              {start.enabled && (
-                <p>{startStatus({ command: "an account-specific prompt through the hub", last: account.last })}</p>
-              )}
-              {start.wake && account.provider === "claude" && (
-                <p>
-                  {account.lastWake
-                    ? wakeStatus({ lastWake: account.lastWake })
-                    : "Renews this account through the hub when its usage sign-in is rejected, at most once an hour."}
-                </p>
-              )}
-            </div>
-          </section>
-        ))}
+      <HubStartRows start={start} />
       <WakeRow start={start} saving={saving} onSave={(next) => void save(next)} />
     </>
   );
+}
+
+function HubStartRows({ start }: { start: Loadable<WindowStart> }) {
+  if (typeof start === "string") return null;
+  if (!start.enabled && !start.wake) return null;
+  return start.hubs.map((account) => <HubStartRow key={account.key} start={start} account={account} />);
+}
+
+function HubStartRow({ start, account }: { start: WindowStart; account: WindowStart["hubs"][number] }) {
+  return (
+    <section className="setting-row">
+      <div className="setting-copy">
+        <h2>
+          <ProviderIcon id={account.provider} />
+          {account.label}
+        </h2>
+        {start.enabled && (
+          <p>{startStatus({ command: "an account-specific prompt through the hub", last: account.last })}</p>
+        )}
+        {start.wake && <HubWakeStatus account={account} />}
+      </div>
+    </section>
+  );
+}
+
+function HubWakeStatus({ account }: { account: WindowStart["hubs"][number] }) {
+  if (account.provider !== "claude") return null;
+  const wake = account.lastWake
+    ? wakeStatus({ lastWake: account.lastWake })
+    : "Renews this account through the hub when its usage sign-in is rejected, at most once an hour.";
+  return <p>{wake}</p>;
 }
 
 function StartToggle({
