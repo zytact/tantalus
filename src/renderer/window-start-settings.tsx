@@ -88,8 +88,9 @@ export function WindowStartRows({
 }
 
 function HubStartRows({ start, snapshot }: { start: Loadable<WindowStart>; snapshot: UsageSnapshot | null }) {
-  if (typeof start === "string" || !snapshot) return null;
-  if (!start.enabled && !start.wake) return null;
+  if (typeof start === "string") return null;
+  if (!snapshot) return null;
+  if (![start.enabled, start.wake].some(Boolean)) return null;
   return start.hubs
     .filter((account) =>
       snapshot.proxy_hubs.some(
