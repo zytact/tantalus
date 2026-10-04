@@ -69,12 +69,13 @@ export function WindowStartRows({
       {typeof start !== "string" &&
         start.enabled &&
         startProviderIds
-          .filter((id) => typeof polled !== "string" && polled[id])
+          .filter((id) => (typeof polled !== "string" && polled[id]) || hasHubProvider(snapshot, id))
           .map((id) => (
             <StartProviderRow
               key={id}
               id={id}
               provider={start.providers[id]}
+              throughHub={typeof polled !== "string" && !polled[id]}
               saving={saving}
               onSavePath={(path) =>
                 void save({ ...start, providers: { ...start.providers, [id]: { ...start.providers[id], path } } })
@@ -85,6 +86,10 @@ export function WindowStartRows({
       <WakeRow snapshot={snapshot} start={start} saving={saving} onSave={(next) => void save(next)} />
     </>
   );
+}
+
+function hasHubProvider(snapshot: UsageSnapshot | null, provider: StartProviderId): boolean {
+  return snapshot?.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === provider)) ?? false;
 }
 
 function HubStartRows({ start, snapshot }: { start: Loadable<WindowStart>; snapshot: UsageSnapshot | null }) {
@@ -149,11 +154,7 @@ function WakeRow({
   onSave: (start: WindowStart) => void;
 }) {
   if (!snapshot) return null;
-  if (
-    !snapshot.enabled.claude &&
-    !snapshot.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === "claude"))
-  )
-    return null;
+  if (!snapshot.enabled.claude && !hasHubProvider(snapshot, "claude")) return null;
   return <WakeControl {...props} />;
 }
 
@@ -192,11 +193,13 @@ function WakeControl({
 function StartProviderRow({
   id,
   provider,
+  throughHub,
   saving,
   onSavePath,
 }: {
   id: StartProviderId;
   provider: WindowStart["providers"][StartProviderId];
+  throughHub: boolean;
   saving: boolean;
   onSavePath: (path: string | null) => void;
 }) {
@@ -209,7 +212,11 @@ function StartProviderRow({
             <ProviderIcon id={id} />
             {name}
           </h2>
-          <p>{startStatus(provider)}</p>
+          <p>
+            {throughHub
+              ? `Starts ${name} accounts through their hubs. The CLI path is used for direct sign-ins.`
+              : startStatus(provider)}
+          </p>
         </div>
       </section>
       <CliPathForm key={provider.path} name={name} provider={provider} saving={saving} onSave={onSavePath} />
