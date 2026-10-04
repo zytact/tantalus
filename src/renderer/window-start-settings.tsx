@@ -76,6 +76,7 @@ export function WindowStartRows({
               id={id}
               provider={start.providers[id]}
               status={providerStatus(start, snapshot, id)}
+              showCli={snapshot?.enabled[id] ?? false}
               saving={saving}
               onSavePath={(path) =>
                 void save({ ...start, providers: { ...start.providers, [id]: { ...start.providers[id], path } } })
@@ -108,11 +109,7 @@ function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | null {
   return recent.find((attempt) => attempt.error !== null) ?? recent[0] ?? null;
 }
 
-function automationAttempt(
-  start: WindowStart,
-  snapshot: UsageSnapshot | null,
-  provider: StartProviderId,
-) {
+function automationAttempt(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {
   const attempts = currentHubAccounts(start, snapshot, provider).map((account) => account.last);
   if (snapshot?.enabled[provider]) attempts.push(start.providers[provider].last);
   return lastAttempt(attempts);
@@ -200,12 +197,14 @@ function StartProviderRow({
   id,
   provider,
   status,
+  showCli,
   saving,
   onSavePath,
 }: {
   id: StartProviderId;
   provider: WindowStart["providers"][StartProviderId];
   status: string;
+  showCli: boolean;
   saving: boolean;
   onSavePath: (path: string | null) => void;
 }) {
@@ -221,7 +220,9 @@ function StartProviderRow({
           <p>{status}</p>
         </div>
       </section>
-      <CliPathForm key={provider.path} name={name} provider={provider} saving={saving} onSave={onSavePath} />
+      {showCli && (
+        <CliPathForm key={provider.path} name={name} provider={provider} saving={saving} onSave={onSavePath} />
+      )}
     </>
   );
 }

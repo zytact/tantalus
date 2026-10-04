@@ -195,20 +195,21 @@ export class WindowStarter {
           if (!this.settings.enabled || !this.hubs.some((account) => account.key === key))
             throw new Error("Automation is no longer enabled for this account.");
         });
-      } else {
-        const cli = await this.locate(provider, this.settings.providers[provider].path);
-        if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
-        if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
-        if (!this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
-          throw new Error("Automation was switched off.");
-        await this.run(cli);
-      }
+      } else await this.runDirect(provider, wake);
       return { epoch, error: null };
     } catch (error) {
       return { epoch, error: error instanceof Error ? error.message : String(error) };
     } finally {
       this.running.delete(key);
     }
+  }
+  private async runDirect(provider: StartProviderId, wake: boolean) {
+    const cli = await this.locate(provider, this.settings.providers[provider].path);
+    if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
+    if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
+    if (!this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
+      throw new Error("Automation was switched off.");
+    await this.run(cli);
   }
 }
 

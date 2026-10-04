@@ -372,8 +372,12 @@ describe("hub automation", () => {
   it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
     const notices: string[] = [];
     const runHub = vi.fn(async () => {});
-    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, undefined, (message) =>
-      notices.push(message),
+    const { instance, runs } = starter(
+      { ...startOn, enabled: false, wake: true },
+      undefined,
+      runHub,
+      undefined,
+      (message) => notices.push(message),
     );
     instance.observe(hubSnapshot(1000, true));
     await settle();
