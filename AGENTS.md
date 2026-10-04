@@ -8,15 +8,6 @@ Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit
 
 Tantalus reads three providers: Codex, Claude and Opencode. Each one is read directly from local sign-ins, and Codex and Claude can also come through a CLIProxyAPI hub account. A usage feature covers every provider and every hub account unless the request names one. When a provider or the hub has no field for the feature, say so in the PR. Do not quietly skip it.
 
-A new reading follows this path:
-
-1. `src/main/api.ts` and `src/main/parse.ts` fetch and parse a direct provider. `src/main/proxy-hub-api.ts` does the same for hub accounts.
-2. `src/shared/usage.ts` holds the `ProviderUsage` shape, and `src/shared/ipc.ts` the bridge contract.
-3. `src/renderer/presentation.ts` formats the reading, and `src/renderer/main.tsx` renders it for the window and the remote access page.
-4. `src/main/tray-menu.ts` builds the tray lines. The tray never shows account emails, and the window keeps them hidden until clicked.
-
-The fixture server in the `verify-tantalus` skill serves every provider and a hub, so features for accounts you do not have still get a live check.
-
 ## Toolchain
 
 The toolchain is [Vite+](https://viteplus.dev), driven by the global `vp` CLI. It bundles Vite, Vitest, Oxlint and Oxfmt, and it delegates package management to pnpm. Install it with `curl -fsSL https://vite.plus | bash`.
