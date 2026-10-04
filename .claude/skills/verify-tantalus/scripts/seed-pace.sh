@@ -12,7 +12,15 @@ import json, sys, time
 now = int(time.time())
 learned = lambda used: {"firstSeen": now - 30 * 86_400, "last": {"epoch": now - 600, "used": used, "resetAt": None},
                         "stretch": None, "readings": [1.5, 2, 2.5, 3, 2, 8]}
-keys = {"codex:18000": 40, "codex:604800": 12, "claude:18000": 91, "claude:604800": 55}
-json.dump({key: learned(used) for key, used in keys.items()}, open(sys.argv[1], "w"))
-print(f"Seeded {len(keys)} learned windows in {sys.argv[1]}")
+log = {}
+for provider, tier, durations in [
+    ("codex", "plus", [18000, 604800]),
+    ("claude", "max 5x", [18000, 604800]),
+    ("opencode", "go", [18000, 604800, 2592000]),
+]:
+    for duration in durations:
+        # Compact separators match JSON.stringify, which names the app's log keys.
+        log[json.dumps(["usual", provider, tier, duration], separators=(",", ":"))] = learned(40)
+json.dump(log, open(sys.argv[1], "w"))
+print(f"Seeded {len(log)} learned windows in {sys.argv[1]}")
 PY
