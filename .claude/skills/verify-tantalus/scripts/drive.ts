@@ -7,6 +7,8 @@
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a fresh
 // headless Chrome at phone size. TANTALUS_CHROME overrides the Chrome executable.
+// Prefix any command with `--scheme light` or `--scheme dark` to render the page in that color scheme
+// while the command runs. Without it the page follows the display's scheme.
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -17,8 +19,11 @@ import { chromium } from "playwright-core";
 const ROOT = realpathSync(fileURLToPath(new URL("../../../..", import.meta.url)));
 const RUN_DIR = `/tmp/opencode/tantalus-verify/${basename(ROOT)}-${createHash("sha1").update(ROOT).digest("hex").slice(0, 8)}`;
 const argv = process.argv.slice(2);
-const webUrl = argv[0] === "--web" ? argv[1] : null;
-const [command, ...args] = webUrl ? argv.slice(2) : argv;
+const option = (flag: string) => (argv[0] === flag ? argv.splice(0, 2)[1] : null);
+const webUrl = option("--web");
+const scheme = option("--scheme");
+if (scheme !== null && scheme !== "light" && scheme !== "dark") throw new Error("--scheme takes light or dark.");
+const [command, ...args] = argv;
 const browser = webUrl
   ? await chromium.launch({ executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome" })
   : await chromium.connectOverCDP(`http://127.0.0.1:${readFileSync(join(RUN_DIR, "run.cdp"), "utf8").trim()}`);
@@ -34,6 +39,7 @@ try {
     await page.locator("h2").first().waitFor({ timeout: 10_000 });
   }
   await page.waitForLoadState("load");
+  if (scheme) await page.emulateMedia({ colorScheme: scheme });
   switch (command) {
     case "snapshot":
       console.log(await page.locator("body").ariaSnapshot());
@@ -68,7 +74,7 @@ try {
     }
     default:
       throw new Error(
-        "usage: drive.ts [--web URL] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>",
+        "usage: drive.ts [--web URL] [--scheme light|dark] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>",
       );
   }
 } finally {
