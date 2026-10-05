@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { creatureFor, pacePresets, paceWindows } from "../shared/pace";
+import { creatureFor, paceHistoryKeys, pacePresets, paceWindows } from "../shared/pace";
 import type { PacePreset, PaceSettings, WindowPace } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
 import { absoluteTime, learningByUse, perHour, span, windowLabel } from "./presentation";
@@ -31,7 +31,8 @@ export function PaceSettingsRows({
           <h2>Dragon and tortoise</h2>
           <p>
             Tantalus learns how fast you usually use each window. A dragon rides the bar when you go much faster than
-            that, and a tortoise when you go much slower.
+            that, and a tortoise when you go much slower. Accounts on the same provider and tier share their usual pace.
+            Each account keeps its own current pace and quotas.
           </p>
         </div>
         <PaceToggle settings={snapshot?.pace.settings} failed={failed} saving={pending} onSave={save} />
@@ -83,7 +84,7 @@ function PaceToggle({
   );
 }
 
-type TitledPace = { key: string; title: string; pace: WindowPace };
+type TitledPace = { key: string; usualKey: string; title: string; pace: WindowPace };
 
 /** Shown only while the creatures are switched on. */
 function PaceDetails({
@@ -98,7 +99,11 @@ function PaceDetails({
   if (!snapshot?.pace.settings.enabled) return null;
   const { settings } = snapshot.pace;
   const windows = titledPaces(snapshot);
-  const learned = windows.flatMap(({ pace }) => (pace.status === "learned" ? [pace] : []));
+  const learned = [
+    ...new Map(
+      windows.flatMap(({ usualKey, pace }) => (pace.status === "learned" ? [[usualKey, pace] as const] : [])),
+    ).values(),
+  ];
   return (
     <section className="pace-settings" aria-label="Dragon and tortoise details">
       <div className="setting-copy">
@@ -250,9 +255,19 @@ function Learned({
 
 /** Every window with a pace, named after its provider or hub account. */
 function titledPaces(snapshot: UsageSnapshot): TitledPace[] {
-  return paceWindows(snapshot).flatMap(({ key, owner, duration }) => {
+  return paceWindows(snapshot).flatMap((window) => {
+    const { key, owner, duration, plan } = window;
     const pace = snapshot.pace.windows[key];
-    return pace ? [{ key, title: `${owner} · ${windowLabel(duration)}`, pace }] : [];
+    return pace
+      ? [
+          {
+            key,
+            usualKey: paceHistoryKeys(window).usual,
+            title: `${owner}${plan ? ` · ${plan}` : ""} · ${windowLabel(duration)}`,
+            pace,
+          },
+        ]
+      : [];
   });
 }
 
