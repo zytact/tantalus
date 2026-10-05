@@ -153,7 +153,10 @@ SCENARIOS = {
     "hub-rejected": ready,
     "hub-claude-only": ready,
     "hub-codex-only": ready,
+    "hub-slow": ready,
+    "hub-error": ready,
 }
+HUB_SLOW_SECONDS = 6
 ROUTES = {
     "/backend-api/wham/usage": "codex_usage",
     "/backend-api/codex/usage": "codex_usage",
@@ -265,8 +268,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error": "invalid management request"})
         if request.get("header", {}).get("Authorization") != "Bearer $TOKEN$" or key is None:
             return self.send_json(400, {"error": "invalid upstream request"})
+        with open(Handler.request_log, "a") as log:
+            log.write(f"{int(time.time())} HUB {request.get('auth_index')} {path}\n")
+        if Handler.scenario == "hub-slow":
+            time.sleep(HUB_SLOW_SECONDS)
         build = SCENARIOS[Handler.scenario]
-        status = 500 if build is None else 200
+        status = 500 if build is None or Handler.scenario == "hub-error" else 200
         body = {"error": "fixture error scenario"} if build is None else build()[key]
         if Handler.scenario == "hub-rejected" and key == "claude_usage" and not Handler.renewed:
             status, body = 401, {"error": "fixture rejected sign-in"}

@@ -65,6 +65,13 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 - `idle`: like `ready`, but the Codex and Claude 5-hour windows are idle. Codex reports 0% with its reset a full window away, and Claude reports 0% with no reset.
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
+- `hub-multiple-idle`: like `idle`, but the fixture hub pools two Codex and two Claude accounts.
+- `hub-codex-only` and `hub-claude-only`: like `ready`, but the fixture hub pools only that provider's account.
+- `hub-rejected`: like `ready`, but the hub's Claude account answers 401 until its sign-in is renewed through the hub.
+- `hub-slow`: like `ready`, but every hub account request takes 6 seconds. Direct reads answer at once.
+- `hub-error`: like `ready`, but every hub account request fails upstream with 500. Direct reads and the hub's account listing still succeed.
+
+Hub account requests are logged as `HUB <auth_index> <provider path>` lines, so the log shows which account read what and when.
 
 Every fixture request is logged with its timestamp, scenario, and path in `fixture-requests.log` in the run directory. Use it to prove which provider was read and the retry cadence. Copy it into the evidence directory before cleanup. A request without a fixture token gets 401, so a logged 200 path also proves the preview read the fixture credentials.
 
