@@ -10,7 +10,7 @@ import {
 import type { Activity, PaceLog, PaceSettings, PaceWindow, WindowPace } from "../shared/pace";
 import { nowEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
-import { loadPaceLogs, loadPaceSettings, saveSettings } from "./settings";
+import { loadPaceLogs, loadPaceSettings, saveSettings, saveSettingsInBackground } from "./settings";
 
 export const noActivity: Activity = { codex: null, claude: null, opencode: null };
 
@@ -24,6 +24,8 @@ export class PaceTracker {
   private readonly logs: Map<string, PaceLog>;
   /** The windows the latest local activity belongs to, and when each was last worked on. */
   private active = new Map<string, number>();
+  /** The queued log writes. Each waits for the one before, so the file ends up with the latest log. */
+  private writes = Promise.resolve();
 
   constructor(
     private readonly logPath: string,
@@ -49,11 +51,9 @@ export class PaceTracker {
       if (currentPaceOnly(key) && now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);
     }
     // The log only speeds up learning, so a failed write should not fail the reading that led to it.
-    try {
-      saveSettings(this.logPath, Object.fromEntries(this.logs));
-    } catch (error) {
+    this.save(Object.fromEntries(this.logs)).catch((error: unknown) => {
       console.error("Failed to save the pace log:", error);
-    }
+    });
     return this.annotate(snapshot, now);
   }
 
@@ -89,18 +89,27 @@ export class PaceTracker {
     this.logs.set(keys.usual, recordUsual(this.logs.get(keys.usual), next, readings));
   }
 
-  /** Forgets every window's log and starts each one again from the reading the snapshot holds. The
-   * empty log is saved first, so a failed save changes nothing. */
-  reset(snapshot: UsageSnapshot, now = nowEpoch()): UsageSnapshot {
-    saveSettings(this.logPath, {});
+  /** Forgets every window's log. The empty log is saved first, so a failed save changes nothing. */
+  async reset() {
+    await this.save({});
     this.logs.clear();
-    return this.track(snapshot, noActivity, now);
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
   setSettings(settings: PaceSettings) {
     saveSettings(this.settingsPath, settings);
     this.settings = settings;
+  }
+
+  /** Resolves once every queued log write has settled. */
+  saved(): Promise<void> {
+    return this.writes;
+  }
+
+  private save(logs: Record<string, PaceLog>): Promise<void> {
+    const write = this.writes.then(() => saveSettingsInBackground(this.logPath, logs));
+    this.writes = write.catch(() => {});
+    return write;
   }
 }
 

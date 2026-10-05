@@ -1,4 +1,5 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RemoteSettings } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
@@ -242,6 +243,38 @@ export function saveSettings<T>(path: string, settings: T) {
         fsyncSync(handle);
       } finally {
         closeSync(handle);
+      }
+    } catch {}
+  }
+}
+
+/** Saves the way `saveSettings` does without blocking the main process, for a file written on every
+ * refresh. Callers must not start a write to the same path before the previous one settles. */
+export async function saveSettingsInBackground<T>(path: string, settings: T) {
+  const directory = dirname(path);
+  const temporary = `${path}.${process.pid}.tmp`;
+  const text = JSON.stringify(settings);
+  await mkdir(directory, { recursive: true });
+  try {
+    const file = await open(temporary, "w", 0o600);
+    try {
+      await file.writeFile(text);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+  if (process.platform !== "win32") {
+    try {
+      const handle = await open(directory, "r");
+      try {
+        await handle.sync();
+      } finally {
+        await handle.close();
       }
     } catch {}
   }

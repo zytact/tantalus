@@ -180,8 +180,9 @@ export class UsageState {
     return this.snapshot;
   }
 
-  resetPace(): UsageSnapshot {
-    this.snapshot = this.pace.reset(this.snapshot);
+  async resetPace(): Promise<UsageSnapshot> {
+    await this.pace.reset();
+    this.snapshot = this.pace.track(this.snapshot, noActivity);
     this.publish(this.snapshot);
     return this.snapshot;
   }
