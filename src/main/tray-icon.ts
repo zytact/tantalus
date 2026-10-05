@@ -36,27 +36,14 @@ export function usageBitmap({
 }): Bitmap {
   const scale = fittingScale(text, height, mark ? Infinity : height);
   const textWidth = measure(text, scale);
-  const gap = mark ? Math.max(1, Math.round(height / 8)) : 0;
+  // Tied to the digit scale, so a 2x representation is exactly twice the 1x one.
+  const gap = mark ? scale : 0;
   const width = mark ? mark.width + gap + textWidth : height;
   const bitmap: Bitmap = { width, height, data: Buffer.alloc(width * height * 4) };
   if (mark) blit(bitmap, mark, 0, Math.floor((height - mark.height) / 2));
   const left = mark ? mark.width + gap : Math.floor((width - textWidth) / 2);
   drawText(bitmap, text, scale, left, Math.floor((height - GLYPH_HEIGHT * scale) / 2), rgb(color));
   return bitmap;
-}
-
-/** Recolors every pixel to `color`, keeping its coverage. Turns a template mark into a fixed one. */
-export function tint(bitmap: Bitmap, color: string): Bitmap {
-  const [red, green, blue] = rgb(color);
-  const data = Buffer.from(bitmap.data);
-  for (let index = 0; index < data.length; index += 4) {
-    const alpha = data[index + 3];
-    // The channels are premultiplied by alpha.
-    data[index] = Math.round((blue * alpha) / 255);
-    data[index + 1] = Math.round((green * alpha) / 255);
-    data[index + 2] = Math.round((red * alpha) / 255);
-  }
-  return { ...bitmap, data };
 }
 
 function fittingScale(text: string, height: number, maxWidth: number): number {

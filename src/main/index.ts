@@ -21,8 +21,7 @@ import { PaceTracker } from "./pace-tracker";
 import { loadTrayUsageSettings, paceSettings, saveSettings, trayUsageSettings, windowStartSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
-import { tint, trayPercent, usageBitmap } from "./tray-icon";
-import type { Bitmap } from "./tray-icon";
+import { trayPercent, usageBitmap } from "./tray-icon";
 import { trayItems } from "./tray-menu";
 import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
@@ -32,8 +31,6 @@ import { WindowStarter } from "./window-start";
 
 const identity = app.getName() === identities.preview.productName ? identities.preview : identities.release;
 const preview = identity === identities.preview;
-/** macOS draws the release tray mark from its alpha channel, in the menu bar's ink. */
-const templateMark = process.platform === "darwin" && !preview;
 
 // Settings and the single-instance lock live under the user data directory, so keying it by the
 // identifier keeps a preview's apart from the release's.
@@ -220,8 +217,8 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
   const path = join(app.getPath("userData"), "tray-usage.json");
   let settings = loadTrayUsageSettings(path);
   let shown: string | null = null;
-  const show = (tooltip: string, image: () => NativeImage) => {
-    const key = `${tooltip}:${nativeTheme.shouldUseDarkColors}`;
+  const show = (tooltip: string, text: string | null, image: () => NativeImage) => {
+    const key = `${tooltip}:${text}`;
     if (key === shown) return;
     shown = key;
     tray.setToolTip(tooltip);
@@ -229,13 +226,12 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
   };
   const render = () => {
     const reading = trayUsageReading(snapshot(), settings);
-    if (!reading) return show(identity.productName, trayImage);
-    show(`${identity.productName}\n${reading.label} ${reading.span} ${percent(reading.used)}`, () =>
-      usageTrayImage(trayPercent(reading.used), trayUsageColors[reading.provider]),
+    if (!reading) return show(identity.productName, null, trayImage);
+    const text = trayPercent(reading.used);
+    show(`${identity.productName}\n${reading.label} ${reading.span} ${percent(reading.used)}`, text, () =>
+      usageTrayImage(text, trayUsageColors[reading.provider]),
     );
   };
-  // The macOS mark is drawn in the menu bar's ink, which follows the appearance.
-  nativeTheme.on("updated", render);
   handle("trayUsage", () => settings);
   handle("setTrayUsage", (next) => {
     const parsed = trayUsageSettings(next);
@@ -359,12 +355,13 @@ function trayImage() {
   if (process.platform !== "darwin") return image;
   const sized = image.resize({ height: 18, quality: "best" });
   sized.addRepresentation({ scaleFactor: 2, buffer: image.resize({ height: 36, quality: "best" }).toPNG() });
-  sized.setTemplateImage(templateMark);
+  sized.setTemplateImage(!preview);
   return sized;
 }
 
-/** The tray icon with a usage number beside the mark. Windows fits every tray icon into a fixed
- * square, so there the number replaces the mark. */
+/** The tray icon with a usage number beside the mark. The mark keeps its color, even on macOS, since
+ * a template image would recolor the number too and the app cannot read the menu bar's ink. Windows
+ * fits every tray icon into a fixed square, so there the number replaces the mark. */
 function usageTrayImage(text: string, color: string) {
   const height = process.platform === "darwin" ? 18 : 16;
   const [single, double] = [1, 2].map((scale) => {
@@ -377,11 +374,9 @@ function usageTrayImage(text: string, color: string) {
   return image;
 }
 
-/** The mark at `height` pixels, a template mark drawn in the ink macOS would give it. */
-function trayMark(height: number): Bitmap {
+function trayMark(height: number) {
   const image = nativeImage.createFromDataURL(preview ? previewTrayIcon : trayIcon).resize({ height, quality: "best" });
-  const mark = { ...image.getSize(), data: image.toBitmap() };
-  return templateMark ? tint(mark, nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000") : mark;
+  return { ...image.getSize(), data: image.toBitmap() };
 }
 
 function publish<E extends keyof Events>(event: E, payload: Events[E]) {

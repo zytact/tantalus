@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { tint, trayPercent, usageBitmap } from "./tray-icon";
+import { trayPercent, usageBitmap } from "./tray-icon";
 import type { Bitmap } from "./tray-icon";
 
 const mark = (size: number): Bitmap => ({ width: size, height: size, data: Buffer.alloc(size * size * 4, 0x80) });
@@ -36,16 +36,17 @@ describe("usage bitmap", () => {
     }
   });
 
+  it("draws the 2x representation exactly twice the size of the 1x one", () => {
+    for (const height of [16, 18]) {
+      const single = usageBitmap({ text: "42", color: "#D97757", height, mark: mark(height) });
+      const double = usageBitmap({ text: "42", color: "#D97757", height: height * 2, mark: mark(height * 2) });
+      expect([double.width, double.height]).toEqual([single.width * 2, single.height * 2]);
+    }
+  });
+
   it("draws the digits larger when the icon is larger", () => {
     const small = usageBitmap({ text: "42", color: "#3B82F6", height: 16, mark: null });
     const large = usageBitmap({ text: "42", color: "#3B82F6", height: 32, mark: null });
     expect(inked(large).length).toBeGreaterThan(inked(small).length * 2);
-  });
-});
-
-describe("tint", () => {
-  it("recolors a mark and keeps its coverage", () => {
-    const tinted = tint({ width: 1, height: 1, data: Buffer.from([0, 0, 0, 128]) }, "#ffffff");
-    expect([...tinted.data]).toEqual([128, 128, 128, 128]);
   });
 });
