@@ -426,7 +426,7 @@ function HubAccounts({
       account={{
         email: account.email,
         plan: account.plan,
-        label: account.name.title,
+        label: account.name.label,
       }}
       paceOf={(duration) => paces[paceKey(duration, account.provider, { hubId: hub.id, accountId: account.id })]}
     />

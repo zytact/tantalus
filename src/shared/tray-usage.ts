@@ -1,4 +1,4 @@
-import { namedHubAccounts, providerIds, providerNames } from "./usage";
+import { directAccountName, namedHubAccounts, providerIds, providerNames } from "./usage";
 import type { AccountName, ProviderId, ProviderUsage, ProxyHubSnapshot, UsageSnapshot } from "./usage";
 
 /** `source` is the key of the account the tray shows, or null for the first one available. */
@@ -32,7 +32,7 @@ export function trayUsageOptions(snapshot: UsageSnapshot, now: number): TrayUsag
       .map((id) => ({
         key: id,
         provider: id,
-        name: { title: providerNames[id], email: null },
+        name: directAccountName(id),
         window: shownWindow(snapshot[id]),
       })),
     ...snapshot.proxy_hubs.flatMap((hub) => [
@@ -71,7 +71,7 @@ function pooledOptions(hub: ProxyHubSnapshot, now: number): TrayUsageOption[] {
         // One part shorter than an account's key, so no account id can collide with it.
         key: `${hub.id}:${provider}`,
         provider,
-        name: { title, email: null },
+        name: { title, email: null, label: title },
         window:
           used.length > 0
             ? { span: "5h", used: used.reduce((sum, value) => sum + value), limit: used.length * 100 }

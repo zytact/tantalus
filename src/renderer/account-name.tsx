@@ -40,20 +40,30 @@ export function Email({ email, label }: { email: string; label: string }) {
 /** An account's name, with its email blurred until clicked. With `plain`, the email cannot be clicked,
  * for places such as a menu option that cannot hold a button, and shows once revealed elsewhere, such
  * as through `RevealEmails`. */
-export function AccountName({ name: { title, email }, plain = false }: { name: Name; plain?: boolean }) {
+export function AccountName({ name: { title, email, label }, plain = false }: { name: Name; plain?: boolean }) {
   if (email === null) return title;
   return (
     <>
-      {title} · {plain ? <PlainEmail email={email} /> : <Email email={email} label={title} />}
+      {title}
+      {plain ? (
+        <PlainEmail email={email} />
+      ) : (
+        <>
+          {" · "}
+          <Email email={email} label={label} />
+        </>
+      )}
     </>
   );
 }
 
+/** Hides its separator from screen readers along with the email, so a hidden email reads as the title alone. */
 function PlainEmail({ email }: { email: string }) {
   const visible = useRevealed(email);
   return (
-    <span className="account-email" data-visible={visible}>
-      <span aria-hidden={!visible}>{email}</span>
+    <span className="account-email" data-visible={visible} aria-hidden={!visible}>
+      {" · "}
+      <span>{email}</span>
     </span>
   );
 }

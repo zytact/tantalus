@@ -1,9 +1,9 @@
 import {
+  directAccountName,
   fiveHourSeconds,
   monthlySeconds,
   namedHubAccounts,
   providerIds,
-  providerNames,
   sevenDaySeconds,
 } from "./usage";
 import type { AccountName, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
@@ -113,9 +113,7 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   return [
     ...providerIds
       .filter((id) => snapshot.enabled[id])
-      .flatMap((id) =>
-        windows(snapshot[id], id, { title: providerNames[id], email: null }, (duration) => paceKey(duration, id)),
-      ),
+      .flatMap((id) => windows(snapshot[id], id, directAccountName(id), (duration) => paceKey(duration, id))),
     ...snapshot.proxy_hubs.flatMap((hub) =>
       namedHubAccounts(hub).flatMap(({ id, provider, usage, plan, email, name }) =>
         windows(

@@ -77,21 +77,32 @@ export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
 };
 
 /** How an account is named where accounts are listed side by side. The page blurs `email` until it is
- * revealed, and the tray never shows it. */
-export type AccountName = { title: string; email: string | null };
+ * revealed, and the tray never shows it. `label` tells accounts apart for screen readers while their
+ * emails are hidden. */
+export type AccountName = { title: string; email: string | null; label: string };
 
-/** Names a hub's accounts by hub, provider and email. An account the hub reports no email for is
- * numbered within its provider instead, so the hub's first Codex account without one is Codex 1. */
+/** Names a hub's accounts by hub, provider and email. Accounts are numbered within their provider, so
+ * the hub's second Codex account is Codex 2, and the number names an account the hub reports no email for. */
 export function namedHubAccounts({ label, accounts }: Pick<ProxyHubSnapshot, "label" | "accounts">) {
   const counts = new Map<ProxyHubProviderId, number>();
   return accounts.map((account) => {
-    const title = `${label} · ${providerNames[account.provider]}`;
-    if (account.email) return { ...account, name: { title, email: account.email } satisfies AccountName };
     const number = (counts.get(account.provider) ?? 0) + 1;
     counts.set(account.provider, number);
-    return { ...account, name: { title: `${title} ${number}`, email: null } satisfies AccountName };
+    const title = `${label} · ${providerNames[account.provider]}`;
+    const numbered = `${title} ${number}`;
+    const name: AccountName = account.email
+      ? { title, email: account.email, label: numbered }
+      : { title: numbered, email: null, label: numbered };
+    return { ...account, name };
   });
 }
+
+/** A direct sign-in, named after its provider alone. */
+export const directAccountName = (provider: ProviderId): AccountName => ({
+  title: providerNames[provider],
+  email: null,
+  label: providerNames[provider],
+});
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {

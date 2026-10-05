@@ -94,7 +94,13 @@ export function startAccounts(
   provider: StartProviderId,
 ): { key: string; name: Name; status: string }[] {
   const direct = snapshot?.enabled[provider]
-    ? [{ key: provider, name: { title: "Direct", email: null }, status: startStatus(start.providers[provider]) }]
+    ? [
+        {
+          key: provider,
+          name: { title: "Direct", email: null, label: `Direct ${providerNames[provider]}` },
+          status: startStatus(start.providers[provider]),
+        },
+      ]
     : [];
   const hubs = (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
     namedHubAccounts(hub)

@@ -11,7 +11,7 @@ const account = (id: string, provider: ProxyHubProviderId, email: string | null 
 });
 
 describe("namedHubAccounts", () => {
-  it("names accounts by email and numbers only those without one, within each provider", () => {
+  it("names accounts by email, numbering them within each provider for those without one", () => {
     const named = namedHubAccounts({
       label: "Work",
       accounts: [
@@ -22,10 +22,10 @@ describe("namedHubAccounts", () => {
       ],
     });
     expect(named.map(({ id, name }) => [id, name])).toEqual([
-      ["a", { title: "Work · Claude 1", email: null }],
-      ["b", { title: "Work · Codex", email: "b@example.com" }],
-      ["c", { title: "Work · Codex 1", email: null }],
-      ["d", { title: "Work · Claude 2", email: null }],
+      ["a", { title: "Work · Claude 1", email: null, label: "Work · Claude 1" }],
+      ["b", { title: "Work · Codex", email: "b@example.com", label: "Work · Codex 1" }],
+      ["c", { title: "Work · Codex 2", email: null, label: "Work · Codex 2" }],
+      ["d", { title: "Work · Claude 2", email: null, label: "Work · Claude 2" }],
     ]);
   });
 });

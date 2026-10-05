@@ -43,13 +43,13 @@ const snapshot: UsageSnapshot = {
 
 describe("tray usage", () => {
   it("offers every provider switched on, then each hub's pools and accounts", () => {
-    expect(trayUsageOptions(snapshot, now).map(({ key, name }) => [key, name])).toEqual([
-      ["codex", { title: "Codex", email: null }],
-      ["claude", { title: "Claude", email: null }],
-      ["hub:claude", { title: "Work · Claude · All 2 accounts", email: null }],
-      ["hub:claude:a", { title: "Work · Claude", email: "a@example.com" }],
-      ["hub:claude:b", { title: "Work · Claude 1", email: null }],
-      ["hub:codex:c", { title: "Work · Codex 1", email: null }],
+    expect(trayUsageOptions(snapshot, now).map(({ key, name }) => [key, name.title, name.email])).toEqual([
+      ["codex", "Codex", null],
+      ["claude", "Claude", null],
+      ["hub:claude", "Work · Claude · All 2 accounts", null],
+      ["hub:claude:a", "Work · Claude", "a@example.com"],
+      ["hub:claude:b", "Work · Claude 2", null],
+      ["hub:codex:c", "Work · Codex 1", null],
     ]);
   });
 
