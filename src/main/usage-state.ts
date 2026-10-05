@@ -88,7 +88,8 @@ export class UsageState {
         (id) => this.snapshot.enabled[id] && (scope === "all" || !providerSettled(this.snapshot, id)),
       );
       await Promise.all([...hubs.map(({ read }) => read), ...providers.map((id) => this.refreshProvider(id))]);
-      this.snapshot = this.pace.track(this.snapshot, await activity);
+      const worked = await activity;
+      this.snapshot = this.pace.track(this.snapshot, worked);
       if (!this.again) {
         this.running = null;
         this.publish(this.snapshot);
@@ -427,17 +428,19 @@ export function nextBackoff(
   return current === null ? start : Math.min(current * 2, interval);
 }
 
-/** Retries read only what has not settled, until a full interval has passed since everything was read. */
-export async function pollUsage(state: UsageState, sleep: (milliseconds: number) => Promise<unknown>) {
+/** Retries read only what has not settled, and never sleep past the time everything is due again. */
+export async function pollUsage(
+  state: UsageState,
+  sleep: (milliseconds: number) => Promise<unknown>,
+  now: () => number = Date.now,
+) {
   let backoff: number | null = null;
-  let slept = REFRESH_INTERVAL;
+  let due = -Infinity;
   for (;;) {
-    const scope = slept >= REFRESH_INTERVAL ? "all" : "unsettled";
-    if (scope === "all") slept = 0;
+    const scope = now() >= due ? "all" : "unsettled";
+    if (scope === "all") due = now() + REFRESH_INTERVAL;
     const snapshot = await state.refresh(scope);
     backoff = nextBackoff(settled(snapshot), backoff, RETRY_BACKOFF_START, REFRESH_INTERVAL);
-    const wait = backoff ?? REFRESH_INTERVAL;
-    slept += wait;
-    await sleep(wait);
+    await sleep(backoff === null ? REFRESH_INTERVAL : Math.min(backoff, Math.max(0, due - now())));
   }
 }

@@ -434,12 +434,19 @@ describe("polling", () => {
       return ready(1);
     });
     const waits: number[] = [];
-    await pollUsage(state, async (milliseconds) => {
-      waits.push(milliseconds);
-      if (waits.length === 7) throw new Error("stop");
-      reads.push([]);
-    }).catch(() => {});
-    expect(waits).toEqual([5000, 10_000, 20_000, 40_000, 80_000, 160_000, 300_000]);
+    let clock = 0;
+    await pollUsage(
+      state,
+      async (milliseconds) => {
+        waits.push(milliseconds);
+        if (waits.length === 7) throw new Error("stop");
+        // Each refresh takes a second, which counts toward the interval too.
+        clock += milliseconds + 1000;
+        reads.push([]);
+      },
+      () => clock,
+    ).catch(() => {});
+    expect(waits).toEqual([5000, 10_000, 20_000, 40_000, 80_000, 140_000, 300_000]);
     expect(reads).toEqual([
       ["codex", "claude"],
       ["codex"],
