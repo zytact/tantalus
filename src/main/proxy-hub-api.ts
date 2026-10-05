@@ -103,24 +103,22 @@ export class ProxyHubApi {
   }
 
   private async readAccount(config: ProxyHubConfig, account: AuthFile): Promise<ProxyHubAccount> {
-    const usage = await (
-      account.provider === "codex" ? this.readCodex(config, account) : this.readClaude(config, account)
-    ).catch((error: unknown): ProviderUsage => {
-      if (error instanceof ProxyHubRejected) throw error;
-      return {
-        ...emptyProviderUsage(),
-        status: "error",
-        error_message: error instanceof ReadFailure ? error.message : "The hub could not read this account's usage.",
-        error_reason: error instanceof ReadFailure ? error.reason : null,
-      };
-    });
-    return {
-      id: account.id,
-      email: account.email,
-      plan: await this.readPlan(config, account),
-      provider: account.provider,
-      usage,
-    };
+    const [usage, plan] = await Promise.all([
+      (account.provider === "codex" ? this.readCodex(config, account) : this.readClaude(config, account)).catch(
+        (error: unknown): ProviderUsage => {
+          if (error instanceof ProxyHubRejected) throw error;
+          return {
+            ...emptyProviderUsage(),
+            status: "error",
+            error_message:
+              error instanceof ReadFailure ? error.message : "The hub could not read this account's usage.",
+            error_reason: error instanceof ReadFailure ? error.reason : null,
+          };
+        },
+      ),
+      this.readPlan(config, account),
+    ]);
+    return { id: account.id, email: account.email, plan, provider: account.provider, usage };
   }
 
   /** The hub decodes a Codex account's ID token, plan included. A Claude account's plan needs a
@@ -135,7 +133,7 @@ export class ProxyHubApi {
   }
 
   private async readCodex(config: ProxyHubConfig, account: AuthFile): Promise<ProviderUsage> {
-    const [value, subscription] = await Promise.all([
+    const [value, subscription, credits] = await Promise.all([
       this.apiCall(config, account, `${CODEX_BASE}/usage`),
       account.accountId
         ? this.apiCall(
@@ -147,12 +145,12 @@ export class ProxyHubApi {
             return null;
           })
         : null,
+      this.apiCall(config, account, CREDITS_URL)
+        .then((response) => availableCredits(response, nowEpoch()))
+        .catch(() => null),
     ]);
     if (!codexUsageResponse(value)) throw new ProxyHubError("The hub returned an unexpected provider response.");
     const now = nowEpoch();
-    const credits = await this.apiCall(config, account, CREDITS_URL)
-      .then((response) => availableCredits(response, now))
-      .catch(() => null);
     return ready(
       {
         ...parseCodexUsage(value, now),
