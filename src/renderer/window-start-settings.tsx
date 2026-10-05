@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from "react";
-import { hubAccountLabel, numberedHubAccounts, providerNames } from "../shared/usage";
-import type { UsageSnapshot } from "../shared/usage";
+import { namedHubAccounts, providerNames } from "../shared/usage";
+import type { AccountName as Name, UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartProviderId, WindowStart } from "../shared/window-start";
+import { AccountName } from "./account-name";
 import type { Loadable } from "./busy";
 import { attemptStatus, startStatus, wakeStatus } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
@@ -91,19 +92,25 @@ export function startAccounts(
   start: WindowStart,
   snapshot: UsageSnapshot | null,
   provider: StartProviderId,
-): { key: string; label: string; status: string }[] {
+): { key: string; name: Name; status: string }[] {
   const direct = snapshot?.enabled[provider]
-    ? [{ key: provider, label: "Direct", status: startStatus(start.providers[provider]) }]
+    ? [
+        {
+          key: provider,
+          name: { title: "Direct", email: null, label: `Direct ${providerNames[provider]}` },
+          status: startStatus(start.providers[provider]),
+        },
+      ]
     : [];
   const hubs = (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
-    numberedHubAccounts(hub.accounts)
+    namedHubAccounts(hub)
       .filter((account) => account.provider === provider)
       .map((account) => {
         const key = windowStartKey(provider, { hubId: hub.id, accountId: account.id });
         const last = snapshot?.window_starts?.[key];
         return {
           key,
-          label: hubAccountLabel(hub.label, account),
+          name: account.name,
           status: last ? attemptStatus(last) : "Waiting for an idle window.",
         };
       }),
@@ -207,9 +214,11 @@ function StartProviderRow({
             {name}
           </h2>
           <ul className="start-accounts">
-            {accounts.map(({ key, label, status }) => (
+            {accounts.map(({ key, name, status }) => (
               <li key={key}>
-                <span className="start-account">{label}</span>
+                <span className="start-account">
+                  <AccountName name={name} />
+                </span>
                 {status}
               </li>
             ))}

@@ -10,8 +10,9 @@ const inked = ({ width, height, data }: Bitmap) =>
   Array.from({ length: width * height }, (_, index) => index).filter((index) => data[index * 4 + 3] === 255);
 
 describe("tray percent", () => {
-  it("is whole and stays within 0 to 100", () => {
-    expect([trayPercent(41.6), trayPercent(-3), trayPercent(140)]).toEqual(["42", "0", "100"]);
+  it("is whole and stays within 0 to its limit", () => {
+    expect([trayPercent(41.6, 100), trayPercent(-3, 100), trayPercent(140, 100)]).toEqual(["42", "0", "100"]);
+    expect([trayPercent(150, 300), trayPercent(320, 300)]).toEqual(["150", "300"]);
   });
 });
 
@@ -34,6 +35,13 @@ describe("usage bitmap", () => {
         expect(inked(bitmap).length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("widens the square for a pooled number too wide for it, rather than wrapping its pixels", () => {
+    const bitmap = usageBitmap({ text: "300", color: "#3B82F6", height: 16, mark: null });
+    expect([bitmap.width, bitmap.height]).toEqual([17, 16]);
+    const columns = inked(bitmap).map((index) => index % bitmap.width);
+    expect([Math.min(...columns), Math.max(...columns)]).toEqual([0, 16]);
   });
 
   it("draws the 2x representation exactly twice the size of the 1x one", () => {

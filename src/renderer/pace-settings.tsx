@@ -1,7 +1,9 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { creatureFor, paceHistoryKeys, pacePresets, paceWindows } from "../shared/pace";
 import type { PacePreset, PaceSettings, WindowPace } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
+import { AccountName } from "./account-name";
 import { absoluteTime, learningByUse, perHour, span, windowLabel } from "./presentation";
 import { SettingPending, Toggle } from "./settings-controls";
 
@@ -84,7 +86,7 @@ function PaceToggle({
   );
 }
 
-type TitledPace = { key: string; usualKey: string; title: string; pace: WindowPace };
+type TitledPace = { key: string; usualKey: string; title: ReactNode; pace: WindowPace };
 
 /** Shown only while the creatures are switched on. */
 function PaceDetails({
@@ -194,7 +196,7 @@ function ResetLearning({ onSnapshot }: { onSnapshot: (snapshot: UsageSnapshot) =
   );
 }
 
-function Learning({ title, pace }: { title: string; pace: Extract<WindowPace, { status: "learning" }> }) {
+function Learning({ title, pace }: { title: ReactNode; pace: Extract<WindowPace, { status: "learning" }> }) {
   return (
     <div className="pace-window">
       <h3>
@@ -225,7 +227,7 @@ function Learned({
   pace,
   preset,
 }: {
-  title: string;
+  title: ReactNode;
   pace: Extract<WindowPace, { status: "learned" }>;
   preset: PacePreset;
 }) {
@@ -263,7 +265,12 @@ function titledPaces(snapshot: UsageSnapshot): TitledPace[] {
           {
             key,
             usualKey: paceHistoryKeys(window).usual,
-            title: `${owner}${plan ? ` · ${plan}` : ""} · ${windowLabel(duration)}`,
+            title: (
+              <span>
+                <AccountName name={owner} />
+                {plan ? ` · ${plan}` : ""} · {windowLabel(duration)}
+              </span>
+            ),
             pace,
           },
         ]

@@ -16,13 +16,14 @@ const glyphs: Record<string, string[]> = {
 };
 const GLYPH_HEIGHT = 7;
 
-/** The used percentage as the tray draws it: whole, and within 0 to 100. */
-export function trayPercent(used: number): string {
-  return String(Math.round(Math.min(100, Math.max(0, used))));
+/** The used percentage as the tray draws it: whole, and within 0 to `limit`. */
+export function trayPercent(used: number, limit: number): string {
+  return String(Math.round(Math.min(limit, Math.max(0, used))));
 }
 
-/** Draws `text` in `color` beside `mark`, or alone and centered in a square when there is no mark.
- * The digits take the largest whole pixel scale that fits, so they stay sharp. */
+/** Draws `text` in `color` beside `mark`, or alone and centered in a square when there is no mark. A
+ * pooled number too wide for the square widens it instead, and the tray scales it down to fit. The
+ * digits take the largest whole pixel scale that fits, so they stay sharp. */
 export function usageBitmap({
   text,
   color,
@@ -38,7 +39,7 @@ export function usageBitmap({
   const textWidth = measure(text, scale);
   // Tied to the digit scale, so a 2x representation is exactly twice the 1x one.
   const gap = mark ? scale : 0;
-  const width = mark ? mark.width + gap + textWidth : height;
+  const width = mark ? mark.width + gap + textWidth : Math.max(height, textWidth);
   const bitmap: Bitmap = { width, height, data: Buffer.alloc(width * height * 4) };
   if (mark) blit(bitmap, mark, 0, Math.floor((height - mark.height) / 2));
   const left = mark ? mark.width + gap : Math.floor((width - textWidth) / 2);

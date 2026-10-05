@@ -133,7 +133,7 @@ describe("local activity", () => {
     const window = (key: string): PaceWindow => ({
       key,
       provider: "codex",
-      owner: key,
+      owner: { title: key, email: null, label: key },
       plan: null,
       identity: null,
       duration: fiveHourSeconds,

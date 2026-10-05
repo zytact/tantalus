@@ -7,7 +7,7 @@ import { firstRider, paceKey, riderOf } from "../shared/pace";
 import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
 import {
   clockEpoch,
-  numberedHubAccounts,
+  namedHubAccounts,
   providerIds,
   providerNames,
   proxyHubManagementUrl,
@@ -26,6 +26,7 @@ import type {
 } from "../shared/usage";
 import { windowStartKey } from "../shared/window-start";
 import type { StartAttempt } from "../shared/window-start";
+import { Email } from "./account-name";
 import { BusyButton, PendingLabel } from "./busy";
 import { CreatureIcon } from "./creature-icon";
 import {
@@ -314,28 +315,12 @@ function AccountDetail({ email, plan, label }: { email: string | null; plan: str
   const separator = email !== null && plan !== null ? " · " : "";
   return (
     <small className="account-detail">
-      {email === null ? null : <Email key={email} email={email} label={label} />}
+      {email === null ? null : <Email email={email} label={label} />}
       <span className="account-plan">
         {separator}
         {plan}
       </span>
     </small>
-  );
-}
-
-function Email({ email, label }: { email: string; label: string }) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <button
-      className="account-email"
-      data-visible={visible}
-      aria-label={visible ? `${email}, hide email for ${label}` : `Show email for ${label}`}
-      aria-pressed={visible}
-      title={visible ? "Hide email" : "Show email"}
-      onClick={() => setVisible((shown) => !shown)}
-    >
-      <span aria-hidden={!visible}>{email}</span>
-    </button>
   );
 }
 
@@ -431,7 +416,7 @@ function HubAccounts({
   paces: PaceSnapshot["windows"];
   starts: UsageSnapshot["window_starts"];
 }) {
-  return numberedHubAccounts(hub.accounts).map((account) => (
+  return namedHubAccounts(hub).map((account) => (
     <ProviderSection
       key={`${account.provider}:${account.id}`}
       id={account.provider}
@@ -441,7 +426,7 @@ function HubAccounts({
       account={{
         email: account.email,
         plan: account.plan,
-        label: `${hub.label} ${providerNames[account.provider]} account ${account.number}`,
+        label: account.name.label,
       }}
       paceOf={(duration) => paces[paceKey(duration, account.provider, { hubId: hub.id, accountId: account.id })]}
     />

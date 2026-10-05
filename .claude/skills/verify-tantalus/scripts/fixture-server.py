@@ -148,6 +148,7 @@ SCENARIOS = {
     "blocked": blocked,
     "idle": idle,
     "hub-multiple-idle": idle,
+    "hub-multiple": ready,
     "no-windows": no_windows,
     "error": None,
     "hub-rejected": ready,
@@ -209,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                         "email": "claude@hub.test",
                     },
                 ]
-            if Handler.scenario == "hub-multiple-idle":
+            if Handler.scenario in ["hub-multiple-idle", "hub-multiple"]:
                 files += [{**file, "id": file["id"].replace(".json", "-two.json"), "auth_index": file["auth_index"] + "-two", "email": file["email"].replace("@", "2@")} for file in files[:]]
             if Handler.scenario == "hub-claude-only":
                 files = [file for file in files if file["provider"] == "claude"]
