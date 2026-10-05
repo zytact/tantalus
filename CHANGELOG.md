@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.34](https://github.com/zytact/tantalus/compare/v0.0.33...v0.0.34) (2026-10-05)
+
+
+### Features
+
+* **tray:** add up a hub's accounts in the tray and name accounts by email ([#110](https://github.com/zytact/tantalus/issues/110)) ([44339e1](https://github.com/zytact/tantalus/commit/44339e1df4cfc83864049397081fbc6d5b95b32b))
+
 ## [0.0.33](https://github.com/zytact/tantalus/compare/v0.0.32...v0.0.33) (2026-10-05)
 
 
