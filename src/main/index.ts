@@ -6,7 +6,7 @@ import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
-import { CURRENT, remoteRoutes } from "../shared/ipc";
+import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
 import { nowEpoch, providerIds, proxyHubManagementUrl } from "../shared/usage";
 import { readActivity } from "./activity";
@@ -68,10 +68,14 @@ function start() {
   );
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const proxyHubs = new ProxyHubApi();
+  // A window opened while a toast still shows picks it up; an expired one is not replayed.
   let toast: string | null = null;
   const notify = (message: string) => {
     toast = message;
     publish("toast", message);
+    setTimeout(() => {
+      if (toast === message) toast = null;
+    }, TOAST_MILLISECONDS);
   };
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),

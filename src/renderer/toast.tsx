@@ -1,3 +1,4 @@
+import { TOAST_MILLISECONDS } from "../shared/ipc";
 import { useEffect, useState } from "react";
 
 export function Toast() {
@@ -15,7 +16,7 @@ export function Toast() {
         setTimeout(() => {
           timers.delete(message);
           setMessages((current) => current.filter((item) => item !== message));
-        }, 10_000),
+        }, TOAST_MILLISECONDS),
       );
     };
     const stop = window.tantalus.on("toast", (message) => {

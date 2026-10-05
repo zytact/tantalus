@@ -69,6 +69,9 @@ export type Events = {
 /** The channel that serves the latest value of an event. */
 export const CURRENT = "current";
 
+/** How long a toast shows. */
+export const TOAST_MILLISECONDS = 10_000;
+
 /** A command's result as it crosses the process boundary. Electron rewrites a thrown error's message,
  * so a failure travels as a value and the preload throws it again. */
 export type Reply<T> = { ok: true; value: T } | { ok: false; error: string };
