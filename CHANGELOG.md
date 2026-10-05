@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.31](https://github.com/zytact/tantalus/compare/v0.0.30...v0.0.31) (2026-10-05)
+
+
+### Features
+
+* **settings:** list each account under 5-hour window starts ([#101](https://github.com/zytact/tantalus/issues/101)) ([411fb42](https://github.com/zytact/tantalus/commit/411fb42b26e5d592548bbdefa8abcc54ef51e491))
+* **tray:** show your 5-hour usage right in the tray icon ([#103](https://github.com/zytact/tantalus/issues/103)) ([f7fc056](https://github.com/zytact/tantalus/commit/f7fc0566c9f4fad08d6cabbd640c710369d8d00d))
+
+
+### Bug Fixes
+
+* **hubs:** number hub accounts per provider, not across the hub ([#99](https://github.com/zytact/tantalus/issues/99)) ([f5679be](https://github.com/zytact/tantalus/commit/f5679be8d483b5d0f5ba2ce7bd8987ea186baf3f))
+* **window-start:** wait a full grace after a provider is switched back on ([#102](https://github.com/zytact/tantalus/issues/102)) ([5f8428a](https://github.com/zytact/tantalus/commit/5f8428ae52071cf2a0d3988e4e5af3aa398ee207))
+
 ## [0.0.30](https://github.com/zytact/tantalus/compare/v0.0.29...v0.0.30) (2026-10-05)
 
 
