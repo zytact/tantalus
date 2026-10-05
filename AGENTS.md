@@ -6,6 +6,10 @@ Release-please owns the `package.json` version and `CHANGELOG.md`, so never edit
 
 The `.claude` and `.agents` skill directories must stay byte identical (excluding ignored local state such as `.claude/worktrees/`). Every edit to one side must be mirrored to the other in the same commit.
 
+And a feature made for direct sign-ins should be made for CLIProxyAPI too and vice versa unless stated otherwise. If you think that is not possible in a certain case, say so.
+
+For UI changes, maintain liquid glass and look at Apple's guidelines.
+
 ## Usage features
 
 Tantalus reads three providers: Codex, Claude and Opencode. Each one is read directly from local sign-ins, and Codex and Claude can also come through a CLIProxyAPI hub account. A usage feature covers every provider and every hub account unless the request names one. When a provider or the hub has no field for the feature, say so in the PR. Do not quietly skip it.
