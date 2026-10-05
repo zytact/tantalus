@@ -264,7 +264,7 @@ describe("CLIProxyAPI usage", () => {
   });
 
   it("caps account reads across concurrent hubs", async () => {
-    let active = 0;
+    const active = new Map<string, number>();
     let maximum = 0;
     const request: typeof fetch = async (input, init) => {
       if (init?.method === "GET") {
@@ -278,15 +278,40 @@ describe("CLIProxyAPI usage", () => {
           })),
         });
       }
-      active += 1;
-      maximum = Math.max(maximum, active);
+      const account = String(JSON.parse(requestBody(init)).auth_index);
+      active.set(account, (active.get(account) ?? 0) + 1);
+      maximum = Math.max(maximum, active.size);
       await new Promise((resolve) => setTimeout(resolve, 5));
-      active -= 1;
+      const left = active.get(account)! - 1;
+      if (left === 0) active.delete(account);
+      else active.set(account, left);
       return Response.json({ status_code: 200, body: JSON.stringify({ five_hour: null }) });
     };
     const api = new ProxyHubApi(request);
     await Promise.all([api.read(config), api.read({ ...config, id: "work", url: "http://work.test:8317" })]);
     expect(maximum).toBe(4);
+  });
+
+  it("sends an account's plan, subscription, and credit reads alongside its usage", async () => {
+    const active = new Map<string, number>();
+    const most = new Map<string, number>();
+    const request: typeof fetch = async (_input, init) => {
+      if (init?.method === "GET")
+        return Response.json({
+          files: [
+            { id: "codex.json", auth_index: "codex", provider: "codex", id_token: { chatgpt_account_id: "a" } },
+            { id: "claude.json", auth_index: "claude", provider: "claude" },
+          ],
+        });
+      const account = String(JSON.parse(requestBody(init)).auth_index);
+      active.set(account, (active.get(account) ?? 0) + 1);
+      most.set(account, Math.max(most.get(account) ?? 0, active.get(account)!));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active.set(account, active.get(account)! - 1);
+      return Response.json({ status_code: 200, body: JSON.stringify({ five_hour: null }) });
+    };
+    await new ProxyHubApi(request).read(config);
+    expect(Object.fromEntries(most)).toEqual({ codex: 3, claude: 2 });
   });
 
   it("rejects malformed account lists without exposing the management key", async () => {
