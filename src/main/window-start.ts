@@ -1,5 +1,5 @@
 import { nowEpoch, providerNames } from "../shared/usage";
-import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
+import type { ProviderSettings, ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart, WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
@@ -38,8 +38,9 @@ export class WindowStarter {
   private readonly running = new Set<string>();
   private readonly last = new Map<string, StartAttempt>();
   private readonly wakes = new Map<string, StartAttempt>();
-  private hubs: WindowStart["hubs"] = [];
+  private hubKeys = new Set<string>();
   private hubClaude = false;
+  private polled: ProviderSettings = { claude: false, codex: false, opencode: false };
 
   constructor(
     private readonly path: string,
@@ -69,10 +70,6 @@ export class WindowStarter {
       wake,
       lastWake: this.wakes.get("claude") ?? null,
       providers: { claude, codex },
-      hubs: this.hubs.map((hub) => ({
-        ...hub,
-        last: this.last.get(hub.key) ?? null,
-      })),
     };
   }
 
@@ -89,6 +86,7 @@ export class WindowStarter {
 
   observe(snapshot: UsageSnapshot) {
     this.observeWakeAvailability(snapshot);
+    this.polled = snapshot.enabled;
     const targets: StartTarget[] = startProviderIds.map((provider) => ({
       key: provider,
       provider,
@@ -96,16 +94,6 @@ export class WindowStarter {
       polled: snapshot.enabled[provider],
       hub: null,
     }));
-    this.hubs = snapshot.proxy_hubs.flatMap((hub) =>
-      hub.accounts.map((account) => ({
-        key: windowStartKey(account.provider, { hubId: hub.id, accountId: account.id }),
-        hubId: hub.id,
-        accountId: account.id,
-        label: `${hub.label} · ${providerNames[account.provider]} · ${account.email ?? account.id}`,
-        provider: account.provider,
-        last: null,
-      })),
-    );
     for (const hub of snapshot.proxy_hubs) {
       for (const account of hub.accounts)
         targets.push({
@@ -117,6 +105,7 @@ export class WindowStarter {
         });
     }
     const keys = new Set(targets.map(({ key }) => key));
+    this.hubKeys = new Set(targets.flatMap(({ key, hub }) => (hub ? [key] : [])));
     for (const collection of [this.idleSince, this.attempted, this.last, this.wakes]) {
       for (const key of collection.keys()) if (!keys.has(key)) collection.delete(key);
     }
@@ -190,20 +179,24 @@ export class WindowStarter {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
         await this.runHub(hub.id, hub.accountId, provider, () => {
-          if (!this.settings.enabled) throw new Error("Automation was switched off.");
+          if (!this.settings.enabled || !this.hubKeys.has(key))
+            throw new Error("Automation is no longer enabled for this account.");
         });
-      } else {
-        const cli = await this.locate(provider, this.settings.providers[provider].path);
-        if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
-        if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
-        await this.run(cli);
-      }
+      } else await this.runDirect(provider, wake);
       return { epoch, error: null };
     } catch (error) {
       return { epoch, error: error instanceof Error ? error.message : String(error) };
     } finally {
       this.running.delete(key);
     }
+  }
+  private async runDirect(provider: StartProviderId, wake: boolean) {
+    const cli = await this.locate(provider, this.settings.providers[provider].path);
+    if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
+    if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
+    if (!this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
+      throw new Error("Automation was switched off.");
+    await this.run(cli);
   }
 }
 

@@ -20,14 +20,6 @@ export type WindowStart = {
   enabled: boolean;
   wake: boolean;
   lastWake: StartAttempt | null;
-  hubs: {
-    key: string;
-    hubId: string;
-    accountId: string;
-    label: string;
-    provider: StartProviderId;
-    last: StartAttempt | null;
-  }[];
   providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
 };
 

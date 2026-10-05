@@ -55,6 +55,7 @@ function starter(
   settings: WindowStartSettings,
   run: (cli: Cli) => Promise<void> = async () => {},
   runHub?: ConstructorParameters<typeof WindowStarter>[4],
+  locate?: () => Promise<Cli | null>,
   notify?: ConstructorParameters<typeof WindowStarter>[5],
 ) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
@@ -66,7 +67,7 @@ function starter(
   let started = 0;
   const instance = new WindowStarter(
     path,
-    async () => cli,
+    locate ?? (async () => cli),
     (command) => {
       runs.push(command);
       return run(command);
@@ -314,12 +315,12 @@ describe("hub automation", () => {
       ["hub", "claude.json", "claude"],
       ["hub", "codex.json", "codex"],
     ]);
-    expect((await instance.read()).hubs.every((hub) => hub.last?.error === null)).toBe(true);
+    expect(Object.values(instance.results()).every((attempt) => attempt?.error === null)).toBe(true);
     instance.observe(hubSnapshot(1600));
     await settle();
     expect(runHub).toHaveBeenCalledTimes(2);
     instance.observe(snapshot(emptyProviderUsage(), false));
-    expect((await instance.read()).hubs).toEqual([]);
+    expect(instance.results()).toEqual({});
     instance.observe(hubSnapshot(1900));
     instance.observe(hubSnapshot(2200));
     await settle();
@@ -365,14 +366,18 @@ describe("hub automation", () => {
     expect(runHub).toHaveBeenCalledTimes(3);
     expect(runHub.mock.calls[2]).toEqual(["hub", "second", provider, expect.any(Function)]);
     expect(Object.keys(instance.results())).toHaveLength(3);
-    expect((await instance.read()).hubs.find((account) => account.accountId === "second")?.last?.error).toBeNull();
+    expect(instance.results()[JSON.stringify(["hub", provider, "second"])]?.error).toBeNull();
   });
 
   it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
     const notices: string[] = [];
     const runHub = vi.fn(async () => {});
-    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, (message) =>
-      notices.push(message),
+    const { instance, runs } = starter(
+      { ...startOn, enabled: false, wake: true },
+      undefined,
+      runHub,
+      undefined,
+      (message) => notices.push(message),
     );
     instance.observe(hubSnapshot(1000, true));
     await settle();
@@ -394,5 +399,24 @@ it("rechecks the automation switch before queued hub work runs", async () => {
   instance.observe(hubSnapshot(1300));
   await settle();
   await instance.set({ ...startOn, enabled: false });
-  expect(checks[0]).toThrow("switched off");
+  expect(checks[0]).toThrow("no longer enabled");
+});
+
+it("cancels a direct start when its provider is disabled during CLI lookup", async () => {
+  let release!: (cli: Cli) => void;
+  const { instance, runs } = starter(
+    startOn,
+    undefined,
+    undefined,
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  instance.observe(snapshot(idle(1000)));
+  instance.observe(snapshot(idle(1300)));
+  instance.observe(snapshot(idle(1600), false));
+  release({ file: "claude", args: [], shell: false, label: "claude" });
+  await settle();
+  expect(runs).toHaveLength(0);
 });
