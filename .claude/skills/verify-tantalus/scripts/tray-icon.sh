@@ -11,7 +11,7 @@ DEST="${1:?usage: tray-icon.sh <dest.png> [preview-pid]}"
 SVC="org.freedesktop.StatusNotifierItem-$PID-1"
 THEME_PATH="$(gdbus call --session --dest "$SVC" --object-path /StatusNotifierItem \
   --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierItem IconThemePath)"
-DIR="$(printf '%s' "$THEME_PATH" | python3 -c 'import re,sys; m = re.search(chr(39) + "([^" + chr(39) + "]+)" + chr(39), sys.stdin.read()); print(m.group(1) if m else "")')"
+DIR="$(printf '%s' "$THEME_PATH" | grep -o "/[^']*" || true)"
 [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "No icon directory for $SVC (got: $THEME_PATH)." >&2; exit 1; }
 newest=""
 for png in "$DIR"/*.png; do
