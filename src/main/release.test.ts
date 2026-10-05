@@ -181,6 +181,25 @@ describe("release manifest", () => {
     expect(() => parseReleases({ message: "rate limited" }, "0.0.14", "0.0.17")).toThrow();
   });
 
+  it("reads release-please notes by the heading each change is filed under", () => {
+    const body = [
+      "## [0.0.34](https://github.com/zytact/tantalus/compare/v0.0.33...v0.0.34) (2026-10-05)",
+      "### Features",
+      "* **tray:** add up a hub's accounts ([#110](https://github.com/zytact/tantalus/issues/110)) ([44339e1](https://github.com/zytact/tantalus/commit/44339e1))",
+      "### Bug Fixes",
+      "* Windows: keep the tray icon visible ([#55](https://github.com/zytact/tantalus/issues/55))",
+      "### Performance Improvements",
+      "* **usage:** show each account as soon as it's read ([#109](https://github.com/zytact/tantalus/issues/109))",
+    ].join("\n");
+    const listing = [{ tag_name: "v0.0.34", body, published_at: null, draft: false, prerelease: false }];
+
+    expect(parseReleases(listing, "0.0.33", "0.0.34")[0].changes).toEqual([
+      { kind: "new", scope: "tray", summary: "add up a hub's accounts" },
+      { kind: "fixed", scope: null, summary: "Windows: keep the tray icon visible" },
+      { kind: "changed", scope: "usage", summary: "show each account as soon as it's read" },
+    ]);
+  });
+
   it("accepts only a download signed with the release key", () => {
     const data = Buffer.from("release bundle");
     expect(verifySignature(data, SIGNATURE, PUBLIC_KEY)).toBe(true);
