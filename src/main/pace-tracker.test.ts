@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, providerIds } from "../shared/usage";
 import type { ProviderId, ProxyHubProviderId, UsageSnapshot } from "../shared/usage";
@@ -56,14 +56,33 @@ it("forgets what every window learned and starts each again from the current rea
   ]);
 });
 
-it("does not let a log write still in flight undo a reset", async () => {
+it("does not let a refresh around a reset save what the reset forgot", async () => {
   const saved = tracker();
   seed(saved.path, "codex");
   const pace = saved.create();
   pace.track(snapshotFor("codex", "Pro"), noActivity, epoch);
-  await pace.reset();
+  const reset = pace.reset();
+  pace.track(snapshotFor("codex", "Pro"), noActivity, epoch + 300);
+  await reset;
   await pace.saved();
-  expect(loadPaceLogs(saved.path)).toEqual({});
+  const logs = Object.values(loadPaceLogs(saved.path));
+  expect(logs.length).toBeGreaterThan(0);
+  expect(logs.every((log) => log.readings.length === 0)).toBe(true);
+});
+
+it("keeps what it learned when the reset cannot be saved", async () => {
+  const saved = tracker();
+  seed(saved.path, "codex");
+  const pace = saved.create();
+  const learned = pace.annotate(snapshotFor("codex", "Pro"), epoch);
+  chmodSync(dirname(saved.path), 0o500);
+  try {
+    await expect(pace.reset()).rejects.toThrow();
+  } finally {
+    chmodSync(dirname(saved.path), 0o700);
+  }
+  expect(pace.annotate(snapshotFor("codex", "Pro"), epoch)).toEqual(learned);
+  expect(Object.values(loadPaceLogs(saved.path))[0]?.readings).toEqual([2, 4]);
 });
 
 function tracker() {

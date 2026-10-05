@@ -24,7 +24,8 @@ export class PaceTracker {
   private readonly logs: Map<string, PaceLog>;
   /** The windows the latest local activity belongs to, and when each was last worked on. */
   private active = new Map<string, number>();
-  /** The queued log writes. Each waits for the one before, so the file ends up with the latest log. */
+  /** The queued log writes. Each waits for the one before and saves the log as it stands then, so
+   * the file always catches up with memory. */
   private writes = Promise.resolve();
 
   constructor(
@@ -51,7 +52,7 @@ export class PaceTracker {
       if (currentPaceOnly(key) && now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);
     }
     // The log only speeds up learning, so a failed write should not fail the reading that led to it.
-    this.save(Object.fromEntries(this.logs)).catch((error: unknown) => {
+    this.save().catch((error: unknown) => {
       console.error("Failed to save the pace log:", error);
     });
     return this.annotate(snapshot, now);
@@ -89,10 +90,16 @@ export class PaceTracker {
     this.logs.set(keys.usual, recordUsual(this.logs.get(keys.usual), next, readings));
   }
 
-  /** Forgets every window's log. The empty log is saved first, so a failed save changes nothing. */
+  /** Forgets every window's log. A failed save brings the old log back, so it changes nothing. */
   async reset() {
-    await this.save({});
+    const learned = [...this.logs];
     this.logs.clear();
+    try {
+      await this.save();
+    } catch (error) {
+      for (const [key, log] of learned) this.logs.set(key, log);
+      throw error;
+    }
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
@@ -106,8 +113,8 @@ export class PaceTracker {
     return this.writes;
   }
 
-  private save(logs: Record<string, PaceLog>): Promise<void> {
-    const write = this.writes.then(() => saveSettingsInBackground(this.logPath, logs));
+  private save(): Promise<void> {
+    const write = this.writes.then(() => saveSettingsInBackground(this.logPath, Object.fromEntries(this.logs)));
     this.writes = write.catch(() => {});
     return write;
   }
