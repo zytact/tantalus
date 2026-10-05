@@ -373,21 +373,22 @@ function HubSection({
           {hubStatusLabels[hub.status]}
         </span>
       </div>
-      <a
-        className="management-link"
-        href={proxyHubManagementUrl(hub.url)}
-        aria-label={`Manage ${hub.label}`}
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => {
-          if (remote) return;
-          event.preventDefault();
-          void window.tantalus.invoke("openProxyHubManagement", hub.id);
-        }}
-      >
-        <span>Hub</span>
-        <span aria-hidden="true">↗</span>
-      </a>
+      {!remote && (
+        <a
+          className="management-link"
+          href={proxyHubManagementUrl(hub.url)}
+          aria-label={`Manage ${hub.label}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            event.preventDefault();
+            void window.tantalus.invoke("openProxyHubManagement", hub.id);
+          }}
+        >
+          <span>Hub</span>
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
       <HubMessage hub={hub} />
       <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />
     </section>
