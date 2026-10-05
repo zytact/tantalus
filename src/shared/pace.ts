@@ -1,4 +1,11 @@
-import { fiveHourSeconds, monthlySeconds, providerIds, providerNames, sevenDaySeconds } from "./usage";
+import {
+  fiveHourSeconds,
+  monthlySeconds,
+  numberedHubAccounts,
+  providerIds,
+  providerNames,
+  sevenDaySeconds,
+} from "./usage";
 import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
 
 /** How far from the usual pace a window has to move before a creature shows. The same multiple sets
@@ -108,11 +115,11 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
       .filter((id) => snapshot.enabled[id])
       .flatMap((id) => windows(snapshot[id], id, providerNames[id], (duration) => paceKey(duration, id))),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      hub.accounts.flatMap(({ id, provider, usage, plan, email }, index) =>
+      numberedHubAccounts(hub.accounts).flatMap(({ id, provider, usage, plan, email, number }) =>
         windows(
           usage,
           provider,
-          `${hub.label} · ${providerNames[provider]} ${index + 1}`,
+          `${hub.label} · ${providerNames[provider]} ${number}`,
           (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
           plan,
           // A hub can swap the account behind an auth file, so the email keeps their pace apart.

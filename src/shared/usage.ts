@@ -76,6 +76,16 @@ export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
   window_starts?: Partial<Record<string, StartAttempt>>;
 };
 
+/** Numbers a hub's accounts within each provider, so its first Codex account is Codex 1 whatever comes before it. */
+export function numberedHubAccounts(accounts: ProxyHubAccount[]) {
+  const counts = new Map<ProxyHubProviderId, number>();
+  return accounts.map((account) => {
+    const number = (counts.get(account.provider) ?? 0) + 1;
+    counts.set(account.provider, number);
+    return { ...account, number };
+  });
+}
+
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {
   codex: "Codex",
