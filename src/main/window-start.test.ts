@@ -151,6 +151,20 @@ describe("window starter", () => {
     expect(runs).toHaveLength(0);
   });
 
+  it("waits a full grace after a provider is switched back on, not from the reading kept while off", async () => {
+    const { instance, runs } = starter(startOn);
+    instance.observe(snapshot(idle(1000)));
+    instance.observe(snapshot(idle(1000), false));
+    // Switching the provider on publishes its kept reading before the fresh one lands.
+    instance.observe(snapshot(idle(1000)));
+    instance.observe(snapshot(idle(1600)));
+    await settle();
+    expect(runs).toHaveLength(0);
+    instance.observe(snapshot(idle(1900)));
+    await settle();
+    expect(runs).toHaveLength(1);
+  });
+
   it("keeps an attempted idle spell consumed when the switch is toggled", async () => {
     const { instance, runs } = starter(startOn);
     instance.observe(snapshot(idle(1000)));
