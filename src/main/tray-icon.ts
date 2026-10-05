@@ -1,20 +1,20 @@
 /** Raw pixels in the BGRA order Electron's `toBitmap` and `createFromBitmap` use. */
 export type Bitmap = { width: number; height: number; data: Buffer };
 
-/** A 5×7 pixel font, narrowed for the 1, since the tray has no text renderer of its own. */
+/** A 3×5 pixel font, since the tray has no text renderer of its own. */
 const glyphs: Record<string, string[]> = {
-  "0": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
-  "1": [".#.", "##.", ".#.", ".#.", ".#.", ".#.", "###"],
-  "2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
-  "3": ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
-  "4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
-  "5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
-  "6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
-  "7": ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
-  "8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
-  "9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
+  "0": ["###", "#.#", "#.#", "#.#", "###"],
+  "1": [".#.", "##.", ".#.", ".#.", "###"],
+  "2": ["###", "..#", "###", "#..", "###"],
+  "3": ["###", "..#", ".##", "..#", "###"],
+  "4": ["#.#", "#.#", "###", "..#", "..#"],
+  "5": ["###", "#..", "###", "..#", "###"],
+  "6": ["###", "#..", "###", "#.#", "###"],
+  "7": ["###", "..#", "..#", ".#.", ".#."],
+  "8": ["###", "#.#", "###", "#.#", "###"],
+  "9": ["###", "#.#", "###", "..#", "###"],
 };
-const GLYPH_HEIGHT = 7;
+const GLYPH_HEIGHT = 5;
 
 /** The used percentage as the tray draws it: whole, and within 0 to `limit`. */
 export function trayPercent(used: number, limit: number): string {
@@ -37,7 +37,7 @@ export function usageBitmap({
 }): Bitmap {
   const scale = fittingScale(text, height, mark ? Infinity : height);
   const textWidth = measure(text, scale);
-  // Tied to the digit scale, so a 2x representation is exactly twice the 1x one.
+  // Tied to the digit scale, so a 2x representation is exactly twice the 1x one whenever the scale doubles.
   const gap = mark ? scale : 0;
   const width = mark ? mark.width + gap + textWidth : Math.max(height, textWidth);
   const bitmap: Bitmap = { width, height, data: Buffer.alloc(width * height * 4) };
@@ -53,11 +53,9 @@ function fittingScale(text: string, height: number, maxWidth: number): number {
   return scale;
 }
 
-const spacing = (scale: number) => Math.max(1, Math.floor(scale / 2));
-
 function measure(text: string, scale: number): number {
   const columns = text.split("").reduce((sum, char) => sum + glyph(char)[0].length, 0);
-  return columns * scale + (text.length - 1) * spacing(scale);
+  return (columns + text.length - 1) * scale;
 }
 
 function glyph(char: string): string[] {
@@ -75,7 +73,7 @@ function drawText(bitmap: Bitmap, text: string, scale: number, left: number, top
         if (cell === "#") fill(bitmap, x + column * scale, top + rowIndex * scale, scale, color);
       }),
     );
-    x += rows[0].length * scale + spacing(scale);
+    x += (rows[0].length + 1) * scale;
   }
 }
 
