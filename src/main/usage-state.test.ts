@@ -19,7 +19,9 @@ import { saveSettings } from "./settings";
 import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
 
 const directories: string[] = [];
-afterEach(() => {
+const trackers: PaceTracker[] = [];
+afterEach(async () => {
+  await Promise.all(trackers.splice(0).map((pace) => pace.saved()));
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 function settingsPath() {
@@ -28,9 +30,10 @@ function settingsPath() {
   return join(directory, "providers.json");
 }
 
-function paceTracker() {
-  const directory = join(settingsPath(), "..");
-  return new PaceTracker(join(directory, "pace-log.json"), join(directory, "pace.json"), async () => noActivity);
+function paceTracker(directory = join(settingsPath(), "..")) {
+  const pace = new PaceTracker(join(directory, "pace-log.json"), join(directory, "pace.json"), async () => noActivity);
+  trackers.push(pace);
+  return pace;
 }
 
 function createState(
@@ -39,11 +42,7 @@ function createState(
   readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]> = async () => [],
 ) {
   const providers = settingsPath();
-  const pace = new PaceTracker(
-    join(providers, "..", "pace-log.json"),
-    join(providers, "..", "pace.json"),
-    async () => noActivity,
-  );
+  const pace = paceTracker(join(providers, ".."));
   return new UsageState(providers, join(providers, "..", "proxy-hubs.json"), readProvider, readHub, publish, pace);
 }
 

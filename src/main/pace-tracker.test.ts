@@ -11,7 +11,9 @@ import { noActivity, PaceTracker } from "./pace-tracker";
 import { loadPaceLogs, saveSettings } from "./settings";
 
 const directories: string[] = [];
-afterEach(() => {
+const trackers: PaceTracker[] = [];
+afterEach(async () => {
+  await Promise.all(trackers.splice(0).map((pace) => pace.saved()));
   vi.useRealTimers();
   vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -28,6 +30,7 @@ it("forgets what every window learned and starts each again from the current rea
     "claude:18000": { ...learned, last: { epoch: now - 600, used: 9, resetAt: null } },
   });
   const pace = new PaceTracker(log, join(directory, "pace.json"), async () => noActivity);
+  trackers.push(pace);
   const snapshot: UsageSnapshot = {
     codex: {
       ...emptyProviderUsage(),
@@ -93,7 +96,12 @@ function tracker() {
   directories.push(directory);
   const path = join(directory, "pace-log.json");
   const settings = join(directory, "pace.json");
-  return { path, create: () => new PaceTracker(path, settings, async () => noActivity) };
+  const create = () => {
+    const pace = new PaceTracker(path, settings, async () => noActivity);
+    trackers.push(pace);
+    return pace;
+  };
+  return { path, create };
 }
 
 const epoch = 1_800_000_000;
