@@ -408,6 +408,8 @@ button.danger:hover:not(:disabled) {
 }
 .account-email span {
   display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   filter: blur(4px);
   user-select: none;
   transition: filter 120ms ease-out;
@@ -1017,6 +1019,9 @@ button.danger:hover:not(:disabled) {
   margin: 0 0 8px;
   font-size: 0.8rem;
   font-weight: 600;
+}
+.pace-window h3 > span {
+  min-width: 0;
 }
 .pace-window-meta {
   color: var(--text-faint);
