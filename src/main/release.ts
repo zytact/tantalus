@@ -81,22 +81,37 @@ const kinds = new Map<string, ReleaseChange["kind"]>([
   ["feat", "new"],
   ["fix", "fixed"],
 ]);
+/** The headings release-please files changes under, named for their commit type. */
+const sections = new Map<string, ReleaseChange["kind"]>([
+  ["Features", "new"],
+  ["Bug Fixes", "fixed"],
+]);
 
-/** Reads the bullets of a release body, as GitHub's generated notes write them:
- * `* feat(scope): summary by @author in https://github.com/owner/repo/pull/1`. Bullets under
- * New Contributors credit people rather than describe changes, so they are left out. */
+/** Reads the bullets of a release body in either format the releases have used. Release-please writes
+ * `* **scope:** summary ([#1](pull url)) ([abc1234](commit url))` under a heading per commit type, and
+ * GitHub's generated notes wrote `* feat(scope): summary by @author in https://github.com/owner/repo/pull/1`.
+ * Bullets under New Contributors credit people rather than describe changes, so they are left out. */
 function parseChanges(body: string): ReleaseChange[] {
-  let credits = false;
+  let section = "";
   return body.split(/\r?\n/).flatMap((line): ReleaseChange[] => {
     const heading = /^#+\s+(.*)$/.exec(line);
-    if (heading) credits = heading[1].trim() === "New Contributors";
+    if (heading) section = heading[1].trim();
     const bullet = /^\s*[-*]\s+(.+)$/.exec(line);
-    if (credits || !bullet) return [];
-    const text = bullet[1].replace(/ by @\S+ in \S+$/, "").trim();
-    const title = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(text);
-    if (!title) return [{ kind: "changed", scope: null, summary: text }];
-    return [{ kind: kinds.get(title[1]) ?? "changed", scope: title[2] || null, summary: title[3] }];
+    return section === "New Contributors" || !bullet ? [] : [readChange(bullet[1], sections.get(section))];
   });
+}
+
+/** `filed` is the kind of the heading the bullet sits under, if that heading names one. */
+function readChange(bullet: string, filed: ReleaseChange["kind"] | undefined): ReleaseChange {
+  const text = bullet
+    .replace(/ by @\S+ in \S+$/, "")
+    .replace(/(\s*\(\[[^\]]*\]\([^)]*\)\))+$/, "")
+    .trim();
+  const scoped = /^\*\*([^*]+):\*\*\s*(.+)$/.exec(text);
+  if (scoped) return { kind: filed ?? "changed", scope: scoped[1], summary: scoped[2] };
+  const title = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(text);
+  if (!title) return { kind: filed ?? "changed", scope: null, summary: text };
+  return { kind: kinds.get(title[1]) ?? "changed", scope: title[2] || null, summary: title[3] };
 }
 
 /** Reads a download whole, reporting progress at most once per `interval` ms so a fast connection does
