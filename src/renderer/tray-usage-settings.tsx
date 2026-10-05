@@ -1,9 +1,10 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { trayUsageColors, trayUsageOptions } from "../shared/tray-usage";
 import type { TrayUsageOption, TrayUsageSettings } from "../shared/tray-usage";
 import { providerIds, providerNames } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import type { Loadable } from "./busy";
+import { Picker } from "./picker";
 import { SettingPending, Toggle } from "./settings-controls";
 
 /** The switch for showing one account's usage in the tray, and under it the account picker and the
@@ -109,7 +110,6 @@ function TrayUsagePicker({
   saving: boolean;
   onSave: (settings: TrayUsageSettings) => void;
 }) {
-  const id = useId();
   if (options.length === 0) {
     return <p className="tray-usage-empty">Switch on a provider or add a hub to pick an account.</p>;
   }
@@ -117,25 +117,17 @@ function TrayUsagePicker({
   const missing = !options.some(({ key }) => key === selected);
   return (
     <div className="hub-form">
-      <div className="hub-key hub-form-wide">
-        <label htmlFor={id}>Account</label>
-        <select
-          id={id}
-          disabled={saving}
+      <div className="hub-form-wide">
+        <Picker
+          label="Account"
           value={selected}
-          onChange={(event) => onSave({ ...settings, source: event.target.value })}
-        >
-          {missing && (
-            <option value={selected} disabled>
-              Account no longer available
-            </option>
-          )}
-          {options.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          disabled={saving}
+          options={[
+            ...(missing ? [{ value: selected, label: "Account no longer available", disabled: true }] : []),
+            ...options.map(({ key, label }) => ({ value: key, label })),
+          ]}
+          onChange={(source) => onSave({ ...settings, source })}
+        />
       </div>
       <TrayUsageLegend options={options} />
     </div>
