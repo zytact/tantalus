@@ -1,4 +1,5 @@
 import type { PaceSettings } from "./pace";
+import type { TrayUsageSettings } from "./tray-usage";
 import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
 import type { WindowStart, WindowStartSettings } from "./window-start";
 
@@ -51,6 +52,8 @@ export type Commands = {
   setOpenAtLogin: (enabled: boolean) => void;
   windowStart: () => WindowStart;
   setWindowStart: (settings: WindowStartSettings) => WindowStart;
+  trayUsage: () => TrayUsageSettings;
+  setTrayUsage: (settings: TrayUsageSettings) => TrayUsageSettings;
   remoteAccess: () => RemoteAccess;
   setRemoteAccess: (route: RemoteRoute, enabled: boolean) => RemoteAccess;
 };

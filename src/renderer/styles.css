@@ -620,7 +620,8 @@ button.danger:hover:not(:disabled) {
   color: var(--text-faint);
   font-weight: 450;
 }
-.hub-form input {
+.hub-form input,
+.hub-form select {
   min-width: 0;
   height: 36px;
   padding: 0 10px;
@@ -634,7 +635,8 @@ button.danger:hover:not(:disabled) {
   letter-spacing: normal;
   text-transform: none;
 }
-.hub-form input:focus-visible {
+.hub-form input:focus-visible,
+.hub-form select:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
@@ -643,6 +645,33 @@ button.danger:hover:not(:disabled) {
 }
 .settings-notice {
   margin-top: 0;
+}
+.tray-usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  list-style: none;
+}
+.tray-usage-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tray-usage-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.tray-usage-empty {
+  margin: 0;
+  padding: 12px 0 17px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 .version {
   flex: none;

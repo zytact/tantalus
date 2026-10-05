@@ -1,14 +1,16 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
-import type { MenuItemConstructorOptions } from "electron";
+import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
-import { nowEpoch, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
+import { nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import type { UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
@@ -16,9 +18,10 @@ import { runCli, startCli } from "./cli";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
-import { paceSettings, windowStartSettings } from "./settings";
+import { loadTrayUsageSettings, paceSettings, saveSettings, trayUsageSettings, windowStartSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
+import { trayPercent, usageBitmap } from "./tray-icon";
 import { trayItems } from "./tray-menu";
 import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
@@ -123,8 +126,8 @@ function start() {
   const updatesEnabled = app.isPackaged && !preview;
 
   const tray = new Tray(trayImage());
-  tray.setToolTip(identity.productName);
   bindTrayClick(tray);
+  const renderTrayIcon = trayUsageIcon(tray, () => state.snapshot);
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
     refresh: () => void state.refresh(),
@@ -132,6 +135,7 @@ function start() {
   };
   let shownTray = "";
   function renderTray() {
+    renderTrayIcon();
     const items = trayItems(state.snapshot, updater.available(), nowEpoch());
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
@@ -205,6 +209,39 @@ function bindTrayClick(tray: Tray) {
   // macOS opens the menu on a left click; elsewhere the click opens the window and the menu keeps its
   // own button.
   if (process.platform !== "darwin") tray.on("click", showWindow);
+}
+
+/** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
+ * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
+function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
+  const path = join(app.getPath("userData"), "tray-usage.json");
+  let settings = loadTrayUsageSettings(path);
+  let shown: string | null = null;
+  const show = (tooltip: string, text: string | null, image: () => NativeImage) => {
+    const key = `${tooltip}:${text}`;
+    if (key === shown) return;
+    shown = key;
+    tray.setToolTip(tooltip);
+    tray.setImage(image());
+  };
+  const render = () => {
+    const reading = trayUsageReading(snapshot(), settings);
+    if (!reading) return show(identity.productName, null, trayImage);
+    const text = trayPercent(reading.used);
+    show(`${identity.productName}\n${reading.label} ${reading.span} ${percent(reading.used)}`, text, () =>
+      usageTrayImage(text, trayUsageColors[reading.provider]),
+    );
+  };
+  handle("trayUsage", () => settings);
+  handle("setTrayUsage", (next) => {
+    const parsed = trayUsageSettings(next);
+    if (!parsed) throw new Error("Unknown tray usage setting.");
+    saveSettings(path, parsed);
+    settings = parsed;
+    render();
+    return parsed;
+  });
+  return render;
 }
 
 function startBackgroundServices(
@@ -320,6 +357,26 @@ function trayImage() {
   sized.addRepresentation({ scaleFactor: 2, buffer: image.resize({ height: 36, quality: "best" }).toPNG() });
   sized.setTemplateImage(!preview);
   return sized;
+}
+
+/** The tray icon with a usage number beside the mark. The mark keeps its color, even on macOS, since
+ * a template image would recolor the number too and the app cannot read the menu bar's ink. Windows
+ * fits every tray icon into a fixed square, so there the number replaces the mark. */
+function usageTrayImage(text: string, color: string) {
+  const height = process.platform === "darwin" ? 18 : 16;
+  const [single, double] = [1, 2].map((scale) => {
+    const mark = process.platform === "win32" ? null : trayMark(height * scale);
+    const bitmap = usageBitmap({ text, color, height: height * scale, mark });
+    return nativeImage.createFromBitmap(bitmap.data, { width: bitmap.width, height: bitmap.height });
+  });
+  const image = nativeImage.createFromBuffer(single.toPNG());
+  image.addRepresentation({ scaleFactor: 2, buffer: double.toPNG() });
+  return image;
+}
+
+function trayMark(height: number) {
+  const image = nativeImage.createFromDataURL(preview ? previewTrayIcon : trayIcon).resize({ height, quality: "best" });
+  return { ...image.getSize(), data: image.toBitmap() };
 }
 
 function publish<E extends keyof Events>(event: E, payload: Events[E]) {
