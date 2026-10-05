@@ -185,21 +185,19 @@ export class UsageState {
     run: (config: ProxyHubConfig, ensureAvailable: () => void) => Promise<void>,
   ): Promise<void> {
     const config = this.hubConfig(id);
+    const connected = () => {
+      const current = this.hubConfigs.find((hub) => hub.id === id);
+      return current?.url === config.url && current.managementKey === config.managementKey;
+    };
     const ensureAvailable = () => {
       const hub = this.snapshot.proxy_hubs.find((hub) => hub.id === id);
-      if (this.hubConfigs.find((hub) => hub.id === id) !== config || !config.enabled || hub?.status !== "ready")
-        throw new ProxyHubError("The hub is not available.");
+      if (!connected() || hub?.status !== "ready") throw new ProxyHubError("The hub is not available.");
     };
     ensureAvailable();
     try {
       await run(config, ensureAvailable);
     } catch (error) {
-      const current = this.hubConfigs.find((hub) => hub.id === id);
-      if (
-        error instanceof ProxyHubRejected &&
-        current?.url === config.url &&
-        current.managementKey === config.managementKey
-      ) {
+      if (error instanceof ProxyHubRejected && connected()) {
         this.snapshot = {
           ...this.snapshot,
           proxy_hubs: this.snapshot.proxy_hubs.map((hub) =>
