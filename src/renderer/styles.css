@@ -506,6 +506,22 @@ button.danger:hover:not(:disabled) {
   font-size: 0.78rem;
   line-height: 1.4;
 }
+.start-accounts {
+  display: grid;
+  gap: 6px;
+  max-width: 28rem;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.start-account {
+  display: block;
+  color: var(--ink);
+  font-weight: 550;
+}
 .setting-url p {
   color: var(--ink);
   overflow-wrap: anywhere;

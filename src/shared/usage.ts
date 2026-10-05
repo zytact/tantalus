@@ -86,6 +86,12 @@ export function numberedHubAccounts(accounts: ProxyHubAccount[]) {
   });
 }
 
+/** How a numbered hub account is named wherever accounts are listed side by side. */
+export const hubAccountLabel = (
+  hubLabel: string,
+  { provider, number }: { provider: ProxyHubProviderId; number: number },
+) => `${hubLabel} · ${providerNames[provider]} ${number}`;
+
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {
   codex: "Codex",

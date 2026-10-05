@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from "react";
-import { providerNames } from "../shared/usage";
+import { hubAccountLabel, numberedHubAccounts, providerNames } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
-import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
+import type { StartProviderId, WindowStart } from "../shared/window-start";
 import type { Loadable } from "./busy";
-import { startStatus, wakeStatus } from "./presentation";
+import { attemptStatus, startStatus, wakeStatus } from "./presentation";
 import { ProviderIcon } from "./provider-icon";
 import { SettingPending, Toggle } from "./settings-controls";
 
@@ -69,7 +69,7 @@ export function WindowStartRows({ snapshot }: { snapshot: UsageSnapshot | null }
               key={id}
               id={id}
               provider={start.providers[id]}
-              status={providerStatus(start, snapshot, id)}
+              accounts={startAccounts(start, snapshot, id)}
               showCli={snapshot?.enabled[id] ?? false}
               saving={saving}
               onSavePath={(path) =>
@@ -86,37 +86,29 @@ function hasHubProvider(snapshot: UsageSnapshot | null, provider: StartProviderI
   return snapshot?.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === provider)) ?? false;
 }
 
-/** The last start of each hub account that pools this provider. */
-function hubAttempts(snapshot: UsageSnapshot | null, provider: StartProviderId): (StartAttempt | null)[] {
-  return (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
-    hub.accounts
+/** Every account a provider starts windows for: the direct sign-in when it is polled, then each hub account. */
+export function startAccounts(
+  start: WindowStart,
+  snapshot: UsageSnapshot | null,
+  provider: StartProviderId,
+): { key: string; label: string; status: string }[] {
+  const direct = snapshot?.enabled[provider]
+    ? [{ key: provider, label: "Direct", status: startStatus(start.providers[provider]) }]
+    : [];
+  const hubs = (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
+    numberedHubAccounts(hub.accounts)
       .filter((account) => account.provider === provider)
-      .map(
-        (account) =>
-          snapshot?.window_starts?.[windowStartKey(provider, { hubId: hub.id, accountId: account.id })] ?? null,
-      ),
+      .map((account) => {
+        const key = windowStartKey(provider, { hubId: hub.id, accountId: account.id });
+        const last = snapshot?.window_starts?.[key];
+        return {
+          key,
+          label: hubAccountLabel(hub.label, account),
+          status: last ? attemptStatus(last) : "Not started yet.",
+        };
+      }),
   );
-}
-
-export function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | null {
-  const recent = attempts.flatMap((attempt) => (attempt ? [attempt] : [])).toSorted((a, b) => b.epoch - a.epoch);
-  return recent[0] ?? null;
-}
-
-function automationAttempt(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {
-  const attempts = hubAttempts(snapshot, provider);
-  if (snapshot?.enabled[provider]) attempts.push(start.providers[provider].last);
-  return lastAttempt(attempts);
-}
-
-function providerStatus(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId): string {
-  const accounts = hubAttempts(snapshot, provider).length;
-  if (accounts > 1)
-    return `Starts each of the ${accounts} hub accounts separately. See each account's last start on the dashboard.`;
-  const command = snapshot?.enabled[provider]
-    ? start.providers[provider].command
-    : "an account-specific prompt through the hub";
-  return startStatus({ command, last: automationAttempt(start, snapshot, provider) });
+  return [...direct, ...hubs];
 }
 
 function wakeStart(start: Loadable<WindowStart>, snapshot: UsageSnapshot): Loadable<WindowStart> {
@@ -193,14 +185,14 @@ function WakeControl({
 function StartProviderRow({
   id,
   provider,
-  status,
+  accounts,
   showCli,
   saving,
   onSavePath,
 }: {
   id: StartProviderId;
   provider: WindowStart["providers"][StartProviderId];
-  status: string;
+  accounts: ReturnType<typeof startAccounts>;
   showCli: boolean;
   saving: boolean;
   onSavePath: (path: string | null) => void;
@@ -214,7 +206,14 @@ function StartProviderRow({
             <ProviderIcon id={id} />
             {name}
           </h2>
-          <p>{status}</p>
+          <ul className="start-accounts">
+            {accounts.map(({ key, label, status }) => (
+              <li key={key}>
+                <span className="start-account">{label}</span>
+                {status}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
       {showCli && (

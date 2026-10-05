@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import { clockEpoch, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
+import { windowStartKey } from "../shared/window-start";
 import {
   absoluteTime,
   countdown,
@@ -18,7 +19,7 @@ import {
   usageValueText,
 } from "./presentation";
 import type { Chord } from "./presentation";
-import { lastAttempt } from "./window-start-settings";
+import { startAccounts } from "./window-start-settings";
 
 const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   email: null,
@@ -163,13 +164,52 @@ describe("window start status", () => {
       `Could not start a window ${absoluteTime(epoch)}. claude exited with code 1`,
     );
   });
+});
 
-  it("summarizes multiple accounts with the newest attempt, not the newest failure", () => {
-    const failure = { epoch: 100, error: "boom" };
-    const success = { epoch: 200, error: null };
-    expect(lastAttempt([failure, success])).toEqual(success);
-    expect(lastAttempt([{ ...success, epoch: 50 }, failure])).toEqual(failure);
-    expect(lastAttempt([null, null])).toBeNull();
+describe("window start accounts", () => {
+  it("lists the direct sign-in and each hub account with its own last start", () => {
+    const epoch = 1_790_000_000;
+    const account = (id: string, accountProvider: "claude" | "codex") => ({
+      id,
+      email: null,
+      plan: null,
+      provider: accountProvider,
+      usage: provider(),
+    });
+    const snapshot: UsageSnapshot = {
+      codex: provider(),
+      claude: provider(),
+      opencode: provider(),
+      enabled: { codex: true, claude: false, opencode: false },
+      proxy_hubs: [
+        {
+          id: "hub",
+          url: "http://hub.test:8317",
+          label: "Hub",
+          accounts: [account("a", "claude"), account("b", "codex"), account("c", "codex")],
+          last_successful_update_epoch: null,
+          status: "ready",
+          error_message: null,
+        },
+      ],
+      pace: { settings: defaultPaceSettings, windows: {} },
+      window_starts: { [windowStartKey("codex", { hubId: "hub", accountId: "c" })]: { epoch, error: null } },
+    };
+    const start = {
+      enabled: true,
+      wake: false,
+      lastWake: null,
+      providers: {
+        claude: { path: null, command: null, last: null },
+        codex: { path: null, command: "/usr/bin/codex", last: null },
+      },
+    };
+    expect(startAccounts(start, snapshot, "codex").map(({ label, status }) => [label, status])).toEqual([
+      ["Direct", "Runs /usr/bin/codex."],
+      ["Hub · Codex 1", "Not started yet."],
+      ["Hub · Codex 2", `Started a window ${absoluteTime(epoch)}.`],
+    ]);
+    expect(startAccounts(start, snapshot, "claude").map(({ label }) => label)).toEqual(["Hub · Claude 1"]);
   });
 });
 
