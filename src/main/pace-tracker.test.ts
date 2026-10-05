@@ -229,6 +229,25 @@ it("shares the usual baseline when direct sign-ins change without reusing their 
   });
 });
 
+it("keeps current pace apart when a hub swaps the account behind an auth file", () => {
+  const saved = tracker();
+  seed(saved.path, "codex");
+  const pace = saved.create();
+  pace.track(snapshotFor("codex", "Pro"), noActivity, epoch);
+  const signedIn = (email: string, used: number, at: number) => {
+    const hub = withHub(snapshotFor("codex", "Pro"), "codex", ["Pro"], at, used);
+    hub.proxy_hubs[0]!.accounts[0]!.email = email;
+    return hub;
+  };
+  for (let tick = 0; tick <= 4; tick++)
+    pace.track(signedIn("first@example.test", 10 + tick, epoch + tick * 300), noActivity, epoch + tick * 300);
+  const swapped = pace.track(signedIn("second@example.test", 80, epoch + 1500), noActivity, epoch + 1500);
+  expect(swapped.pace.windows[paceKey(fiveHourSeconds, "codex", { hubId: "hub", accountId: "0" })]).toMatchObject({
+    status: "learned",
+    current: { kind: "idle" },
+  });
+});
+
 it.each(providerIds)("retains %s learning while absent and reuses it after restart", (provider) => {
   const saved = tracker();
   seed(saved.path, provider);

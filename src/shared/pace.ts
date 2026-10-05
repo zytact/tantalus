@@ -108,14 +108,15 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
       .filter((id) => snapshot.enabled[id])
       .flatMap((id) => windows(snapshot[id], id, providerNames[id], (duration) => paceKey(duration, id))),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      hub.accounts.flatMap(({ id, provider, usage, plan }, index) =>
+      hub.accounts.flatMap(({ id, provider, usage, plan, email }, index) =>
         windows(
           usage,
           provider,
           `${hub.label} · ${providerNames[provider]} ${index + 1}`,
           (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
           plan,
-          id,
+          // A hub can swap the account behind an auth file, so the email keeps their pace apart.
+          email?.trim().toLowerCase() ?? null,
         ),
       ),
     ),
