@@ -34,6 +34,7 @@ export function signInLapsed(usage: ProviderUsage): boolean {
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<string, number>();
+  private readonly unpolledEpochs = new Map<string, number>();
   private readonly attempted = new Set<string>();
   private readonly running = new Set<string>();
   private readonly last = new Map<string, StartAttempt>();
@@ -106,7 +107,7 @@ export class WindowStarter {
     }
     const keys = new Set(targets.map(({ key }) => key));
     this.hubKeys = new Set(targets.flatMap(({ key, hub }) => (hub ? [key] : [])));
-    for (const collection of [this.idleSince, this.attempted, this.last, this.wakes]) {
+    for (const collection of [this.idleSince, this.unpolledEpochs, this.attempted, this.last, this.wakes]) {
       for (const key of collection.keys()) if (!keys.has(key)) collection.delete(key);
     }
     for (const target of targets) {
@@ -134,15 +135,27 @@ export class WindowStarter {
     void this.wake(target);
   }
 
-  private observeProvider(target: StartTarget) {
-    const { key, usage, polled } = target;
+  /** When the target's reading was taken, if it was taken while the target was polled. A provider switched
+   * off keeps its last reading, and on switching back on that reading says nothing about the time since. */
+  private polledEpoch({ key, usage, polled }: StartTarget): number | null {
     const epoch = usage.last_successful_update_epoch;
+    if (epoch === null) return null;
+    if (!polled) {
+      this.unpolledEpochs.set(key, epoch);
+      return null;
+    }
+    return epoch > (this.unpolledEpochs.get(key) ?? -Infinity) ? epoch : null;
+  }
+
+  private observeProvider(target: StartTarget) {
+    const { key, usage } = target;
     if (!idleWindow(usage)) {
       this.idleSince.delete(key);
       this.attempted.delete(key);
       return;
     }
-    if (!this.settings.enabled || !polled || epoch === null) {
+    const epoch = this.polledEpoch(target);
+    if (!this.settings.enabled || epoch === null) {
       this.idleSince.delete(key);
       return;
     }
