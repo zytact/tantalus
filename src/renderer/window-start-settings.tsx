@@ -104,7 +104,7 @@ export function startAccounts(
         return {
           key,
           label: hubAccountLabel(hub.label, account),
-          status: last ? attemptStatus(last) : "Not started yet.",
+          status: last ? attemptStatus(last) : "Waiting for an idle window.",
         };
       }),
   );
