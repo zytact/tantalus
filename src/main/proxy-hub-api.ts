@@ -1,5 +1,6 @@
 import { emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
 import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
+import { ReadFailure } from "./failure";
 import { claudeHeaders } from "./api";
 import {
   field,
@@ -37,12 +38,56 @@ export class ProxyHubRejected extends ProxyHubError {}
 
 export class ProxyHubApi {
   private readonly accountReads = new ConcurrencyLimit(4);
+  private readonly rejected = new WeakSet<ProxyHubConfig>();
 
   constructor(private readonly request: typeof fetch = fetch) {}
 
   async read(config: ProxyHubConfig): Promise<ProxyHubAccount[]> {
     const accounts = await this.authFiles(config);
     return Promise.all(accounts.map((account) => this.accountReads.run(() => this.readAccount(config, account))));
+  }
+
+  async runAccount(
+    config: ProxyHubConfig,
+    id: string,
+    provider: ProxyHubProviderId,
+    ensureAvailable: () => void = () => {},
+  ): Promise<void> {
+    await this.accountReads.run(async () => {
+      ensureAvailable();
+      const account = (await this.authFiles(config)).find(
+        (account) => account.id === id && account.provider === provider,
+      );
+      if (!account) throw new ProxyHubError("The hub account is no longer enabled or available.");
+      ensureAvailable();
+      const models = await this.management(config, `model-definitions/${provider}`);
+      const model = startModel(models, provider);
+      ensureAvailable();
+      const claude = provider === "claude";
+      const result = await this.apiCall(
+        config,
+        account,
+        claude ? "https://api.anthropic.com/v1/messages" : "https://chatgpt.com/backend-api/codex/responses",
+        {
+          model,
+          ...(claude
+            ? {
+                max_tokens: 1,
+                system: "You are Claude Code, Anthropic's official CLI for Claude.",
+                messages: [{ role: "user", content: "OK" }],
+              }
+            : {
+                instructions: "Reply OK.",
+                store: false,
+                stream: true,
+                reasoning: { effort: "low" },
+                input: [{ role: "user", content: [{ type: "input_text", text: "OK" }] }],
+              }),
+        },
+      );
+      if (claude && field(result, "type") !== "message")
+        throw new ProxyHubError("The hub did not complete the window-start prompt.");
+    });
   }
 
   private async authFiles(config: ProxyHubConfig): Promise<AuthFile[]> {
@@ -65,7 +110,8 @@ export class ProxyHubApi {
       return {
         ...emptyProviderUsage(),
         status: "error",
-        error_message: "The hub could not read this account's usage.",
+        error_message: error instanceof ReadFailure ? error.message : "The hub could not read this account's usage.",
+        error_reason: error instanceof ReadFailure ? error.reason : null,
       };
     });
     return {
@@ -123,29 +169,24 @@ export class ProxyHubApi {
     return ready({ ...parseClaudeUsage(value), ...parseClaudeResets(value) }, nowEpoch());
   }
 
-  private async apiCall(config: ProxyHubConfig, account: AuthFile, url: string): Promise<unknown> {
-    const headers =
-      account.provider === "codex"
-        ? {
-            Authorization: "Bearer $TOKEN$",
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "codex-1",
-            Originator: "Codex Desktop",
-            ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
-          }
-        : { Authorization: "Bearer $TOKEN$", ...claudeHeaders };
-    const response = await this.management(config, "api-call", {
-      auth_index: account.authIndex,
-      method: "GET",
-      url,
-      header: headers,
-    });
-    const status = field(response, "status_code");
-    const body = field(response, "body");
-    if (typeof status !== "number" || !Number.isInteger(status) || typeof body !== "string") {
-      throw new ProxyHubError("The hub returned an unexpected provider response.");
+  private async apiCall(config: ProxyHubConfig, account: AuthFile, url: string, data?: unknown): Promise<unknown> {
+    const response = await this.management(
+      config,
+      "api-call",
+      {
+        auth_index: account.authIndex,
+        method: data === undefined ? "GET" : "POST",
+        ...(data === undefined ? {} : { data: JSON.stringify(data) }),
+        url,
+        header: upstreamHeaders(account, data !== undefined),
+      },
+      data === undefined ? TIMEOUT_MILLISECONDS : 120_000,
+    );
+    const body = providerBody(response, account.provider);
+    if (data !== undefined && account.provider === "codex") {
+      if (!completedResponse(body)) throw new ProxyHubError("The hub did not complete the window-start prompt.");
+      return null;
     }
-    if (status < 200 || status >= 300) throw new ProxyHubError(`The provider refused the hub request (${status}).`);
     try {
       return JSON.parse(body);
     } catch {
@@ -153,7 +194,13 @@ export class ProxyHubApi {
     }
   }
 
-  private async management(config: ProxyHubConfig, path: string, body?: unknown): Promise<unknown> {
+  private async management(
+    config: ProxyHubConfig,
+    path: string,
+    body?: unknown,
+    timeout = TIMEOUT_MILLISECONDS,
+  ): Promise<unknown> {
+    if (this.rejected.has(config)) throw new ProxyHubRejected("The hub refused management access.");
     let url: string;
     try {
       url = new URL(`/v0/management/${path}`, config.url).toString();
@@ -162,19 +209,11 @@ export class ProxyHubApi {
     }
     let response: Response;
     try {
-      response = await this.request(url, {
-        method: body === undefined ? "GET" : "POST",
-        headers: {
-          authorization: `Bearer ${config.managementKey}`,
-          accept: "application/json",
-          ...(body === undefined ? {} : { "content-type": "application/json" }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(TIMEOUT_MILLISECONDS),
-      });
+      response = await this.request(url, managementRequest(config, body, timeout));
     } catch {
       throw new ProxyHubError("The hub management request failed.");
     }
+    if (response.status === 401 || response.status === 403) this.rejected.add(config);
     if (!response.ok) throw managementFailure(response.status);
     try {
       return await response.json();
@@ -182,6 +221,79 @@ export class ProxyHubApi {
       throw new ProxyHubError("The hub management request failed.");
     }
   }
+}
+
+function managementRequest(config: ProxyHubConfig, body: unknown, timeout: number): RequestInit {
+  return {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      authorization: `Bearer ${config.managementKey}`,
+      accept: "application/json",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(timeout),
+  };
+}
+
+function upstreamHeaders(account: AuthFile, generating: boolean) {
+  if (account.provider === "codex")
+    return {
+      Authorization: "Bearer $TOKEN$",
+      "Content-Type": "application/json",
+      "OpenAI-Beta": "codex-1",
+      Originator: "Codex Desktop",
+      ...(account.accountId ? { "Chatgpt-Account-Id": account.accountId } : {}),
+    };
+  return {
+    Authorization: "Bearer $TOKEN$",
+    ...claudeHeaders,
+    ...(generating
+      ? {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
+          "x-app": "cli",
+        }
+      : {}),
+  };
+}
+
+function providerBody(response: unknown, provider: ProxyHubProviderId): string {
+  const status = field(response, "status_code");
+  const body = field(response, "body");
+  if (typeof status !== "number" || !Number.isInteger(status) || typeof body !== "string")
+    throw new ProxyHubError("The hub returned an unexpected provider response.");
+  if (status === 401 && provider === "claude") throw new ReadFailure("rejected");
+  if (status < 200 || status >= 300) throw new ProxyHubError(`The provider refused the hub request (${status}).`);
+  return body;
+}
+
+function completedResponse(body: string): boolean {
+  return body
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .some((line) => {
+      try {
+        return field(JSON.parse(line.slice(5).trim()), "type") === "response.completed";
+      } catch {
+        return false;
+      }
+    });
+}
+
+function startModel(value: unknown, provider: ProxyHubProviderId): string {
+  const models = field(value, "models");
+  const ids = Array.isArray(models)
+    ? models.flatMap((model) => {
+        const id = field(model, "id");
+        return typeof id === "string" ? [id] : [];
+      })
+    : [];
+  const supported = ids.filter((id) => id.startsWith(provider === "claude" ? "claude-" : "gpt-"));
+  const model = supported.find((id) => /haiku|luna|mini/.test(id)) ?? supported[0];
+  if (!model) throw new ProxyHubError("The hub account has no supported model for starting a window.");
+  return model;
 }
 
 function managementFailure(status: number): ProxyHubError {

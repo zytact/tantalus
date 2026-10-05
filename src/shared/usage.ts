@@ -1,3 +1,4 @@
+import type { StartAttempt } from "./window-start";
 import type { PaceSnapshot } from "./pace";
 import type { ReadFailureReason } from "./failure";
 
@@ -69,6 +70,7 @@ export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
   enabled: ProviderSettings;
   proxy_hubs: ProxyHubSnapshot[];
   pace: PaceSnapshot;
+  window_starts?: Partial<Record<string, StartAttempt>>;
 };
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];

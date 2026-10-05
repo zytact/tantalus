@@ -74,10 +74,11 @@ function start() {
     async (provider) => api.fetch(provider, await readCredentials(provider)),
     (config) => proxyHubs.read(config),
     (snapshot) => {
+      starter.observe(snapshot);
+      snapshot.window_starts = starter.results();
       renderTray();
       publish("usageSnapshot", snapshot);
       web.publish(snapshot);
-      starter.observe(snapshot);
     },
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),
@@ -90,6 +91,13 @@ function start() {
     startCli,
     runCli,
     () => void state.refresh(),
+    (hubId, accountId, provider, ensureEnabled) =>
+      state.withProxyHub(hubId, (config, ensureAvailable) =>
+        proxyHubs.runAccount(config, accountId, provider, () => {
+          ensureEnabled();
+          ensureAvailable();
+        }),
+      ),
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
   const updater = new Updater(

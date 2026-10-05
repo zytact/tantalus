@@ -235,6 +235,31 @@ describe("usage state", () => {
     expect(state.snapshot.proxy_hubs[0]?.status).toBe("ready");
   });
 
+  it("keeps a hub run going through a rename but stops it when the key changes", async () => {
+    const providers = settingsPath();
+    const hubs = join(providers, "..", "proxy-hubs.json");
+    saveSettings(hubs, [hubConfig]);
+    const state = new UsageState(
+      providers,
+      hubs,
+      async () => ready(1),
+      async () => [hubAccount(42)],
+      () => {},
+      paceTracker(),
+    );
+    await state.refresh();
+    const checks: string[] = [];
+    await state.withProxyHub("hub", async (_config, ensureAvailable) => {
+      await state.updateProxyHub("hub", { label: "Work hub", url: hubConfig.url, managementKey: "" });
+      ensureAvailable();
+      checks.push("renamed");
+      await state.updateProxyHub("hub", { label: "Work hub", url: hubConfig.url, managementKey: "rotated" });
+      expect(ensureAvailable).toThrow("The hub is not available.");
+      checks.push("rotated");
+    });
+    expect(checks).toEqual(["renamed", "rotated"]);
+  });
+
   it("stops reading a hub that rejected its key until it is switched back on", async () => {
     const providers = settingsPath();
     const hubs = join(providers, "..", "proxy-hubs.json");
@@ -417,4 +442,12 @@ describe("polling", () => {
     expect(settled(snapshot)).toBe(false);
     expect(settled({ ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0]!, accounts: [] }] })).toBe(true);
   });
+});
+
+it("preserves a hub account's typed sign-in failure across cached readings", () => {
+  const previous = { ...emptyProxyHubSnapshot(hubConfig), accounts: [hubAccount(23)] };
+  const failed = hubAccount(0);
+  failed.usage = { ...emptyProviderUsage(), status: "error", error_reason: "rejected", error_message: "rejected" };
+  const result = applyHubReading(previous, hubConfig, [failed]);
+  expect(result.accounts[0]?.usage).toMatchObject({ status: "stale", error_reason: "rejected" });
 });

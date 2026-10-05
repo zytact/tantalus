@@ -82,13 +82,16 @@ export function absoluteTime(epoch: number | null): string {
 }
 
 /** The last window start, or what the next one would run. */
-export function startStatus({ command, last }: WindowStart["providers"][StartProviderId]): string {
+export function startStatus({
+  command,
+  last,
+}: Pick<WindowStart["providers"][StartProviderId], "command" | "last">): string {
   if (last?.error) return `Could not start a window ${absoluteTime(last.epoch)}. ${last.error}`;
   if (last) return `Started a window ${absoluteTime(last.epoch)}.`;
   return command ? `Runs ${command}.` : "Could not find the CLI. Enter its path below.";
 }
 
-export function wakeStatus({ lastWake }: WindowStart): string {
+export function wakeStatus({ lastWake }: Pick<WindowStart, "lastWake">): string {
   if (lastWake?.error) return `Could not wake Claude ${absoluteTime(lastWake.epoch)}. ${lastWake.error}`;
   if (lastWake) return `Woke Claude ${absoluteTime(lastWake.epoch)}.`;
   return "When Claude's sign-in expires or the usage service rejects it, Tantalus sends a one-word prompt through the Claude CLI, then refreshes. It tries at most once an hour.";

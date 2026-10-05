@@ -147,8 +147,10 @@ SCENARIOS = {
     "monthly-only": monthly_only,
     "blocked": blocked,
     "idle": idle,
+    "hub-multiple-idle": idle,
     "no-windows": no_windows,
     "error": None,
+    "hub-rejected": ready,
 }
 ROUTES = {
     "/backend-api/wham/usage": "codex_usage",
@@ -164,6 +166,8 @@ ROUTES = {
 class Handler(BaseHTTPRequestHandler):
     scenario = "ready"
     request_log = None
+    started = set()
+    renewed = False
 
     def send_json(self, status, body):
         payload = json.dumps(body).encode()
@@ -176,6 +180,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/__fixture/health":
             return self.send_json(200, {"scenario": Handler.scenario})
+        if self.path.startswith("/v0/management/model-definitions/"):
+            if self.headers.get("authorization") != MANAGEMENT_TOKEN:
+                return self.send_json(401, {"error": "fixture management key required"})
+            return self.send_json(200, {"models": [{"id": "gpt-6-luna"}, {"id": "claude-haiku-4-5-20251001"}]})
         if self.path == "/v0/management/auth-files":
             with open(Handler.request_log, "a") as log:
                 log.write(f"{int(time.time())} {Handler.scenario} GET {self.path}\n")
@@ -215,8 +223,10 @@ class Handler(BaseHTTPRequestHandler):
         name = self.path[len(prefix):] if self.path.startswith(prefix) else None
         if name in SCENARIOS:
             Handler.scenario = name
+            Handler.started.clear()
+            Handler.renewed = False
             return self.send_json(200, {"scenario": name})
-        if self.path != "/v0/management/api-call":
+        if self.path not in ["/v0/management/api-call", "/v0/management/auth-files/refresh"]:
             return self.send_json(404, {"error": "unknown path"})
         with open(Handler.request_log, "a") as log:
             log.write(f"{int(time.time())} {Handler.scenario} POST {self.path}\n")
@@ -225,7 +235,25 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size = int(self.headers.get("content-length", "0"))
             request = json.loads(self.rfile.read(size))
-            key = ROUTES.get(urlparse(request["url"]).path)
+            if self.path.endswith("/auth-files/refresh"):
+                if request != {"name": "hub-claude.json", "auth_index": "hub-claude"}:
+                    return self.send_json(400, {"error": "wrong renewal account"})
+                Handler.renewed = True
+                with open(Handler.request_log, "a") as log:
+                    log.write(f"{int(time.time())} RENEW hub-claude\n")
+                return self.send_json(200, {"ok": True})
+            path = urlparse(request["url"]).path
+            key = ROUTES.get(path)
+            if request.get("method") == "POST" and path in ["/v1/messages", "/backend-api/codex/responses"]:
+                account = request.get("auth_index")
+                expected = "hub-claude" if path == "/v1/messages" else "hub-codex"
+                if account not in [expected, expected + "-two"] or request.get("header", {}).get("Authorization") != "Bearer $TOKEN$":
+                    return self.send_json(400, {"error": "wrong start account"})
+                Handler.started.add(account)
+                with open(Handler.request_log, "a") as log:
+                    log.write(f"{int(time.time())} START {account}\n")
+                body = json.dumps({"type": "message"}) if path == "/v1/messages" else 'data: {"type":"response.completed"}\n\n'
+                return self.send_json(200, {"status_code": 200, "body": body})
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return self.send_json(400, {"error": "invalid management request"})
         if request.get("header", {}).get("Authorization") != "Bearer $TOKEN$" or key is None:
@@ -233,6 +261,10 @@ class Handler(BaseHTTPRequestHandler):
         build = SCENARIOS[Handler.scenario]
         status = 500 if build is None else 200
         body = {"error": "fixture error scenario"} if build is None else build()[key]
+        if Handler.scenario == "hub-rejected" and key == "claude_usage" and not Handler.renewed:
+            status, body = 401, {"error": "fixture rejected sign-in"}
+        if Handler.scenario in ["idle", "hub-multiple-idle"] and request.get("auth_index") in Handler.started and key in ["codex_usage", "claude_usage"]:
+            body = ready()[key]
         if build is not None and key == "codex_credits":
             body = {
                 "credits": [

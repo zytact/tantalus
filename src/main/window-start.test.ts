@@ -51,7 +51,12 @@ const startOn: WindowStartSettings = {
   providers: { claude: { path: null }, codex: { path: null } },
 };
 
-function starter(settings: WindowStartSettings, run: (cli: Cli) => Promise<void> = async () => {}) {
+function starter(
+  settings: WindowStartSettings,
+  run: (cli: Cli) => Promise<void> = async () => {},
+  runHub?: ConstructorParameters<typeof WindowStarter>[4],
+  notify?: ConstructorParameters<typeof WindowStarter>[5],
+) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
   directories.push(directory);
   const path = join(directory, "window-start.json");
@@ -67,6 +72,8 @@ function starter(settings: WindowStartSettings, run: (cli: Cli) => Promise<void>
       return run(command);
     },
     () => started++,
+    runHub,
+    notify,
   );
   return { instance, runs, started: () => started };
 }
@@ -164,7 +171,7 @@ describe("window starter", () => {
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1300)));
     await settle();
-    expect(started()).toBe(0);
+    expect(started()).toBe(1);
     expect((await instance.read()).providers.claude.last?.error).toBe("claude exited with code 1: not logged in");
     instance.observe(snapshot(idle(1600)));
     instance.observe(snapshot(idle(1900)));
@@ -270,4 +277,122 @@ describe("sign-in wake", () => {
     await settle();
     expect(runs).toHaveLength(0);
   });
+});
+
+function hubSnapshot(epoch: number, rejected = false): UsageSnapshot {
+  const usage = rejected ? applyReading(idle(epoch), new ReadFailure("rejected")) : idle(epoch);
+  return {
+    ...snapshot(emptyProviderUsage(), false),
+    proxy_hubs: [
+      {
+        id: "hub",
+        label: "Hub",
+        status: "ready",
+        error_message: null,
+        last_successful_update_epoch: epoch,
+        accounts: (["claude", "codex"] as const).map((provider) => ({
+          id: `${provider}.json`,
+          email: null,
+          plan: null,
+          provider,
+          usage,
+        })),
+      },
+    ],
+  };
+}
+
+describe("hub automation", () => {
+  it("starts each hub account independently of direct switches and stops when removed", async () => {
+    const runHub = vi.fn(async () => {});
+    const { instance, runs } = starter(startOn, undefined, runHub);
+    instance.observe(hubSnapshot(1000));
+    instance.observe(hubSnapshot(1300));
+    await settle();
+    expect(runs).toHaveLength(0);
+    expect(runHub.mock.calls.map((call) => [...call].slice(0, 3))).toEqual([
+      ["hub", "claude.json", "claude"],
+      ["hub", "codex.json", "codex"],
+    ]);
+    expect((await instance.read()).hubs.every((hub) => hub.last?.error === null)).toBe(true);
+    instance.observe(hubSnapshot(1600));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(2);
+    instance.observe(snapshot(emptyProviderUsage(), false));
+    expect((await instance.read()).hubs).toEqual([]);
+    instance.observe(hubSnapshot(1900));
+    instance.observe(hubSnapshot(2200));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(4);
+  });
+
+  it.each(["codex", "claude"] as const)("keeps pooled %s timers and results separate", async (provider) => {
+    const runHub = vi.fn(async (hub: string) => {
+      if (hub === "other") throw new Error("Account unavailable");
+    });
+    const { instance } = starter(startOn, undefined, runHub);
+    const pooled = (at: number, secondIdle: boolean): UsageSnapshot => {
+      const source = hubSnapshot(at);
+      const hub = source.proxy_hubs[0];
+      const account = hub.accounts.find((account) => account.provider === provider)!;
+      return {
+        ...source,
+        proxy_hubs: [
+          {
+            ...hub,
+            accounts: [
+              { ...account, id: "first" },
+              { ...account, id: "second", usage: secondIdle ? idle(at) : running(at) },
+            ],
+          },
+          { ...hub, id: "other", accounts: [{ ...account, id: "first" }] },
+        ],
+      };
+    };
+    instance.observe(pooled(1000, false));
+    instance.observe(pooled(1300, true));
+    await settle();
+    expect(runHub.mock.calls).toEqual([
+      ["hub", "first", provider, expect.any(Function)],
+      ["other", "first", provider, expect.any(Function)],
+    ]);
+    expect(instance.results()).toEqual({
+      [JSON.stringify(["hub", provider, "first"])]: { epoch: expect.any(Number), error: null },
+      [JSON.stringify(["other", provider, "first"])]: { epoch: expect.any(Number), error: "Account unavailable" },
+    });
+    instance.observe(pooled(1600, true));
+    await settle();
+    expect(runHub).toHaveBeenCalledTimes(3);
+    expect(runHub.mock.calls[2]).toEqual(["hub", "second", provider, expect.any(Function)]);
+    expect(Object.keys(instance.results())).toHaveLength(3);
+    expect((await instance.read()).hubs.find((account) => account.accountId === "second")?.last?.error).toBeNull();
+  });
+
+  it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
+    const notices: string[] = [];
+    const runHub = vi.fn(async () => {});
+    const { instance, runs } = starter({ ...startOn, enabled: false, wake: true }, undefined, runHub, (message) =>
+      notices.push(message),
+    );
+    instance.observe(hubSnapshot(1000, true));
+    await settle();
+    expect((await instance.read()).wake).toBe(false);
+    expect((await instance.set({ ...startOn, enabled: false, wake: true })).wake).toBe(false);
+    expect(notices).toHaveLength(2);
+    expect(notices.at(-1)).toContain("direct sign-ins");
+    expect(runHub).not.toHaveBeenCalled();
+    expect(runs).toHaveLength(0);
+  });
+});
+
+it("rechecks the automation switch before queued hub work runs", async () => {
+  const checks: (() => void)[] = [];
+  const { instance } = starter(startOn, undefined, async (_hub, _account, _provider, check) => {
+    checks.push(check);
+  });
+  instance.observe(hubSnapshot(1000));
+  instance.observe(hubSnapshot(1300));
+  await settle();
+  await instance.set({ ...startOn, enabled: false });
+  expect(checks[0]).toThrow("switched off");
 });

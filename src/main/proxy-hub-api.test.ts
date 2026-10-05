@@ -302,3 +302,114 @@ function requestBody(init: RequestInit | undefined): string {
   if (typeof init?.body !== "string") throw new Error("Expected a JSON request body.");
   return init.body;
 }
+
+describe("hub window starts", () => {
+  function automation(status = 200, completed = true) {
+    const calls: (ManagementCall & { data?: string })[] = [];
+    const request: typeof fetch = async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const responses = new Map<string, unknown>([
+        [
+          "/v0/management/model-definitions/claude",
+          { models: [{ id: "claude-sonnet-4-6" }, { id: "claude-haiku-4-5-20251001" }] },
+        ],
+        ["/v0/management/model-definitions/codex", { models: [{ id: "gpt-5.5" }, { id: "gpt-6-luna" }] }],
+      ]);
+      if (responses.has(path)) return Response.json(responses.get(path));
+      if (init?.method === "GET")
+        return Response.json({
+          files: [
+            { id: "claude.json", auth_index: "claude-auth", provider: "claude" },
+            {
+              id: "codex.json",
+              auth_index: "codex-auth",
+              provider: "codex",
+              id_token: { chatgpt_account_id: "account-a" },
+              prefix: "team",
+              models: [{ name: "gpt-6-luna", alias: "helper" }],
+            },
+          ],
+        });
+      const call = JSON.parse(requestBody(init)) as (typeof calls)[number];
+      calls.push(call);
+      const body =
+        call.auth_index === "claude-auth"
+          ? JSON.stringify({ type: "message" })
+          : `data: ${JSON.stringify({ type: completed ? "response.completed" : "response.failed" })}\n\n`;
+      return Response.json({ status_code: status, body });
+    };
+    return { api: new ProxyHubApi(request), calls };
+  }
+
+  it.each(["claude", "codex"] as const)(
+    "targets the selected %s account with a minimal upstream prompt",
+    async (provider) => {
+      const test = automation();
+      await test.api.runAccount(config, `${provider}.json`, provider);
+      expect(test.calls).toHaveLength(1);
+      const call = test.calls[0]!;
+      expect(call).toMatchObject({
+        auth_index: `${provider}-auth`,
+        method: "POST",
+        header: { Authorization: "Bearer $TOKEN$" },
+      });
+      const body = JSON.parse(call.data!);
+      if (provider === "claude") {
+        expect(call.url).toBe("https://api.anthropic.com/v1/messages");
+        expect(body).toMatchObject({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "OK" }],
+        });
+      } else {
+        expect(call.url).toBe("https://chatgpt.com/backend-api/codex/responses");
+        expect(call.header["Chatgpt-Account-Id"]).toBe("account-a");
+        expect(body).toMatchObject({
+          model: "gpt-6-luna",
+          stream: true,
+          store: false,
+          reasoning: { effort: "low" },
+        });
+      }
+    },
+  );
+
+  it("refuses missing, mismatched, or newly disabled accounts before sending a prompt", async () => {
+    const test = automation();
+    await expect(test.api.runAccount(config, "missing", "claude")).rejects.toThrow("no longer enabled");
+    await expect(test.api.runAccount(config, "codex.json", "claude")).rejects.toThrow("no longer enabled");
+    await expect(
+      test.api.runAccount(config, "codex.json", "codex", () => {
+        throw new Error("disabled");
+      }),
+    ).rejects.toThrow("disabled");
+    expect(test.calls).toEqual([]);
+  });
+
+  it("does not report a failed Codex stream as a successful window start", async () => {
+    const test = automation(200, false);
+    await expect(test.api.runAccount(config, "codex.json", "codex")).rejects.toThrow("did not complete");
+  });
+
+  it.each([401, 403, 429, 500])("classifies upstream HTTP %i separately from management refusals", async (status) => {
+    const test = automation(status);
+    const accounts = await test.api.read(config);
+    expect(accounts.find((account) => account.provider === "claude")?.usage.error_reason).toBe(
+      status === 401 ? "rejected" : null,
+    );
+    expect(accounts.find((account) => account.provider === "codex")?.usage.error_reason).toBeNull();
+  });
+});
+
+it("stops queued account discovery after a management refusal", async () => {
+  let requests = 0;
+  const api = new ProxyHubApi(async () => {
+    requests++;
+    return Response.json({}, { status: 401 });
+  });
+  const results = await Promise.allSettled(
+    Array.from({ length: 8 }, () => api.runAccount(config, "claude.json", "claude")),
+  );
+  expect(results.every((result) => result.status === "rejected")).toBe(true);
+  expect(requests).toBeLessThanOrEqual(4);
+});
