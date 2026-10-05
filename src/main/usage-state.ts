@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { ProxyHubInput } from "../shared/ipc";
 import type { PaceSettings } from "../shared/pace";
-import { emptyProviderUsage, emptyProxyHubSnapshot, nowEpoch, providerIds } from "../shared/usage";
+import { emptyProviderUsage, emptyProxyHubSnapshot, nowEpoch, providerIds, providerNames } from "../shared/usage";
 import type {
   ProviderId,
   ProviderSettings,
   ProviderUsage,
   ProxyHubAccount,
   ProxyHubConfig,
+  ProxyHubProviderId,
   ProxyHubSettings,
   ProxyHubSnapshot,
   UsageSnapshot,
@@ -36,6 +37,7 @@ export class UsageState {
     private readonly readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]>,
     private readonly publish: (snapshot: UsageSnapshot) => void,
     private readonly pace: PaceTracker,
+    private readonly notify: (message: string) => void = () => {},
   ) {
     this.hubConfigs = loadProxyHubSettings(proxyHubSettingsPath);
     this.snapshot = {
@@ -48,6 +50,7 @@ export class UsageState {
         .map((config) => emptyProxyHubSnapshot(redact(config))),
       pace: { settings: pace.settings, windows: {} },
     };
+    this.snapshot = this.enforceHubProviders(this.snapshot);
   }
 
   /** Reads every enabled provider together. A refresh asked for while one runs does not overlap it:
@@ -57,7 +60,10 @@ export class UsageState {
       this.again = true;
       return this.running;
     }
-    this.running = this.run();
+    this.running = this.run().catch((error: unknown) => {
+      this.running = null;
+      throw error;
+    });
     return this.running;
   }
 
@@ -68,7 +74,8 @@ export class UsageState {
         const config = this.hubConfigs.find(({ id }) => id === hub.id);
         return config && hub.status !== "rejected" ? [{ hub, config }] : [];
       });
-      const [providerReadings, hubReadings, activity] = await Promise.all([
+      if (hubs.length > 0) await this.refreshHubs(hubs);
+      const [providerReadings, activity] = await Promise.all([
         Promise.all(
           providerIds.map(async (id) => {
             if (!this.snapshot.enabled[id]) return null;
@@ -78,29 +85,12 @@ export class UsageState {
             return { id, reading };
           }),
         ),
-        Promise.all(
-          hubs.map(async ({ hub, config }) => ({
-            hub,
-            config,
-            reading: await this.readHub(config).catch((error: unknown) =>
-              error instanceof Error ? error : new Error(String(error)),
-            ),
-          })),
-        ),
         this.pace.readActivity().catch(() => noActivity),
       ]);
       const next = { ...this.snapshot };
       for (const result of providerReadings) {
-        // A provider switched off while its read was in flight keeps the reading it was cleared to.
         if (result && next.enabled[result.id]) next[result.id] = applyReading(next[result.id], result.reading);
       }
-      // A hub added, removed or switched off and on while its read was in flight holds a new
-      // snapshot, so the stale reading finds nothing to apply to.
-      const readings = new Map(hubReadings.map((result) => [result.hub, result]));
-      next.proxy_hubs = next.proxy_hubs.map((hub) => {
-        const result = readings.get(hub);
-        return result ? applyHubReading(hub, redact(result.config), result.reading) : hub;
-      });
       this.snapshot = this.pace.track(next, activity);
       if (!this.again) {
         this.running = null;
@@ -110,13 +100,73 @@ export class UsageState {
     }
   }
 
+  private async refreshHubs(hubs: { hub: ProxyHubSnapshot; config: ProxyHubConfig }[]) {
+    const results = await Promise.all(
+      hubs.map(async ({ hub, config }) => ({
+        hub,
+        config,
+        reading: await this.readHub(config).catch((error: unknown) =>
+          error instanceof Error ? error : new Error(String(error)),
+        ),
+      })),
+    );
+    const readings = new Map(results.map((result) => [result.hub, result]));
+    const snapshots = this.snapshot.proxy_hubs.map((hub) => {
+      const result = readings.get(hub);
+      return result ? applyHubReading(hub, redact(result.config), result.reading) : hub;
+    });
+    this.rememberHubProviders(snapshots);
+    const enabled = this.snapshot.enabled;
+    this.snapshot = this.enforceHubProviders({ ...this.snapshot, proxy_hubs: snapshots });
+    if (this.snapshot.enabled !== enabled) this.publish(this.pace.annotate(this.snapshot));
+  }
+
+  private rememberHubProviders(hubs: ProxyHubSnapshot[]) {
+    const configs = this.hubConfigs.map((config) => {
+      const hub = hubs.find((hub) => hub.id === config.id && hub.status === "ready");
+      if (!hub) return config;
+      const providers = pooledProviders(hub.accounts);
+      return JSON.stringify(providers) === JSON.stringify(config.providers) ? config : { ...config, providers };
+    });
+    if (configs.every((config, index) => config === this.hubConfigs[index])) return;
+    saveSettings(this.proxyHubSettingsPath, configs);
+    this.hubConfigs = configs;
+  }
+
+  private providerHub(provider: ProviderId) {
+    return this.hubConfigs.find((hub) => hub.providers?.some((id) => id === provider));
+  }
+
+  private enforceHubProviders(snapshot: UsageSnapshot): UsageSnapshot {
+    const conflicts = providerIds.filter((id) => snapshot.enabled[id] && this.providerHub(id));
+    if (conflicts.length === 0) return snapshot;
+    const enabled = { ...snapshot.enabled };
+    const next = { ...snapshot, enabled };
+    for (const id of conflicts) {
+      enabled[id] = false;
+    }
+    saveSettings(this.providerSettingsPath, enabled);
+    const names = conflicts.map((id) => providerNames[id]).join(" and ");
+    this.notify(
+      `Direct ${names} ${conflicts.length === 1 ? "was" : "were"} switched off because saved proxy hubs have these providers. Tantalus will use the hub accounts.`,
+    );
+    return next;
+  }
+
   /** Saves the choice before it takes effect, so a failed save changes nothing. Switching a provider
-   * off drops its reading; switching one on reads it straight away. */
-  setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
+   * off keeps its last reading; switching one on reads it straight away. A hub whose roster is not
+   * known yet corrects a conflicting choice on the read that enabling triggers. */
+  async setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
+    const hub = enabled ? this.providerHub(provider) : undefined;
+    if (hub) {
+      this.notify(
+        `Remove ${hub.label} or remove ${providerNames[provider]} from it first, then turn on direct ${providerNames[provider]}.`,
+      );
+      return this.snapshot;
+    }
     const settings: ProviderSettings = { ...this.snapshot.enabled, [provider]: enabled };
     saveSettings(this.providerSettingsPath, settings);
     const next = { ...this.snapshot, enabled: settings };
-    if (!enabled) next[provider] = emptyProviderUsage();
     this.snapshot = this.pace.annotate(next);
     this.publish(this.snapshot);
     return enabled ? this.refresh() : Promise.resolve(this.snapshot);
@@ -144,7 +194,11 @@ export class UsageState {
   async addProxyHub(input: ProxyHubInput): Promise<ProxyHubSettings[]> {
     const config: ProxyHubConfig = { id: randomUUID(), ...hubFields(input, null), enabled: true };
     const snapshot = await this.readHubSnapshot(config);
-    return this.saveProxyHubs([...this.hubConfigs, config], false, [...this.snapshot.proxy_hubs, snapshot]);
+    return this.saveProxyHubs(
+      [...this.hubConfigs, { ...config, providers: pooledProviders(snapshot.accounts) }],
+      false,
+      [...this.snapshot.proxy_hubs, snapshot],
+    );
   }
 
   /** A new URL or key is read before it is saved, like a new hub. A new label alone is saved without
@@ -156,7 +210,11 @@ export class UsageState {
       new URL(fields.url).href !== new URL(saved.url).href || fields.managementKey !== saved.managementKey;
     const snapshot = reconnected ? await this.readHubSnapshot({ ...saved, ...fields }) : null;
     // Merges onto the current config, since the hub may have been switched off or on during the read.
-    const config = { ...this.hubConfig(id), ...fields };
+    const config = {
+      ...this.hubConfig(id),
+      ...fields,
+      ...(snapshot && { providers: pooledProviders(snapshot.accounts) }),
+    };
     return this.saveProxyHubs(
       this.hubConfigs.map((hub) => (hub.id === id ? config : hub)),
       false,
@@ -231,12 +289,14 @@ export class UsageState {
     saveSettings(this.proxyHubSettingsPath, configs);
     this.hubConfigs = configs;
     const current = new Map(snapshots.map((hub) => [hub.id, hub]));
-    this.snapshot = this.pace.annotate({
-      ...this.snapshot,
-      proxy_hubs: configs
-        .filter(({ enabled }) => enabled)
-        .map((config) => current.get(config.id) ?? emptyProxyHubSnapshot(redact(config))),
-    });
+    this.snapshot = this.pace.annotate(
+      this.enforceHubProviders({
+        ...this.snapshot,
+        proxy_hubs: configs
+          .filter(({ enabled }) => enabled)
+          .map((config) => current.get(config.id) ?? emptyProxyHubSnapshot(redact(config))),
+      }),
+    );
     this.publish(this.snapshot);
     if (refresh) void this.refresh();
     return this.proxyHubs();
@@ -296,6 +356,7 @@ export function applyHubReading(
   });
   return {
     id: settings.id,
+    url: settings.url,
     label: settings.label,
     accounts,
     last_successful_update_epoch: nowEpoch(),
@@ -325,6 +386,11 @@ function hubFields(
 /** Only a `ProxyHubError` carries a message written to be shown. */
 function hubErrorMessage(error: unknown): string {
   return error instanceof ProxyHubError ? error.message : "The hub could not list accounts.";
+}
+
+/** The providers a hub pools, for ownership checks. */
+function pooledProviders(accounts: Pick<ProxyHubAccount, "provider">[]): ProxyHubProviderId[] {
+  return [...new Set(accounts.map((account) => account.provider))].sort();
 }
 
 const redact = ({ id, label, url, enabled }: ProxyHubConfig): ProxyHubSettings => ({ id, label, url, enabled });

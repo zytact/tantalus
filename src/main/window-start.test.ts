@@ -287,6 +287,7 @@ function hubSnapshot(epoch: number, rejected = false): UsageSnapshot {
     proxy_hubs: [
       {
         id: "hub",
+        url: "http://hub.test:8317",
         label: "Hub",
         status: "ready",
         error_message: null,

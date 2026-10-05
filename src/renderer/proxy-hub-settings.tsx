@@ -144,7 +144,6 @@ function HubRow({
     <section className="setting-row">
       <div className="setting-copy">
         <h2>{hub.label}</h2>
-        <p>{hub.url}</p>
       </div>
       <div className="setting-actions">
         <Toggle label={`${hub.label} proxy hub`} checked={hub.enabled} busy={busy} onToggle={onToggle} />

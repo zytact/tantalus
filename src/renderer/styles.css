@@ -1001,3 +1001,39 @@ footer {
     opacity: 0.4;
   }
 }
+
+.toasts {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  color: var(--ink);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px);
+  font-size: 0.8125rem;
+}
+
+.management-link {
+  color: var(--text-muted);
+  display: inline-flex;
+  gap: 0.3em;
+  text-decoration: none;
+}
+
+.management-link span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}

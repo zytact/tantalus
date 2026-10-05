@@ -41,6 +41,7 @@ export type Commands = {
   updateProxyHub: (id: string, input: ProxyHubInput) => ProxyHubSettings[];
   setProxyHubEnabled: (id: string, enabled: boolean) => ProxyHubSettings[];
   removeProxyHub: (id: string) => ProxyHubSettings[];
+  openProxyHubManagement: (id: string) => void;
   checkForUpdate: () => AvailableUpdate | null;
   installUpdate: (acknowledgedNoticeIds: string[]) => void;
   openLatestRelease: () => void;
@@ -58,6 +59,7 @@ export type Commands = {
  * latest value of each, which is null until there is one. */
 export type Events = {
   usageSnapshot: UsageSnapshot;
+  toast: string;
   updateAvailable: AvailableUpdate;
   /** Null once an install ends without relaunching. */
   installProgress: InstallProgress | null;
@@ -66,6 +68,9 @@ export type Events = {
 
 /** The channel that serves the latest value of an event. */
 export const CURRENT = "current";
+
+/** How long a toast shows. */
+export const TOAST_MILLISECONDS = 10_000;
 
 /** A command's result as it crosses the process boundary. Electron rewrites a thrown error's message,
  * so a failure travels as a value and the preload throws it again. */

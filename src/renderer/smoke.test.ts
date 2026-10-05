@@ -100,6 +100,7 @@ describe("display contract", () => {
         proxy_hubs: [
           {
             id: "hub",
+            url: "http://hub.test:8317",
             label: "Hub",
             accounts: [],
             last_successful_update_epoch: now - 30,

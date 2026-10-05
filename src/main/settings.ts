@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import type { RemoteSettings } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
-import type { ProviderSettings, ProxyHubConfig } from "../shared/usage";
+import type { ProviderSettings, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
 import type { StartProviderSettings, WindowStartSettings } from "../shared/window-start";
 import { field } from "./parse";
 
@@ -141,10 +141,20 @@ function proxyHubConfig(value: unknown): ProxyHubConfig | null {
       url: requiredHttpUrl(value, "url"),
       managementKey: requiredString(value, "managementKey"),
       enabled: requiredBoolean(value, "enabled"),
+      providers: hubProviders(field(value, "providers")),
     };
   } catch {
     return null;
   }
+}
+
+/** Unknown entries are dropped rather than failing the file, so a hub saved by a newer version is kept.
+ * The next ready read records the roster again. */
+function hubProviders(value: unknown): ProxyHubConfig["providers"] {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(
+    (provider: unknown): provider is ProxyHubProviderId => provider === "claude" || provider === "codex",
+  );
 }
 
 function requiredString(value: unknown, key: string): string {

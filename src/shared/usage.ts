@@ -46,8 +46,9 @@ export type ProxyHubConfig = {
   url: string;
   managementKey: string;
   enabled: boolean;
+  providers?: ProxyHubProviderId[];
 };
-export type ProxyHubSettings = Omit<ProxyHubConfig, "managementKey">;
+export type ProxyHubSettings = Omit<ProxyHubConfig, "managementKey" | "providers">;
 export type ProxyHubAccount = {
   id: string;
   email: string | null;
@@ -59,6 +60,7 @@ export type ProxyHubAccount = {
 export type ProxyHubStatus = "loading" | "ready" | "stale" | "error" | "rejected";
 export type ProxyHubSnapshot = {
   id: string;
+  url: string;
   label: string;
   accounts: ProxyHubAccount[];
   last_successful_update_epoch: number | null;
@@ -115,6 +117,7 @@ export const emptyProviderUsage = (): ProviderUsage => ({
 
 export const emptyProxyHubSnapshot = (settings: ProxyHubSettings): ProxyHubSnapshot => ({
   id: settings.id,
+  url: settings.url,
   label: settings.label,
   accounts: [],
   last_successful_update_epoch: null,
@@ -202,4 +205,8 @@ export function refreshedAgo(epoch: number | null, now: number): string {
 
 function ago(count: number, unit: "minute" | "hour" | "day"): string {
   return `Refreshed ${count} ${unit}${count === 1 ? "" : "s"} ago`;
+}
+
+export function proxyHubManagementUrl(url: string): string {
+  return new URL("/management.html", url).href;
 }

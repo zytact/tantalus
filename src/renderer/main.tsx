@@ -5,7 +5,15 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { firstRider, paceKey, riderOf } from "../shared/pace";
 import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
-import { clockEpoch, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import {
+  clockEpoch,
+  providerIds,
+  providerNames,
+  proxyHubManagementUrl,
+  refreshedAgo,
+  refreshedEpoch,
+  usagePace,
+} from "../shared/usage";
 import type {
   ExtraUsage,
   ProviderId,
@@ -41,6 +49,7 @@ import {
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
+import { Toast } from "./toast";
 import { UpdateNotice } from "./update-notice";
 import { webBridge } from "./web-bridge";
 import "./styles.css";
@@ -364,6 +373,22 @@ function HubSection({
           {hubStatusLabels[hub.status]}
         </span>
       </div>
+      {!remote && (
+        <a
+          className="management-link"
+          href={proxyHubManagementUrl(hub.url)}
+          aria-label={`Manage ${hub.label}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            event.preventDefault();
+            void window.tantalus.invoke("openProxyHubManagement", hub.id);
+          }}
+        >
+          <span>Hub</span>
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
       <HubMessage hub={hub} />
       <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />
     </section>
@@ -560,6 +585,7 @@ function App() {
 
   return (
     <main>
+      {!remote && <Toast />}
       {page === "settings" ? (
         <SettingsPage
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}

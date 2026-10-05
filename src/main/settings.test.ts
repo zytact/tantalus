@@ -109,6 +109,9 @@ describe("proxy hub settings", () => {
     saveSettings(file, hubs);
     expect(loadProxyHubSettings(file)).toEqual(hubs);
 
+    writeFileSync(file, JSON.stringify([{ ...hubs[0], providers: ["codex", "gemini"] }]));
+    expect(loadProxyHubSettings(file)).toEqual([{ ...hubs[0], providers: ["codex"] }]);
+
     writeFileSync(file, JSON.stringify([{ ...hubs[0], url: "file:///tmp/socket" }]));
     expect(loadProxyHubSettings(file)).toEqual([]);
   });
