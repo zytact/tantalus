@@ -1,10 +1,21 @@
-import { claimActivity, maxPaceReadings, paceHistoryKeys, paceWindows, recordSample, windowPace } from "../shared/pace";
+import {
+  claimActivity,
+  currentPaceOnly,
+  maxPaceReadings,
+  paceHistoryKeys,
+  paceWindows,
+  recordSample,
+  windowPace,
+} from "../shared/pace";
 import type { Activity, PaceLog, PaceSettings, PaceWindow, WindowPace } from "../shared/pace";
 import { nowEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { loadPaceLogs, loadPaceSettings, saveSettings } from "./settings";
 
 export const noActivity: Activity = { codex: null, claude: null, opencode: null };
+
+/** A current-pace log with no sample for this long belongs to a sign-in that is gone. */
+const FORGET_AFTER = 60 * 86_400;
 
 /** Learns usual pace by provider, tier and window length, while tracking each account's current
  * pace separately. It owns the log, just as `UsageState` owns the snapshot. */
@@ -34,6 +45,9 @@ export class PaceTracker {
     );
     this.active = claimActivity(windows, current, activity);
     for (const window of windows) this.recordWindow(window);
+    for (const [key, log] of this.logs) {
+      if (currentPaceOnly(key) && now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);
+    }
     // The log only speeds up learning, so a failed write should not fail the reading that led to it.
     try {
       saveSettings(this.logPath, Object.fromEntries(this.logs));

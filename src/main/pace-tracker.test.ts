@@ -238,6 +238,7 @@ it.each(providerIds)("retains %s learning while absent and reuses it after resta
   pace.track(direct, noActivity, epoch);
   const later = epoch + 365 * 86_400;
   pace.track({ ...direct, enabled: { codex: false, claude: false, opencode: false } }, noActivity, later);
+  expect(Object.keys(loadPaceLogs(saved.path)).some((key) => key.startsWith('["current",'))).toBe(false);
   const returning = snapshotFor(provider, "Pro");
   returning[provider] = usage("Pro", 80, later);
   const resumed = saved.create().track(returning, noActivity, later);

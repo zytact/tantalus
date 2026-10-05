@@ -122,6 +122,8 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   ];
 }
 
+/** Keys a window's samples by account and its usual pace by provider, tier and window length. Without
+ * a tier the account's own log is its usual pace. */
 export function paceHistoryKeys({
   key,
   provider,
@@ -130,9 +132,18 @@ export function paceHistoryKeys({
   identity,
 }: Pick<PaceWindow, "key" | "provider" | "plan" | "duration" | "identity">) {
   const tier = plan?.trim().replace(/\s+/g, " ").toLowerCase() || null;
-  const account = JSON.stringify(["account", key, tier, identity]);
-  return { account, usual: tier ? JSON.stringify(["usual", provider, tier, duration]) : account };
+  if (!tier) {
+    const account = JSON.stringify(["account", key, null, identity]);
+    return { account, usual: account };
+  }
+  return {
+    account: JSON.stringify(["current", key, tier, identity]),
+    usual: JSON.stringify(["usual", provider, tier, duration]),
+  };
 }
+
+/** Whether a log holds only an account's current pace, so forgetting it loses nothing learned. */
+export const currentPaceOnly = (key: string) => key.startsWith('["current",');
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
  * and duration that ticked last. An account nobody is using stays idle while another one is busy.
