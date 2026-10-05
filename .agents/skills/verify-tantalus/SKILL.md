@@ -66,6 +66,7 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
 - `hub-multiple-idle`: like `idle`, but the fixture hub pools two Codex and two Claude accounts.
+- `hub-multiple`: like `ready`, but the fixture hub pools two Codex and two Claude accounts with the same readings, so a pool reads twice one account.
 - `hub-codex-only` and `hub-claude-only`: like `ready`, but the fixture hub pools only that provider's account.
 - `hub-rejected`: like `ready`, but the hub's Claude account answers 401 until its sign-in is renewed through the hub.
 - `hub-slow`: like `ready`, but every hub account request takes 6 seconds. Direct reads answer at once.
