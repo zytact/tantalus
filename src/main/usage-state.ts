@@ -22,12 +22,14 @@ import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./set
 export const REFRESH_INTERVAL = 300_000;
 const RETRY_BACKOFF_START = 5000;
 
+type RefreshScope = "all" | "unsettled";
+
 /** Owns the snapshot the tray and window show. Every change goes out through `publish`, and a read
  * runs only for a provider that is switched on when the read starts. */
 export class UsageState {
   snapshot: UsageSnapshot;
   private running: Promise<UsageSnapshot> | null = null;
-  private again = false;
+  private again: RefreshScope | null = null;
   private hubConfigs: ProxyHubConfig[];
 
   constructor(
@@ -53,72 +55,70 @@ export class UsageState {
     this.snapshot = this.enforceHubProviders(this.snapshot);
   }
 
-  /** Reads every enabled provider together. A refresh asked for while one runs does not overlap it:
-   * the running one reads again once it finishes, and both callers get that result. */
-  refresh(): Promise<UsageSnapshot> {
+  /** Reads every enabled provider and hub at once, publishing each as it lands. `unsettled` reads only
+   * those without a current reading, for a retry that should leave healthy ones alone. A refresh
+   * asked for while one runs does not overlap it: the running one reads again once it finishes, as
+   * widely as any caller asked, and every caller gets that result. */
+  refresh(scope: RefreshScope = "all"): Promise<UsageSnapshot> {
     if (this.running) {
-      this.again = true;
+      this.again = this.again === "all" ? "all" : scope;
       return this.running;
     }
-    this.running = this.run().catch((error: unknown) => {
+    this.running = this.run(scope).catch((error: unknown) => {
       this.running = null;
       throw error;
     });
     return this.running;
   }
 
-  private async run(): Promise<UsageSnapshot> {
+  private async run(scope: RefreshScope): Promise<UsageSnapshot> {
     for (;;) {
-      this.again = false;
+      this.again = null;
+      const activity = this.pace.readActivity().catch(() => noActivity);
       const hubs = this.snapshot.proxy_hubs.flatMap((hub) => {
         const config = this.hubConfigs.find(({ id }) => id === hub.id);
-        return config && hub.status !== "rejected" ? [{ hub, config }] : [];
+        return config && hub.status !== "rejected" && (scope === "all" || !hubSettled(hub))
+          ? [{ config, read: this.refreshHub(hub, config) }]
+          : [];
       });
-      if (hubs.length > 0) await this.refreshHubs(hubs);
-      const [providerReadings, activity] = await Promise.all([
-        Promise.all(
-          providerIds.map(async (id) => {
-            if (!this.snapshot.enabled[id]) return null;
-            const reading = await this.readProvider(id).catch((error: unknown) =>
-              error instanceof Error ? error : new Error(String(error)),
-            );
-            return { id, reading };
-          }),
-        ),
-        this.pace.readActivity().catch(() => noActivity),
-      ]);
-      const next = { ...this.snapshot };
-      for (const result of providerReadings) {
-        if (result && next.enabled[result.id]) next[result.id] = applyReading(next[result.id], result.reading);
-      }
-      this.snapshot = this.pace.track(next, activity);
+      // A hub whose roster is not known yet may own a direct provider, so direct reads wait for it.
+      const discovering = hubs.flatMap(({ config, read }) => (config.providers ? [] : [read]));
+      if (discovering.length > 0) await Promise.all(discovering);
+      const providers = providerIds.filter(
+        (id) => this.snapshot.enabled[id] && (scope === "all" || !providerSettled(this.snapshot, id)),
+      );
+      await Promise.all([...hubs.map(({ read }) => read), ...providers.map((id) => this.refreshProvider(id))]);
+      this.snapshot = this.pace.track(this.snapshot, await activity);
       if (!this.again) {
         this.running = null;
         this.publish(this.snapshot);
         return this.snapshot;
       }
+      scope = this.again;
     }
   }
 
-  private async refreshHubs(hubs: { hub: ProxyHubSnapshot; config: ProxyHubConfig }[]) {
-    const results = await Promise.all(
-      hubs.map(async ({ hub, config }) => ({
-        hub,
-        config,
-        reading: await this.readHub(config).catch((error: unknown) =>
-          error instanceof Error ? error : new Error(String(error)),
-        ),
-      })),
+  private async refreshProvider(id: ProviderId) {
+    const reading = await this.readProvider(id).catch((error: unknown) =>
+      error instanceof Error ? error : new Error(String(error)),
     );
-    const readings = new Map(results.map((result) => [result.hub, result]));
-    const snapshots = this.snapshot.proxy_hubs.map((hub) => {
-      const result = readings.get(hub);
-      return result ? applyHubReading(hub, redact(result.config), result.reading) : hub;
-    });
+    if (!this.snapshot.enabled[id]) return;
+    this.snapshot = this.pace.annotate({ ...this.snapshot, [id]: applyReading(this.snapshot[id], reading) });
+    this.publish(this.snapshot);
+  }
+
+  /** Drops the reading when the hub was edited, switched off, or removed while it was read. */
+  private async refreshHub(hub: ProxyHubSnapshot, config: ProxyHubConfig) {
+    const reading = await this.readHub(config).catch((error: unknown) =>
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    if (!this.snapshot.proxy_hubs.includes(hub)) return;
+    const snapshots = this.snapshot.proxy_hubs.map((current) =>
+      current === hub ? applyHubReading(hub, redact(config), reading) : current,
+    );
     this.rememberHubProviders(snapshots);
-    const enabled = this.snapshot.enabled;
-    this.snapshot = this.enforceHubProviders({ ...this.snapshot, proxy_hubs: snapshots });
-    if (this.snapshot.enabled !== enabled) this.publish(this.pace.annotate(this.snapshot));
+    this.snapshot = this.pace.annotate(this.enforceHubProviders({ ...this.snapshot, proxy_hubs: snapshots }));
+    this.publish(this.snapshot);
   }
 
   private rememberHubProviders(hubs: ProxyHubSnapshot[]) {
@@ -400,13 +400,17 @@ const redact = ({ id, label, url, enabled }: ProxyHubConfig): ProxyHubSettings =
  * login usually beats the network up, so the first pass fails and the tray would otherwise sit on
  * "Not refreshed yet" for a full interval. */
 export function settled(snapshot: UsageSnapshot): boolean {
+  return providerIds.every((id) => providerSettled(snapshot, id)) && snapshot.proxy_hubs.every(hubSettled);
+}
+
+function providerSettled(snapshot: UsageSnapshot, id: ProviderId): boolean {
+  return !snapshot.enabled[id] || snapshot[id].status === "ready";
+}
+
+function hubSettled(hub: ProxyHubSnapshot): boolean {
   return (
-    providerIds.every((id) => !snapshot.enabled[id] || snapshot[id].status === "ready") &&
-    snapshot.proxy_hubs.every(
-      (hub) =>
-        hub.status === "rejected" ||
-        (hub.status === "ready" && hub.accounts.every((account) => account.usage.status === "ready")),
-    )
+    hub.status === "rejected" ||
+    (hub.status === "ready" && hub.accounts.every((account) => account.usage.status === "ready"))
   );
 }
 
@@ -423,11 +427,17 @@ export function nextBackoff(
   return current === null ? start : Math.min(current * 2, interval);
 }
 
+/** Retries read only what has not settled, until a full interval has passed since everything was read. */
 export async function pollUsage(state: UsageState, sleep: (milliseconds: number) => Promise<unknown>) {
   let backoff: number | null = null;
+  let slept = REFRESH_INTERVAL;
   for (;;) {
-    const snapshot = await state.refresh();
+    const scope = slept >= REFRESH_INTERVAL ? "all" : "unsettled";
+    if (scope === "all") slept = 0;
+    const snapshot = await state.refresh(scope);
     backoff = nextBackoff(settled(snapshot), backoff, RETRY_BACKOFF_START, REFRESH_INTERVAL);
-    await sleep(backoff ?? REFRESH_INTERVAL);
+    const wait = backoff ?? REFRESH_INTERVAL;
+    slept += wait;
+    await sleep(wait);
   }
 }

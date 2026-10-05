@@ -16,7 +16,7 @@ import { ReadFailure } from "./failure";
 import { noActivity, PaceTracker } from "./pace-tracker";
 import { ProxyHubRejected } from "./proxy-hub-api";
 import { saveSettings } from "./settings";
-import { applyHubReading, applyReading, nextBackoff, settled, UsageState } from "./usage-state";
+import { applyHubReading, applyReading, nextBackoff, pollUsage, settled, UsageState } from "./usage-state";
 
 const directories: string[] = [];
 const trackers: PaceTracker[] = [];
@@ -126,7 +126,7 @@ describe("usage state", () => {
     expect(reads).toHaveLength(2);
     for (const { release } of reads) release(ready(2));
     expect((await first).codex.seven_day.used_percent).toBe(2);
-    expect(published).toHaveLength(1);
+    expect(published.at(-1)).toBe(await first);
   });
 
   it("reads a provider switched on during a refresh", async () => {
@@ -426,6 +426,31 @@ describe("polling", () => {
     expect(nextBackoff(true, backoff, 5000, 300_000)).toBeNull();
   });
 
+  it("retries only what failed until a full interval has passed", async () => {
+    const reads: ProviderId[][] = [[]];
+    const state = createState(async (id) => {
+      reads.at(-1)!.push(id);
+      if (id === "codex") throw new Error("Down");
+      return ready(1);
+    });
+    const waits: number[] = [];
+    await pollUsage(state, async (milliseconds) => {
+      waits.push(milliseconds);
+      if (waits.length === 7) throw new Error("stop");
+      reads.push([]);
+    }).catch(() => {});
+    expect(waits).toEqual([5000, 10_000, 20_000, 40_000, 80_000, 160_000, 300_000]);
+    expect(reads).toEqual([
+      ["codex", "claude"],
+      ["codex"],
+      ["codex"],
+      ["codex"],
+      ["codex"],
+      ["codex"],
+      ["codex", "claude"],
+    ]);
+  });
+
   it("does not hold back for a disabled provider", () => {
     const snapshot: UsageSnapshot = {
       codex: ready(1),
@@ -525,6 +550,28 @@ it("discovers hub providers before polling direct and releases a removed provide
   await state.refresh();
   await state.setProviderEnabled("codex", true);
   expect(state.snapshot.enabled.codex).toBe(true);
+});
+
+it("publishes direct readings without waiting for a hub whose roster is known", async () => {
+  const providers = settingsPath();
+  const hubs = join(providers, "..", "proxy-hubs.json");
+  saveSettings(hubs, [{ ...hubConfig, providers: ["codex"] }]);
+  let releaseHub = (_accounts: ProxyHubAccount[]) => {};
+  const published: UsageSnapshot[] = [];
+  const state = new UsageState(
+    providers,
+    hubs,
+    async () => ready(7),
+    () => new Promise((release) => (releaseHub = release)),
+    (snapshot) => published.push(snapshot),
+    paceTracker(),
+  );
+  const refreshed = state.refresh();
+  await new Promise((resolve) => setTimeout(resolve));
+  expect(published.at(-1)?.claude.status).toBe("ready");
+  expect(published.at(-1)?.proxy_hubs[0]?.status).toBe("loading");
+  releaseHub([hubAccount(42)]);
+  expect((await refreshed).proxy_hubs[0]?.status).toBe("ready");
 });
 
 it("corrects a conflicting choice on the enabling read when the hub roster is unknown", async () => {
