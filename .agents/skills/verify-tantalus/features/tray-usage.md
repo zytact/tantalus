@@ -1,0 +1,15 @@
+# Tray usage
+
+Settings has a Usage in tray switch, off by default. Switched on, the tray icon shows one account's used percentage beside the mark, drawn in its provider's color: Codex blue, Claude orange, Opencode violet. An account without a 5-hour window, such as Codex Go or free, shows its monthly window instead. On Windows the number replaces the mark. The tooltip becomes `<product>` then `<account> <5h|30d> <percent>` on a second line. Until the chosen account has a reading, or once it is no longer read, the tray keeps its plain icon and tooltip.
+
+Below the switch, an Account picker lists every direct provider switched on, then every hub account as `<hub> · <Provider> <n>`, in allowance order, with a Tray colors legend of the providers on offer. With no saved choice it shows the first account. The picker is a glass pop-up button (`combobox "Account"`) whose menu (`listbox "Account"`) checks the selected account. It opens on click or ArrowDown/ArrowUp; ArrowUp, ArrowDown, Home and End move the highlight; Enter or Space picks; Escape, Tab or a click outside closes without a change. A saved account that is no longer read stays selected as a disabled `Account no longer available` entry. With no provider or hub on, the row reads `Switch on a provider or add a hub to pick an account.` The choice is saved to `tray-usage.json` in the settings directory.
+
+`src/renderer/tray-usage-settings.tsx` and `src/renderer/picker.tsx` render the row, `src/shared/tray-usage.ts` lists the accounts and picks the reading, and `trayUsageIcon` in `src/main/index.ts` draws the icon with `src/main/tray-icon.ts`.
+
+## Preview proof
+
+Launch with `--mock ready`, open Settings, and switch on Usage in tray. Snapshot `combobox "Account"` reading `Codex` and a legend of Codex and Claude. Scroll to the combobox and click it, then capture the open menu under `--scheme light` and `--scheme dark`. Each must show a blurred, tinted glass menu with legible rows and a check on Codex, never a white native list. Press ArrowDown and Enter; the combobox must read `Claude` and `tray-usage.json` in `mock-home/config/dev.arnab.tantalus.preview/` must hold `"source":"claude"`. Reopen, press Escape, and confirm nothing changed. Click the combobox, click `option "Codex"`, and confirm it saves. Run `launch.sh --restart` and doctor, then confirm the choice survived.
+
+Write `{"enabled":true,"source":"hub:gone"}` to `tray-usage.json`, restart, and confirm the combobox reads `Account no longer available`, its menu lists that entry disabled and checked, and the highlight opens on the first real account. Add the fixture hub per `proxy-hubs.md` and confirm the menu adds `Fixture hub · Codex 1` and `Fixture hub · Claude 1`.
+
+The icon and tooltip need a tray host. Where one exists (see `tray-and-autorefresh.md`), read `ToolTip` on `/StatusNotifierItem` and confirm its second line names the chosen account, span, and percentage. The number's look needs eyes on the desktop; record that prerequisite in the run notes.

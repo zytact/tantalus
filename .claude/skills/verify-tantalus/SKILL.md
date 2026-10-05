@@ -86,6 +86,19 @@ node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" sett
 
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
+The Xvfb display reports a light color scheme. Prefix a command with `--scheme dark` or `--scheme light` to render the page in that scheme while the command runs; the page goes back to the display's scheme when it ends, and page state such as an open menu stays as it was. `--web <url>` comes first when both are given.
+
+### Light and dark
+
+The page has a light and a dark theme, and each one breaks on its own. Check every visible change in both schemes independently: drive it once, then capture and inspect it under `--scheme light` and again under `--scheme dark`. Read each capture on its own terms, looking for unreadable text, lost borders, and glass that does not blur or tint. A pass in one scheme proves nothing about the other.
+
+```sh
+node .agents/skills/verify-tantalus/scripts/drive.ts --scheme light screenshot "$EVIDENCE" settings-light
+node .agents/skills/verify-tantalus/scripts/drive.ts --scheme dark screenshot "$EVIDENCE" settings-dark
+```
+
+Chromium draws native popups, such as a `<select>` list, outside the page in its own colors, so `screenshot` misses them and they can ignore the theme. Capture the whole display to see one: `import -display "$(cat "$(.agents/skills/verify-tantalus/scripts/run-dir.sh)/run.display")" -window root "$EVIDENCE/display.png"`.
+
 For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
 
 ```sh
@@ -119,7 +132,7 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 
 5. Exercise the tray (see `features/tray-and-autorefresh.md`).
 
-6. Capture screenshots after each materially different state.
+6. Capture screenshots after each materially different state, in both light and dark (see Light and dark).
 
 In real mode the preview reads local credential files and calls the live usage APIs. Never print tokens or pass them on a command line. To prove auth-missing behavior without touching real credentials, launch with empty `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME` directories under `coverage-home/` in the run directory. Restore a normal preview launch before proving live readings.
 
@@ -129,7 +142,7 @@ Keep each run under `evidence/<timestamp>/` in the run directory:
 
 - `preview-build.log`, `launch.log`, and `doctor.log`
 - `vitest.log`
-- one PNG per meaningful window state
+- one PNG per meaningful window state and color scheme, named with a `-light` or `-dark` suffix
 - concise `notes.md` listing features covered, inaccessible prerequisites, and observed drift
 
 A screenshot proves the rendered page. Pair it with the relevant interaction and suite result. Closing the window destroys its page, so `drive.ts` reports no window until the tray or a second launch opens it again.
@@ -148,7 +161,7 @@ All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it, and refuses while a harness preview runs
 - `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
-- `drive.ts [--web URL] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
+- `drive.ts [--web URL] [--scheme light|dark] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `seed-pace.sh` writes a learned pace log into the mock settings directory, and refuses outside mock mode; run `launch.sh --restart` after it
