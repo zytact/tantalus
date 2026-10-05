@@ -93,7 +93,7 @@ export function namedHubAccounts({ label, accounts }: Pick<ProxyHubSnapshot, "la
     const name: AccountName = account.email
       ? { title, email: account.email, label: numbered }
       : { title: numbered, email: null, label: numbered };
-    return { ...account, name };
+    return { ...account, number, name };
   });
 }
 

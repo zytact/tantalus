@@ -1,5 +1,13 @@
 import type { AvailableUpdate } from "../shared/ipc";
-import { percent, providerIds, providerNames, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import {
+  namedHubAccounts,
+  percent,
+  providerIds,
+  providerNames,
+  refreshedAgo,
+  refreshedEpoch,
+  usagePace,
+} from "../shared/usage";
 import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
 
 export type TrayAction = "show" | "refresh" | "quit";
@@ -30,9 +38,11 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
   ];
 }
 
+/** The menu cannot blur emails, so a hub's accounts are numbered within their provider instead, as in
+ * the tray tooltip. */
 function hubItems(hub: ProxyHubSnapshot, now: number): TrayItem[] {
-  const accounts = hub.accounts.flatMap((account) =>
-    readingItems(accountHeading(providerNames[account.provider], account.plan), account.usage, now),
+  const accounts = namedHubAccounts(hub).flatMap(({ provider, number, plan, usage }) =>
+    readingItems(accountHeading(`${providerNames[provider]} ${number}`, plan), usage, now),
   );
   const status = hub.error_message ?? (hub.status === "loading" ? "Loading" : "No supported accounts");
   return [
