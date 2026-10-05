@@ -29,7 +29,8 @@ export function signInLapsed(usage: ProviderUsage): boolean {
 
 /** Starts a polled provider or hub account's 5-hour window through its CLI or hub once readings have shown it idle for `GRACE`.
  * A reading that is not idle starts the wait over, so a window is started at most once per idle spell.
- * With wake on, it also renews a Claude sign-in through the local CLI, at most once an hour. */
+ * With wake on, it also renews a Claude sign-in through the local CLI, at most once an hour. Every
+ * attempt, failed or not, is followed by a refresh so its result shows straight away. */
 export class WindowStarter {
   private settings: WindowStartSettings;
   private readonly idleSince = new Map<string, number>();
@@ -44,7 +45,7 @@ export class WindowStarter {
     private readonly path: string,
     private readonly locate: (provider: StartProviderId, configured: string | null) => Promise<Cli | null>,
     private readonly run: (cli: Cli) => Promise<void>,
-    private readonly started: () => void,
+    private readonly afterAttempt: () => void,
     private readonly runHub?: (
       hubId: string,
       accountId: string,
@@ -172,13 +173,13 @@ export class WindowStarter {
     this.idleSince.delete(target.key);
     const attempt = await this.runProvider(target, false);
     this.last.set(target.key, attempt);
-    if (!attempt.error) this.started();
+    this.afterAttempt();
   }
 
   private async wake(target: StartTarget) {
     const attempt = await this.runProvider(target, true);
     this.wakes.set(target.key, attempt);
-    if (!attempt.error) this.started();
+    this.afterAttempt();
   }
 
   private async runProvider(target: StartTarget, wake: boolean): Promise<StartAttempt> {

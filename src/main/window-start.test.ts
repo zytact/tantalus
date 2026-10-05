@@ -171,7 +171,7 @@ describe("window starter", () => {
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1300)));
     await settle();
-    expect(started()).toBe(0);
+    expect(started()).toBe(1);
     expect((await instance.read()).providers.claude.last?.error).toBe("claude exited with code 1: not logged in");
     instance.observe(snapshot(idle(1600)));
     instance.observe(snapshot(idle(1900)));
