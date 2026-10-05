@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.32](https://github.com/zytact/tantalus/compare/v0.0.31...v0.0.32) (2026-10-05)
+
+
+### Bug Fixes
+
+* **settings:** replace the white native account dropdown with a glass menu that follows dark mode ([#104](https://github.com/zytact/tantalus/issues/104)) ([7ab4491](https://github.com/zytact/tantalus/commit/7ab449187c5f1ea91a8c54394ff4101c1116a62e))
+* **settings:** say hub window starts are waiting, not "not started" ([#106](https://github.com/zytact/tantalus/issues/106)) ([59ac6b3](https://github.com/zytact/tantalus/commit/59ac6b38d4428c0f169676440ad636f8c9cf0f1c))
+
 ## [0.0.31](https://github.com/zytact/tantalus/compare/v0.0.30...v0.0.31) (2026-10-05)
 
 
