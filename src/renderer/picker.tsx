@@ -22,15 +22,21 @@ export function Picker<T extends string>({
   const id = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  // Held by value, so a refresh that reorders or drops options cannot move the highlight to another one.
+  const [active, setActive] = useState<T>(value);
   const selected = options.findIndex((option) => option.value === value);
+  const highlighted = options.findIndex((option) => option.value === active && !option.disabled);
+  const activeIndex = highlighted === -1 ? nextEnabled(options, -1, 1) : highlighted;
 
   useEffect(() => {
-    if (open) listRef.current?.children[active]?.scrollIntoView({ block: "nearest" });
-  }, [open, active]);
+    if (open) listRef.current?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+  useEffect(() => {
+    if (open) listRef.current?.children[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex]);
 
   const show = () => {
-    setActive(selected !== -1 && !options[selected].disabled ? selected : nextEnabled(options, -1, 1));
+    setActive(value);
     setOpen(true);
   };
   const choose = (index: number) => {
@@ -48,18 +54,19 @@ export function Picker<T extends string>({
       return;
     }
     const move: Partial<Record<string, () => number>> = {
-      ArrowDown: () => nextEnabled(options, active, 1),
-      ArrowUp: () => nextEnabled(options, active, -1),
+      ArrowDown: () => nextEnabled(options, activeIndex, 1),
+      ArrowUp: () => nextEnabled(options, activeIndex, -1),
       Home: () => nextEnabled(options, -1, 1),
       End: () => nextEnabled(options, options.length, -1),
     };
     const target = move[event.key];
     if (target) {
       event.preventDefault();
-      setActive(target());
+      const option = options[target()];
+      if (option) setActive(option.value);
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      choose(active);
+      choose(activeIndex);
     } else if (event.key === "Escape") {
       event.preventDefault();
       setOpen(false);
@@ -80,7 +87,7 @@ export function Picker<T extends string>({
         aria-haspopup="listbox"
         aria-controls={`${id}-list`}
         aria-expanded={open}
-        aria-activedescendant={open ? `${id}-${active}` : undefined}
+        aria-activedescendant={open && activeIndex !== -1 ? `${id}-${activeIndex}` : undefined}
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKeyDown}
@@ -109,8 +116,8 @@ export function Picker<T extends string>({
               role="option"
               aria-selected={index === selected}
               aria-disabled={option.disabled}
-              data-active={index === active}
-              onMouseEnter={() => !option.disabled && setActive(index)}
+              data-active={index === activeIndex}
+              onMouseEnter={() => !option.disabled && setActive(option.value)}
               onClick={() => !option.disabled && choose(index)}
             >
               <svg className="picker-check" viewBox="0 0 12 12" aria-hidden="true">
