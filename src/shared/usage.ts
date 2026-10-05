@@ -76,21 +76,22 @@ export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
   window_starts?: Partial<Record<string, StartAttempt>>;
 };
 
-/** Numbers a hub's accounts within each provider, so its first Codex account is Codex 1 whatever comes before it. */
-export function numberedHubAccounts(accounts: ProxyHubAccount[]) {
+/** How an account is named where accounts are listed side by side. The page blurs `email` until it is
+ * revealed, and the tray never shows it. */
+export type AccountName = { title: string; email: string | null };
+
+/** Names a hub's accounts by hub, provider and email. An account the hub reports no email for is
+ * numbered within its provider instead, so the hub's first Codex account without one is Codex 1. */
+export function namedHubAccounts({ label, accounts }: Pick<ProxyHubSnapshot, "label" | "accounts">) {
   const counts = new Map<ProxyHubProviderId, number>();
   return accounts.map((account) => {
+    const title = `${label} · ${providerNames[account.provider]}`;
+    if (account.email) return { ...account, name: { title, email: account.email } satisfies AccountName };
     const number = (counts.get(account.provider) ?? 0) + 1;
     counts.set(account.provider, number);
-    return { ...account, number };
+    return { ...account, name: { title: `${title} ${number}`, email: null } satisfies AccountName };
   });
 }
-
-/** How a numbered hub account is named wherever accounts are listed side by side. */
-export const hubAccountLabel = (
-  hubLabel: string,
-  { provider, number }: { provider: ProxyHubProviderId; number: number },
-) => `${hubLabel} · ${providerNames[provider]} ${number}`;
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {

@@ -726,6 +726,9 @@ button.danger:hover:not(:disabled) {
 .picker-option[data-active="true"] {
   background: var(--menu-highlight);
 }
+.picker-option[data-active="true"] .account-email span {
+  filter: none;
+}
 .picker-option[aria-disabled="true"] {
   color: var(--text-faint);
 }

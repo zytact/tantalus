@@ -10,8 +10,9 @@ const inked = ({ width, height, data }: Bitmap) =>
   Array.from({ length: width * height }, (_, index) => index).filter((index) => data[index * 4 + 3] === 255);
 
 describe("tray percent", () => {
-  it("is whole and stays within 0 to 100", () => {
-    expect([trayPercent(41.6), trayPercent(-3), trayPercent(140)]).toEqual(["42", "0", "100"]);
+  it("is whole and stays within 0 to its limit", () => {
+    expect([trayPercent(41.6, 100), trayPercent(-3, 100), trayPercent(140, 100)]).toEqual(["42", "0", "100"]);
+    expect([trayPercent(150, 300), trayPercent(320, 300)]).toEqual(["150", "300"]);
   });
 });
 

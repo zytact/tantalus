@@ -1,13 +1,12 @@
 import {
   fiveHourSeconds,
-  hubAccountLabel,
   monthlySeconds,
-  numberedHubAccounts,
+  namedHubAccounts,
   providerIds,
   providerNames,
   sevenDaySeconds,
 } from "./usage";
-import type { ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
+import type { AccountName, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
 
 /** How far from the usual pace a window has to move before a creature shows. The same multiple sets
  * both thresholds: a dragon at `multiple` times the usual pace, a tortoise at one `multiple`th of it. */
@@ -87,7 +86,7 @@ export function paceKey(duration: number, provider: ProviderId, hub?: { hubId: s
 export type PaceWindow = {
   key: string;
   provider: ProviderId;
-  owner: string;
+  owner: AccountName;
   plan: string | null;
   identity: string | null;
   duration: number;
@@ -100,7 +99,7 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   const windows = (
     usage: ProviderUsage,
     provider: ProviderId,
-    owner: string,
+    owner: AccountName,
     keyOf: (duration: number) => string,
     plan = usage.plan,
     identity = usage.account_key ?? usage.email,
@@ -114,13 +113,15 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   return [
     ...providerIds
       .filter((id) => snapshot.enabled[id])
-      .flatMap((id) => windows(snapshot[id], id, providerNames[id], (duration) => paceKey(duration, id))),
+      .flatMap((id) =>
+        windows(snapshot[id], id, { title: providerNames[id], email: null }, (duration) => paceKey(duration, id)),
+      ),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      numberedHubAccounts(hub.accounts).flatMap(({ id, provider, usage, plan, email, number }) =>
+      namedHubAccounts(hub).flatMap(({ id, provider, usage, plan, email, name }) =>
         windows(
           usage,
           provider,
-          hubAccountLabel(hub.label, { provider, number }),
+          name,
           (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
           plan,
           // A hub can swap the account behind an auth file, so the email keeps their pace apart.

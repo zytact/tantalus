@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
-export type PickerOption<T extends string> = { value: T; label: string; disabled?: boolean };
+export type PickerOption<T extends string> = { value: T; label: ReactNode; disabled?: boolean };
 
 /** A pop-up button whose glass menu replaces the native select, which Chromium draws in light system
  * colors whatever the theme. Follows the select-only combobox pattern: focus stays on the button and
@@ -123,7 +123,7 @@ export function Picker<T extends string>({
               <svg className="picker-check" viewBox="0 0 12 12" aria-hidden="true">
                 <path d="M2 6.5l2.5 2.5L10 3" />
               </svg>
-              {option.label}
+              <span>{option.label}</span>
             </div>
           ))}
         </div>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { trayUsageColors, trayUsageOptions } from "../shared/tray-usage";
 import type { TrayUsageOption, TrayUsageSettings } from "../shared/tray-usage";
-import { providerIds, providerNames } from "../shared/usage";
+import { nowEpoch, providerIds, providerNames } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
+import { AccountName } from "./account-name";
 import type { Loadable } from "./busy";
 import { Picker } from "./picker";
 import { SettingPending, Toggle } from "./settings-controls";
@@ -48,7 +49,8 @@ export function TrayUsageRows({ snapshot }: { snapshot: UsageSnapshot | null }) 
           <h2>Usage in tray</h2>
           <p>
             Shows one account&apos;s 5-hour usage beside the tray icon, in its provider&apos;s color. Codex Go and free
-            accounts show their monthly window instead. On Windows the number replaces the icon.
+            accounts show their monthly window instead. A hub&apos;s pooled option adds up its accounts, so three
+            accounts read up to 300%. On Windows the number replaces the icon.
           </p>
         </div>
         <TrayUsageToggle settings={settings} saving={saving} onSave={(next) => void save(next)} />
@@ -95,7 +97,7 @@ function TrayUsageAccounts({
   onSave: (settings: TrayUsageSettings) => void;
 }) {
   if (typeof settings === "string" || !settings.enabled || !snapshot) return null;
-  return <TrayUsagePicker {...props} options={trayUsageOptions(snapshot)} settings={settings} />;
+  return <TrayUsagePicker {...props} options={trayUsageOptions(snapshot, nowEpoch())} settings={settings} />;
 }
 
 /** A saved account that is no longer read stays selected, so the choice is not silently changed. */
@@ -124,7 +126,7 @@ function TrayUsagePicker({
           disabled={saving}
           options={[
             ...(missing ? [{ value: selected, label: "Account no longer available", disabled: true }] : []),
-            ...options.map(({ key, label }) => ({ value: key, label })),
+            ...options.map(({ key, name }) => ({ value: key, label: <AccountName name={name} plain /> })),
           ]}
           onChange={(source) => onSave({ ...settings, source })}
         />

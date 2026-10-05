@@ -204,12 +204,12 @@ describe("window start accounts", () => {
         codex: { path: null, command: "/usr/bin/codex", last: null },
       },
     };
-    expect(startAccounts(start, snapshot, "codex").map(({ label, status }) => [label, status])).toEqual([
+    expect(startAccounts(start, snapshot, "codex").map(({ name, status }) => [name.title, status])).toEqual([
       ["Direct", "Runs /usr/bin/codex."],
       ["Hub · Codex 1", "Waiting for an idle window."],
       ["Hub · Codex 2", `Started a window ${absoluteTime(epoch)}.`],
     ]);
-    expect(startAccounts(start, snapshot, "claude").map(({ label }) => label)).toEqual(["Hub · Claude 1"]);
+    expect(startAccounts(start, snapshot, "claude").map(({ name }) => name.title)).toEqual(["Hub · Claude 1"]);
   });
 });
 

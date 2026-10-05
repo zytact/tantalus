@@ -16,9 +16,9 @@ const glyphs: Record<string, string[]> = {
 };
 const GLYPH_HEIGHT = 7;
 
-/** The used percentage as the tray draws it: whole, and within 0 to 100. */
-export function trayPercent(used: number): string {
-  return String(Math.round(Math.min(100, Math.max(0, used))));
+/** The used percentage as the tray draws it: whole, and within 0 to `limit`. */
+export function trayPercent(used: number, limit: number): string {
+  return String(Math.round(Math.min(limit, Math.max(0, used))));
 }
 
 /** Draws `text` in `color` beside `mark`, or alone and centered in a square when there is no mark.
