@@ -11,6 +11,7 @@ import { ProviderIcon } from "./provider-icon";
 import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
 import { SettingPending, Toggle } from "./settings-controls";
+import { TrayUsageRows } from "./tray-usage-settings";
 import { UpdateNotice } from "./update-notice";
 import { WindowStartRows } from "./window-start-settings";
 
@@ -302,6 +303,8 @@ export function SettingsPage({
         <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
 
         <WindowStartRows snapshot={snapshot} />
+
+        <TrayUsageRows snapshot={snapshot} />
 
         <section className="setting-row">
           <div className="setting-copy">

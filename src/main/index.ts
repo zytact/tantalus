@@ -1,14 +1,16 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
-import type { MenuItemConstructorOptions } from "electron";
+import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
-import { nowEpoch, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
+import { nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import type { UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
@@ -16,9 +18,11 @@ import { runCli, startCli } from "./cli";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
-import { paceSettings, windowStartSettings } from "./settings";
+import { loadTrayUsageSettings, paceSettings, saveSettings, trayUsageSettings, windowStartSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
+import { tint, trayPercent, usageBitmap } from "./tray-icon";
+import type { Bitmap } from "./tray-icon";
 import { trayItems } from "./tray-menu";
 import type { TrayAction, TrayItem } from "./tray-menu";
 import { Updater } from "./update";
@@ -28,6 +32,8 @@ import { WindowStarter } from "./window-start";
 
 const identity = app.getName() === identities.preview.productName ? identities.preview : identities.release;
 const preview = identity === identities.preview;
+/** macOS draws the release tray mark from its alpha channel, in the menu bar's ink. */
+const templateMark = process.platform === "darwin" && !preview;
 
 // Settings and the single-instance lock live under the user data directory, so keying it by the
 // identifier keeps a preview's apart from the release's.
@@ -123,8 +129,8 @@ function start() {
   const updatesEnabled = app.isPackaged && !preview;
 
   const tray = new Tray(trayImage());
-  tray.setToolTip(identity.productName);
   bindTrayClick(tray);
+  const renderTrayIcon = trayUsageIcon(tray, () => state.snapshot);
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
     refresh: () => void state.refresh(),
@@ -132,6 +138,7 @@ function start() {
   };
   let shownTray = "";
   function renderTray() {
+    renderTrayIcon();
     const items = trayItems(state.snapshot, updater.available(), nowEpoch());
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
@@ -205,6 +212,40 @@ function bindTrayClick(tray: Tray) {
   // macOS opens the menu on a left click; elsewhere the click opens the window and the menu keeps its
   // own button.
   if (process.platform !== "darwin") tray.on("click", showWindow);
+}
+
+/** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
+ * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
+function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
+  const path = join(app.getPath("userData"), "tray-usage.json");
+  let settings = loadTrayUsageSettings(path);
+  let shown: string | null = null;
+  const show = (tooltip: string, image: () => NativeImage) => {
+    const key = `${tooltip}:${nativeTheme.shouldUseDarkColors}`;
+    if (key === shown) return;
+    shown = key;
+    tray.setToolTip(tooltip);
+    tray.setImage(image());
+  };
+  const render = () => {
+    const reading = trayUsageReading(snapshot(), settings);
+    if (!reading) return show(identity.productName, trayImage);
+    show(`${identity.productName}\n${reading.label} ${reading.span} ${percent(reading.used)}`, () =>
+      usageTrayImage(trayPercent(reading.used), trayUsageColors[reading.provider]),
+    );
+  };
+  // The macOS mark is drawn in the menu bar's ink, which follows the appearance.
+  nativeTheme.on("updated", render);
+  handle("trayUsage", () => settings);
+  handle("setTrayUsage", (next) => {
+    const parsed = trayUsageSettings(next);
+    if (!parsed) throw new Error("Unknown tray usage setting.");
+    saveSettings(path, parsed);
+    settings = parsed;
+    render();
+    return parsed;
+  });
+  return render;
 }
 
 function startBackgroundServices(
@@ -318,8 +359,29 @@ function trayImage() {
   if (process.platform !== "darwin") return image;
   const sized = image.resize({ height: 18, quality: "best" });
   sized.addRepresentation({ scaleFactor: 2, buffer: image.resize({ height: 36, quality: "best" }).toPNG() });
-  sized.setTemplateImage(!preview);
+  sized.setTemplateImage(templateMark);
   return sized;
+}
+
+/** The tray icon with a usage number beside the mark. Windows fits every tray icon into a fixed
+ * square, so there the number replaces the mark. */
+function usageTrayImage(text: string, color: string) {
+  const height = process.platform === "darwin" ? 18 : 16;
+  const [single, double] = [1, 2].map((scale) => {
+    const mark = process.platform === "win32" ? null : trayMark(height * scale);
+    const bitmap = usageBitmap({ text, color, height: height * scale, mark });
+    return nativeImage.createFromBitmap(bitmap.data, { width: bitmap.width, height: bitmap.height });
+  });
+  const image = nativeImage.createFromBuffer(single.toPNG());
+  image.addRepresentation({ scaleFactor: 2, buffer: double.toPNG() });
+  return image;
+}
+
+/** The mark at `height` pixels, a template mark drawn in the ink macOS would give it. */
+function trayMark(height: number): Bitmap {
+  const image = nativeImage.createFromDataURL(preview ? previewTrayIcon : trayIcon).resize({ height, quality: "best" });
+  const mark = { ...image.getSize(), data: image.toBitmap() };
+  return templateMark ? tint(mark, nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000") : mark;
 }
 
 function publish<E extends keyof Events>(event: E, payload: Events[E]) {

@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vite-plus/test";
+import { tint, trayPercent, usageBitmap } from "./tray-icon";
+import type { Bitmap } from "./tray-icon";
+
+const mark = (size: number): Bitmap => ({ width: size, height: size, data: Buffer.alloc(size * size * 4, 0x80) });
+const pixel = ({ width, data }: Bitmap, x: number, y: number) => [
+  ...data.subarray((y * width + x) * 4, (y * width + x) * 4 + 4),
+];
+const inked = ({ width, height, data }: Bitmap) =>
+  Array.from({ length: width * height }, (_, index) => index).filter((index) => data[index * 4 + 3] === 255);
+
+describe("tray percent", () => {
+  it("is whole and stays within 0 to 100", () => {
+    expect([trayPercent(41.6), trayPercent(-3), trayPercent(140)]).toEqual(["42", "0", "100"]);
+  });
+});
+
+describe("usage bitmap", () => {
+  it("puts the number after the mark in the provider color", () => {
+    const bitmap = usageBitmap({ text: "42", color: "#D97757", height: 16, mark: mark(16) });
+    expect(bitmap.height).toBe(16);
+    expect(bitmap.width).toBeGreaterThan(16);
+    expect(pixel(bitmap, 0, 0)).toEqual([0x80, 0x80, 0x80, 0x80]);
+    const first = inked(bitmap)[0];
+    expect(first % bitmap.width).toBeGreaterThanOrEqual(16);
+    expect(pixel(bitmap, first % bitmap.width, Math.floor(first / bitmap.width))).toEqual([0x57, 0x77, 0xd9, 255]);
+  });
+
+  it("fits even 100 inside the square when there is no mark", () => {
+    for (const height of [16, 32]) {
+      for (const text of ["7", "42", "100"]) {
+        const bitmap = usageBitmap({ text, color: "#3B82F6", height, mark: null });
+        expect([bitmap.width, bitmap.height]).toEqual([height, height]);
+        expect(inked(bitmap).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("draws the digits larger when the icon is larger", () => {
+    const small = usageBitmap({ text: "42", color: "#3B82F6", height: 16, mark: null });
+    const large = usageBitmap({ text: "42", color: "#3B82F6", height: 32, mark: null });
+    expect(inked(large).length).toBeGreaterThan(inked(small).length * 2);
+  });
+});
+
+describe("tint", () => {
+  it("recolors a mark and keeps its coverage", () => {
+    const tinted = tint({ width: 1, height: 1, data: Buffer.from([0, 0, 0, 128]) }, "#ffffff");
+    expect([...tinted.data]).toEqual([128, 128, 128, 128]);
+  });
+});

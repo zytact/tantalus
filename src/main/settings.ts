@@ -3,6 +3,8 @@ import { dirname } from "node:path";
 import type { RemoteSettings } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
+import { noTrayUsage } from "../shared/tray-usage";
+import type { TrayUsageSettings } from "../shared/tray-usage";
 import type { ProviderSettings, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
 import type { StartProviderSettings, WindowStartSettings } from "../shared/window-start";
 import { field } from "./parse";
@@ -46,6 +48,17 @@ export function paceSettings(value: unknown): PaceSettings | null {
   return typeof enabled === "boolean" && typeof explained === "boolean" && isPacePreset(preset)
     ? { enabled, preset, explained }
     : null;
+}
+
+export function loadTrayUsageSettings(path: string): TrayUsageSettings {
+  return load(path, noTrayUsage, noTrayUsage, trayUsageSettings);
+}
+
+/** The tray usage settings in a saved file or a request from the window, or null for anything else. */
+export function trayUsageSettings(value: unknown): TrayUsageSettings | null {
+  const enabled = field(value, "enabled");
+  const source = field(value, "source");
+  return typeof enabled === "boolean" && (source === null || typeof source === "string") ? { enabled, source } : null;
 }
 
 /** Nothing runs a CLI until someone switches it on. */
