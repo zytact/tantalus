@@ -266,10 +266,10 @@ function titledPaces(snapshot: UsageSnapshot): TitledPace[] {
             key,
             usualKey: paceHistoryKeys(window).usual,
             title: (
-              <>
+              <span>
                 <AccountName name={owner} />
                 {plan ? ` · ${plan}` : ""} · {windowLabel(duration)}
-              </>
+              </span>
             ),
             pace,
           },

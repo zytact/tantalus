@@ -68,7 +68,8 @@ function pooledOptions(hub: ProxyHubSnapshot, now: number): TrayUsageOption[] {
     const title = `${hub.label} · ${providerNames[provider]} · All ${accounts.length} accounts`;
     return [
       {
-        key: `${hub.id}:${provider}:all`,
+        // One part shorter than an account's key, so no account id can collide with it.
+        key: `${hub.id}:${provider}`,
         provider,
         name: { title, email: null },
         window:

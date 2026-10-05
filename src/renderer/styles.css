@@ -726,9 +726,6 @@ button.danger:hover:not(:disabled) {
 .picker-option[data-active="true"] {
   background: var(--menu-highlight);
 }
-.picker-option[data-active="true"] .account-email span {
-  filter: none;
-}
 .picker-option[aria-disabled="true"] {
   color: var(--text-faint);
 }
@@ -749,6 +746,17 @@ button.danger:hover:not(:disabled) {
 }
 .settings-notice {
   margin-top: 0;
+}
+.tray-usage-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.reveal-emails {
+  min-height: 0;
+  padding: 4px 10px;
+  font-size: 0.78rem;
 }
 .tray-usage-legend {
   display: flex;

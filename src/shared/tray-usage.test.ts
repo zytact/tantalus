@@ -46,7 +46,7 @@ describe("tray usage", () => {
     expect(trayUsageOptions(snapshot, now).map(({ key, name }) => [key, name])).toEqual([
       ["codex", { title: "Codex", email: null }],
       ["claude", { title: "Claude", email: null }],
-      ["hub:claude:all", { title: "Work · Claude · All 2 accounts", email: null }],
+      ["hub:claude", { title: "Work · Claude · All 2 accounts", email: null }],
       ["hub:claude:a", { title: "Work · Claude", email: "a@example.com" }],
       ["hub:claude:b", { title: "Work · Claude 1", email: null }],
       ["hub:codex:c", { title: "Work · Codex 1", email: null }],
@@ -57,7 +57,7 @@ describe("tray usage", () => {
     const pool = (accounts: ProxyHubAccount[]) =>
       trayUsageReading(
         { ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0], accounts }] },
-        { enabled: true, source: "hub:codex:all" },
+        { enabled: true, source: "hub:codex" },
         now,
       );
     const codex = (id: string, used: number | null, reset: number | null = null) =>

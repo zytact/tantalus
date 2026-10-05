@@ -10,8 +10,11 @@ function subscribe(listener: () => void) {
   return () => void listeners.delete(listener);
 }
 
-function toggle(email: string) {
-  if (!revealed.delete(email)) revealed.add(email);
+function reveal(emails: string[], visible: boolean) {
+  for (const email of emails) {
+    if (visible) revealed.add(email);
+    else revealed.delete(email);
+  }
   for (const listener of listeners) listener();
 }
 
@@ -27,7 +30,7 @@ export function Email({ email, label }: { email: string; label: string }) {
       aria-label={visible ? `${email}, hide email for ${label}` : `Show email for ${label}`}
       aria-pressed={visible}
       title={visible ? "Hide email" : "Show email"}
-      onClick={() => toggle(email)}
+      onClick={() => reveal([email], !visible)}
     >
       <span aria-hidden={!visible}>{email}</span>
     </button>
@@ -35,7 +38,8 @@ export function Email({ email, label }: { email: string; label: string }) {
 }
 
 /** An account's name, with its email blurred until clicked. With `plain`, the email cannot be clicked,
- * for places such as a menu option that cannot hold a button, and shows once revealed elsewhere. */
+ * for places such as a menu option that cannot hold a button, and shows once revealed elsewhere, such
+ * as through `RevealEmails`. */
 export function AccountName({ name: { title, email }, plain = false }: { name: Name; plain?: boolean }) {
   if (email === null) return title;
   return (
@@ -46,9 +50,21 @@ export function AccountName({ name: { title, email }, plain = false }: { name: N
 }
 
 function PlainEmail({ email }: { email: string }) {
+  const visible = useRevealed(email);
   return (
-    <span className="account-email" data-visible={useRevealed(email)}>
-      <span>{email}</span>
+    <span className="account-email" data-visible={visible}>
+      <span aria-hidden={!visible}>{email}</span>
     </span>
+  );
+}
+
+/** Shows or hides every listed email at once, for a list such as a menu whose emails cannot be clicked. */
+export function RevealEmails({ emails }: { emails: string[] }) {
+  const visible = useSyncExternalStore(subscribe, () => emails.every((email) => revealed.has(email)));
+  if (emails.length === 0) return null;
+  return (
+    <button className="reveal-emails" aria-pressed={visible} onClick={() => reveal(emails, !visible)}>
+      {visible ? "Hide emails" : "Show emails"}
+    </button>
   );
 }
