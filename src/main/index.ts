@@ -362,16 +362,18 @@ function trayImage() {
 
 /** The tray icon with a usage number beside the mark. The mark keeps its color, even on macOS, since
  * a template image would recolor the number too and the app cannot read the menu bar's ink. Windows
- * fits every tray icon into a fixed square, so there the number replaces the mark. */
+ * fits every tray icon into a fixed square, so there the number replaces the mark. Linux gets no 2x
+ * representation, since Chromium hands the panel its largest one and GNOME's AppIndicator reserves a
+ * wide icon's full pixel width while drawing it at panel height. */
 function usageTrayImage(text: string, color: string) {
   const height = process.platform === "darwin" ? 18 : 16;
-  const [single, double] = [1, 2].map((scale) => {
+  const [single, double] = (process.platform === "linux" ? [1] : [1, 2]).map((scale) => {
     const mark = process.platform === "win32" ? null : trayMark(height * scale);
     const bitmap = usageBitmap({ text, color, height: height * scale, mark });
     return nativeImage.createFromBitmap(bitmap.data, { width: bitmap.width, height: bitmap.height });
   });
   const image = nativeImage.createFromBuffer(single.toPNG());
-  image.addRepresentation({ scaleFactor: 2, buffer: double.toPNG() });
+  if (double) image.addRepresentation({ scaleFactor: 2, buffer: double.toPNG() });
   return image;
 }
 

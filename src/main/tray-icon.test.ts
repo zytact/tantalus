@@ -38,18 +38,16 @@ describe("usage bitmap", () => {
   });
 
   it("widens the square for a pooled number too wide for it, rather than wrapping its pixels", () => {
-    const bitmap = usageBitmap({ text: "300", color: "#3B82F6", height: 16, mark: null });
-    expect([bitmap.width, bitmap.height]).toEqual([17, 16]);
+    const bitmap = usageBitmap({ text: "10000", color: "#3B82F6", height: 16, mark: null });
+    expect([bitmap.width, bitmap.height]).toEqual([19, 16]);
     const columns = inked(bitmap).map((index) => index % bitmap.width);
-    expect([Math.min(...columns), Math.max(...columns)]).toEqual([0, 16]);
+    expect([Math.min(...columns), Math.max(...columns)]).toEqual([0, 18]);
   });
 
-  it("draws the 2x representation exactly twice the size of the 1x one", () => {
-    for (const height of [16, 18]) {
-      const single = usageBitmap({ text: "42", color: "#D97757", height, mark: mark(height) });
-      const double = usageBitmap({ text: "42", color: "#D97757", height: height * 2, mark: mark(height * 2) });
-      expect([double.width, double.height]).toEqual([single.width * 2, single.height * 2]);
-    }
+  it("draws the macOS 2x representation exactly twice the size of the 1x one", () => {
+    const single = usageBitmap({ text: "42", color: "#D97757", height: 18, mark: mark(18) });
+    const double = usageBitmap({ text: "42", color: "#D97757", height: 36, mark: mark(36) });
+    expect([double.width, double.height]).toEqual([single.width * 2, single.height * 2]);
   });
 
   it("draws the digits larger when the icon is larger", () => {
