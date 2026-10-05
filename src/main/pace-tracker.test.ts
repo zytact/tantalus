@@ -56,7 +56,7 @@ it("forgets what every window learned and starts each again from the current rea
   ]);
 });
 
-it("does not let a refresh around a reset save what the reset forgot", async () => {
+it("does not let a refresh during a reset save what the reset forgot", async () => {
   const saved = tracker();
   seed(saved.path, "codex");
   const pace = saved.create();
@@ -65,24 +65,27 @@ it("does not let a refresh around a reset save what the reset forgot", async () 
   pace.track(snapshotFor("codex", "Pro"), noActivity, epoch + 300);
   await reset;
   await pace.saved();
-  const logs = Object.values(loadPaceLogs(saved.path));
-  expect(logs.length).toBeGreaterThan(0);
-  expect(logs.every((log) => log.readings.length === 0)).toBe(true);
+  expect(loadPaceLogs(saved.path)).toEqual({});
 });
 
-it("keeps what it learned when the reset cannot be saved", async () => {
+it("keeps what it learned on disk and in memory when the reset cannot be saved", async () => {
   const saved = tracker();
   seed(saved.path, "codex");
   const pace = saved.create();
-  const learned = pace.annotate(snapshotFor("codex", "Pro"), epoch);
+  const key = paceKey(fiveHourSeconds, "codex");
   chmodSync(dirname(saved.path), 0o500);
   try {
-    await expect(pace.reset()).rejects.toThrow();
+    const reset = pace.reset();
+    pace.track(snapshotFor("codex", "Pro"), noActivity, epoch + 300);
+    await expect(reset).rejects.toThrow();
   } finally {
     chmodSync(dirname(saved.path), 0o700);
   }
-  expect(pace.annotate(snapshotFor("codex", "Pro"), epoch)).toEqual(learned);
-  expect(Object.values(loadPaceLogs(saved.path))[0]?.readings).toEqual([2, 4]);
+  expect(pace.annotate(snapshotFor("codex", "Pro"), epoch + 300).pace.windows[key]).toMatchObject({
+    status: "learned",
+    usual_rate: 3,
+  });
+  expect(Object.values(loadPaceLogs(saved.path)).some((log) => log.readings.length > 0)).toBe(true);
 });
 
 function tracker() {

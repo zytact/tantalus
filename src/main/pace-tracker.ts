@@ -24,9 +24,10 @@ export class PaceTracker {
   private readonly logs: Map<string, PaceLog>;
   /** The windows the latest local activity belongs to, and when each was last worked on. */
   private active = new Map<string, number>();
-  /** The queued log writes. Each waits for the one before and saves the log as it stands then, so
-   * the file always catches up with memory. */
+  /** The queued log writes. Each waits for the one before, so they land in the order they were made. */
   private writes = Promise.resolve();
+  /** Set while a reset waits on its save, so a refresh in that time cannot queue the log it forgets. */
+  private resetting = false;
 
   constructor(
     private readonly logPath: string,
@@ -52,9 +53,12 @@ export class PaceTracker {
       if (currentPaceOnly(key) && now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);
     }
     // The log only speeds up learning, so a failed write should not fail the reading that led to it.
-    this.save().catch((error: unknown) => {
-      console.error("Failed to save the pace log:", error);
-    });
+    if (!this.resetting) {
+      const logs = Object.fromEntries(this.logs);
+      this.queue(() => saveSettingsInBackground(this.logPath, logs)).catch((error: unknown) => {
+        console.error("Failed to save the pace log:", error);
+      });
+    }
     return this.annotate(snapshot, now);
   }
 
@@ -90,15 +94,14 @@ export class PaceTracker {
     this.logs.set(keys.usual, recordUsual(this.logs.get(keys.usual), next, readings));
   }
 
-  /** Forgets every window's log. A failed save brings the old log back, so it changes nothing. */
+  /** Forgets every window's log. The empty log is saved first, so a failed save changes nothing. */
   async reset() {
-    const learned = [...this.logs];
-    this.logs.clear();
+    this.resetting = true;
     try {
-      await this.save();
-    } catch (error) {
-      for (const [key, log] of learned) this.logs.set(key, log);
-      throw error;
+      await this.queue(() => saveSettingsInBackground(this.logPath, {}));
+      this.logs.clear();
+    } finally {
+      this.resetting = false;
     }
   }
 
@@ -113,8 +116,8 @@ export class PaceTracker {
     return this.writes;
   }
 
-  private save(): Promise<void> {
-    const write = this.writes.then(() => saveSettingsInBackground(this.logPath, Object.fromEntries(this.logs)));
+  private queue(save: () => Promise<void>): Promise<void> {
+    const write = this.writes.then(save);
     this.writes = write.catch(() => {});
     return write;
   }
