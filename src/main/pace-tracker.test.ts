@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, providerIds } from "../shared/usage";
 import type { ProviderId, ProxyHubProviderId, UsageSnapshot } from "../shared/usage";
@@ -11,13 +11,15 @@ import { noActivity, PaceTracker } from "./pace-tracker";
 import { loadPaceLogs, saveSettings } from "./settings";
 
 const directories: string[] = [];
-afterEach(() => {
+const trackers: PaceTracker[] = [];
+afterEach(async () => {
+  await Promise.all(trackers.splice(0).map((pace) => pace.saved()));
   vi.useRealTimers();
   vi.unstubAllGlobals();
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-it("forgets what every window learned and starts each again from the current reading", () => {
+it("forgets what every window learned and starts each again from the current reading", async () => {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-pace-"));
   directories.push(directory);
   const log = join(directory, "pace-log.json");
@@ -28,6 +30,7 @@ it("forgets what every window learned and starts each again from the current rea
     "claude:18000": { ...learned, last: { epoch: now - 600, used: 9, resetAt: null } },
   });
   const pace = new PaceTracker(log, join(directory, "pace.json"), async () => noActivity);
+  trackers.push(pace);
   const snapshot: UsageSnapshot = {
     codex: {
       ...emptyProviderUsage(),
@@ -43,7 +46,9 @@ it("forgets what every window learned and starts each again from the current rea
   };
   expect(pace.annotate(snapshot, now).pace.windows["codex:604800"]?.status).toBe("learned");
 
-  expect(pace.reset(snapshot, now).pace.windows["codex:604800"]).toMatchObject({ status: "learning" });
+  await pace.reset();
+  expect(pace.track(snapshot, noActivity, now).pace.windows["codex:604800"]).toMatchObject({ status: "learning" });
+  await pace.saved();
   expect(Object.values(loadPaceLogs(log))).toEqual([
     {
       firstSeen: now - 60,
@@ -54,12 +59,49 @@ it("forgets what every window learned and starts each again from the current rea
   ]);
 });
 
+it("does not let a refresh during a reset save what the reset forgot", async () => {
+  const saved = tracker();
+  seed(saved.path, "codex");
+  const pace = saved.create();
+  pace.track(snapshotFor("codex", "Pro"), noActivity, epoch);
+  const reset = pace.reset();
+  pace.track(snapshotFor("codex", "Pro"), noActivity, epoch + 300);
+  await reset;
+  await pace.saved();
+  expect(loadPaceLogs(saved.path)).toEqual({});
+});
+
+it("keeps what it learned on disk and in memory when the reset cannot be saved", async () => {
+  const saved = tracker();
+  seed(saved.path, "codex");
+  const pace = saved.create();
+  const key = paceKey(fiveHourSeconds, "codex");
+  chmodSync(dirname(saved.path), 0o500);
+  try {
+    const reset = pace.reset();
+    pace.track(snapshotFor("codex", "Pro"), noActivity, epoch + 300);
+    await expect(reset).rejects.toThrow();
+  } finally {
+    chmodSync(dirname(saved.path), 0o700);
+  }
+  expect(pace.annotate(snapshotFor("codex", "Pro"), epoch + 300).pace.windows[key]).toMatchObject({
+    status: "learned",
+    usual_rate: 3,
+  });
+  expect(Object.values(loadPaceLogs(saved.path)).some((log) => log.readings.length > 0)).toBe(true);
+});
+
 function tracker() {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-tier-pace-"));
   directories.push(directory);
   const path = join(directory, "pace-log.json");
   const settings = join(directory, "pace.json");
-  return { path, create: () => new PaceTracker(path, settings, async () => noActivity) };
+  const create = () => {
+    const pace = new PaceTracker(path, settings, async () => noActivity);
+    trackers.push(pace);
+    return pace;
+  };
+  return { path, create };
 }
 
 const epoch = 1_800_000_000;
@@ -121,7 +163,7 @@ function seed(path: string, provider: ProviderId) {
 
 it.each(["codex", "claude"] as const)(
   "shares %s learning across direct and hub accounts without sharing quotas or current pace",
-  (provider) => {
+  async (provider) => {
     const saved = tracker();
     seed(saved.path, provider);
     const pace = saved.create();
@@ -159,11 +201,13 @@ it.each(["codex", "claude"] as const)(
       current: { kind: "idle" },
       creature: null,
     });
+    await pace.saved();
     const restarted = saved.create().annotate(reading, epoch + 1200);
     expect(restarted.pace.windows[first]).toMatchObject({ status: "learned", usual_rate: 4 });
     const repeat = pace.track(reading, noActivity, epoch + 1200);
     expect(repeat.pace.windows[first]).toEqual(reading.pace.windows[first]);
-    const reset = pace.reset(reading, epoch + 1200);
+    await pace.reset();
+    const reset = pace.track(reading, noActivity, epoch + 1200);
     expect(Object.values(reset.pace.windows).every((window) => window?.status === "learning")).toBe(true);
   },
 );
@@ -248,7 +292,7 @@ it("keeps current pace apart when a hub swaps the account behind an auth file", 
   });
 });
 
-it.each(providerIds)("retains %s learning while absent and reuses it after restart", (provider) => {
+it.each(providerIds)("retains %s learning while absent and reuses it after restart", async (provider) => {
   const saved = tracker();
   seed(saved.path, provider);
   const pace = saved.create();
@@ -257,6 +301,7 @@ it.each(providerIds)("retains %s learning while absent and reuses it after resta
   pace.track(direct, noActivity, epoch);
   const later = epoch + 365 * 86_400;
   pace.track({ ...direct, enabled: { codex: false, claude: false, opencode: false } }, noActivity, later);
+  await pace.saved();
   expect(Object.keys(loadPaceLogs(saved.path)).some((key) => key.startsWith('["current",'))).toBe(false);
   const returning = snapshotFor(provider, "Pro");
   returning[provider] = usage("Pro", 80, later);
@@ -265,21 +310,26 @@ it.each(providerIds)("retains %s learning while absent and reuses it after resta
   expect(resumed[provider].five_hour.used_percent).toBe(80);
 });
 
-it.each(providerIds)("adopts a previous %s log under the reported tier only once it is seen again", (provider) => {
-  const saved = tracker();
-  seed(saved.path, provider);
-  const pace = saved.create();
-  const absent = snapshotFor(provider, "Pro");
-  absent[provider] = emptyProviderUsage();
-  pace.track(absent, noActivity, epoch);
-  expect(Object.keys(loadPaceLogs(saved.path))).toEqual([paceKey(fiveHourSeconds, provider)]);
-  const seen = pace.track(snapshotFor(provider, "Pro"), noActivity, epoch);
-  expect(seen.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
-    status: "learned",
-    usual_rate: 3,
-  });
-  expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
-});
+it.each(providerIds)(
+  "adopts a previous %s log under the reported tier only once it is seen again",
+  async (provider) => {
+    const saved = tracker();
+    seed(saved.path, provider);
+    const pace = saved.create();
+    const absent = snapshotFor(provider, "Pro");
+    absent[provider] = emptyProviderUsage();
+    pace.track(absent, noActivity, epoch);
+    await pace.saved();
+    expect(Object.keys(loadPaceLogs(saved.path))).toEqual([paceKey(fiveHourSeconds, provider)]);
+    const seen = pace.track(snapshotFor(provider, "Pro"), noActivity, epoch);
+    expect(seen.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
+      status: "learned",
+      usual_rate: 3,
+    });
+    await pace.saved();
+    expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
+  },
+);
 
 it.each(providerIds)("isolates %s sign-ins even without a unique email", async (provider) => {
   vi.useFakeTimers();
