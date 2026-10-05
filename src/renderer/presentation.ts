@@ -2,7 +2,7 @@ import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
 import { fiveHourSeconds, monthlySeconds, percent, sevenDaySeconds } from "../shared/usage";
 import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
-import type { StartProviderId, WindowStart } from "../shared/window-start";
+import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 
 /** What a provider banks beyond its windows, in the order shown. Opencode reports neither. */
 export const providerExtras = {
@@ -86,9 +86,14 @@ export function startStatus({
   command,
   last,
 }: Pick<WindowStart["providers"][StartProviderId], "command" | "last">): string {
-  if (last?.error) return `Could not start a window ${absoluteTime(last.epoch)}. ${last.error}`;
-  if (last) return `Started a window ${absoluteTime(last.epoch)}.`;
+  if (last) return attemptStatus(last);
   return command ? `Runs ${command}.` : "Could not find the CLI. Enter its path below.";
+}
+
+export function attemptStatus({ epoch, error }: StartAttempt): string {
+  return error
+    ? `Could not start a window ${absoluteTime(epoch)}. ${error}`
+    : `Started a window ${absoluteTime(epoch)}.`;
 }
 
 export function wakeStatus({ lastWake }: Pick<WindowStart, "lastWake">): string {

@@ -30,7 +30,7 @@ import { BusyButton, PendingLabel } from "./busy";
 import { CreatureIcon } from "./creature-icon";
 import {
   absoluteTime,
-  startStatus,
+  attemptStatus,
   countdown,
   creatureTip,
   learningByUse,
@@ -270,7 +270,7 @@ function ProviderSection({
       {entries.map((entry) => (
         <Entry key={entry.label} {...entry} now={now} speed={paceOf(entry.duration)} />
       ))}
-      {lastStart && <p className="subscription-date">{startStatus({ command: null, last: lastStart })}</p>}
+      {lastStart && <p className="subscription-date">{attemptStatus(lastStart)}</p>}
       <Extras id={id} provider={provider} />
     </div>
   );

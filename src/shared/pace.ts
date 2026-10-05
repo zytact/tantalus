@@ -1,5 +1,6 @@
 import {
   fiveHourSeconds,
+  hubAccountLabel,
   monthlySeconds,
   numberedHubAccounts,
   providerIds,
@@ -119,7 +120,7 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
         windows(
           usage,
           provider,
-          `${hub.label} · ${providerNames[provider]} ${number}`,
+          hubAccountLabel(hub.label, { provider, number }),
           (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
           plan,
           // A hub can swap the account behind an auth file, so the email keeps their pace apart.
