@@ -7,6 +7,7 @@ import { firstRider, paceKey, riderOf } from "../shared/pace";
 import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
 import {
   clockEpoch,
+  numberedHubAccounts,
   providerIds,
   providerNames,
   proxyHubManagementUrl,
@@ -430,7 +431,7 @@ function HubAccounts({
   paces: PaceSnapshot["windows"];
   starts: UsageSnapshot["window_starts"];
 }) {
-  return hub.accounts.map((account, index) => (
+  return numberedHubAccounts(hub.accounts).map((account) => (
     <ProviderSection
       key={`${account.provider}:${account.id}`}
       id={account.provider}
@@ -440,7 +441,7 @@ function HubAccounts({
       account={{
         email: account.email,
         plan: account.plan,
-        label: `${hub.label} ${providerNames[account.provider]} account ${index + 1}`,
+        label: `${hub.label} ${providerNames[account.provider]} account ${account.number}`,
       }}
       paceOf={(duration) => paces[paceKey(duration, account.provider, { hubId: hub.id, accountId: account.id })]}
     />
