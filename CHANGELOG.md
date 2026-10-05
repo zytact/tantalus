@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.35](https://github.com/zytact/tantalus/compare/v0.0.34...v0.0.35) (2026-10-05)
+
+
+### Features
+
+* **tray:** shrink the usage number and cut its linux panel width from 70px to 32px ([#114](https://github.com/zytact/tantalus/issues/114)) ([7df1be8](https://github.com/zytact/tantalus/commit/7df1be86cb09c0872cafa5822cf4f2bf79632751))
+
+
+### Bug Fixes
+
+* **update:** show what's new as clean text for release-please releases ([#112](https://github.com/zytact/tantalus/issues/112)) ([a219b0d](https://github.com/zytact/tantalus/commit/a219b0d11d3a31ba02e0edd7f8053607a4246bae))
+
 ## [0.0.34](https://github.com/zytact/tantalus/compare/v0.0.33...v0.0.34) (2026-10-05)
 
 
