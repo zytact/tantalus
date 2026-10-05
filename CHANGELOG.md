@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.33](https://github.com/zytact/tantalus/compare/v0.0.32...v0.0.33) (2026-10-05)
+
+
+### Performance Improvements
+
+* **pace:** stop freezing the app while saving what it learned ([#107](https://github.com/zytact/tantalus/issues/107)) ([6270bff](https://github.com/zytact/tantalus/commit/6270bffe5f5f61a0e88630531e74d09c30e8ad12))
+* **usage:** show each account as soon as it's read instead of waiting for slow hubs ([#109](https://github.com/zytact/tantalus/issues/109)) ([d86958f](https://github.com/zytact/tantalus/commit/d86958f04590e7b3f9e65d710ea7e037de7b3000))
+
 ## [0.0.32](https://github.com/zytact/tantalus/compare/v0.0.31...v0.0.32) (2026-10-05)
 
 
