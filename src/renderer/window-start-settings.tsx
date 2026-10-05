@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { providerNames } from "../shared/usage";
-import type { ProviderId, UsageSnapshot } from "../shared/usage";
-import { startProviderIds } from "../shared/window-start";
+import type { UsageSnapshot } from "../shared/usage";
+import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 import type { Loadable } from "./busy";
 import { startStatus, wakeStatus } from "./presentation";
@@ -10,13 +10,7 @@ import { SettingPending, Toggle } from "./settings-controls";
 
 /** The switch for starting idle 5-hour windows, and under it each provider's status and CLI. Read on
  * every visit, since the last start and the CLI found can change between visits. */
-export function WindowStartRows({
-  polled,
-  snapshot,
-}: {
-  polled: Loadable<Record<ProviderId, boolean>>;
-  snapshot: UsageSnapshot | null;
-}) {
+export function WindowStartRows({ snapshot }: { snapshot: UsageSnapshot | null }) {
   const [start, setStart] = useState<Loadable<WindowStart>>("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +63,7 @@ export function WindowStartRows({
       {typeof start !== "string" &&
         start.enabled &&
         startProviderIds
-          .filter((id) => (typeof polled !== "string" && polled[id]) || hasHubProvider(snapshot, id))
+          .filter((id) => snapshot?.enabled[id] || hasHubProvider(snapshot, id))
           .map((id) => (
             <StartProviderRow
               key={id}
@@ -92,14 +86,14 @@ function hasHubProvider(snapshot: UsageSnapshot | null, provider: StartProviderI
   return snapshot?.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === provider)) ?? false;
 }
 
-function currentHubAccounts(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {
-  return start.hubs.filter(
-    (account) =>
-      account.provider === provider &&
-      snapshot?.proxy_hubs.some(
-        (hub) =>
-          hub.id === account.hubId &&
-          hub.accounts.some((current) => current.id === account.accountId && current.provider === provider),
+/** The last start of each hub account that pools this provider. */
+function hubAttempts(snapshot: UsageSnapshot | null, provider: StartProviderId): (StartAttempt | null)[] {
+  return (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
+    hub.accounts
+      .filter((account) => account.provider === provider)
+      .map(
+        (account) =>
+          snapshot?.window_starts?.[windowStartKey(provider, { hubId: hub.id, accountId: account.id })] ?? null,
       ),
   );
 }
@@ -110,15 +104,15 @@ export function lastAttempt(attempts: (StartAttempt | null)[]): StartAttempt | n
 }
 
 function automationAttempt(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId) {
-  const attempts = currentHubAccounts(start, snapshot, provider).map((account) => account.last);
+  const attempts = hubAttempts(snapshot, provider);
   if (snapshot?.enabled[provider]) attempts.push(start.providers[provider].last);
   return lastAttempt(attempts);
 }
 
 function providerStatus(start: WindowStart, snapshot: UsageSnapshot | null, provider: StartProviderId): string {
-  const accounts = currentHubAccounts(start, snapshot, provider);
-  if (accounts.length > 1)
-    return `Starts each of the ${accounts.length} hub accounts separately. See each account's last start on the dashboard.`;
+  const accounts = hubAttempts(snapshot, provider).length;
+  if (accounts > 1)
+    return `Starts each of the ${accounts} hub accounts separately. See each account's last start on the dashboard.`;
   const command = snapshot?.enabled[provider]
     ? start.providers[provider].command
     : "an account-specific prompt through the hub";

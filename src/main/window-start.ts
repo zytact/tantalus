@@ -38,7 +38,7 @@ export class WindowStarter {
   private readonly running = new Set<string>();
   private readonly last = new Map<string, StartAttempt>();
   private readonly wakes = new Map<string, StartAttempt>();
-  private hubs: WindowStart["hubs"] = [];
+  private hubKeys = new Set<string>();
   private hubClaude = false;
   private polled: ProviderSettings = { claude: false, codex: false, opencode: false };
 
@@ -70,10 +70,6 @@ export class WindowStarter {
       wake,
       lastWake: this.wakes.get("claude") ?? null,
       providers: { claude, codex },
-      hubs: this.hubs.map((hub) => ({
-        ...hub,
-        last: this.last.get(hub.key) ?? null,
-      })),
     };
   }
 
@@ -98,16 +94,6 @@ export class WindowStarter {
       polled: snapshot.enabled[provider],
       hub: null,
     }));
-    this.hubs = snapshot.proxy_hubs.flatMap((hub) =>
-      hub.accounts.map((account) => ({
-        key: windowStartKey(account.provider, { hubId: hub.id, accountId: account.id }),
-        hubId: hub.id,
-        accountId: account.id,
-        label: `${hub.label} · ${providerNames[account.provider]} · ${account.email ?? account.id}`,
-        provider: account.provider,
-        last: null,
-      })),
-    );
     for (const hub of snapshot.proxy_hubs) {
       for (const account of hub.accounts)
         targets.push({
@@ -119,6 +105,7 @@ export class WindowStarter {
         });
     }
     const keys = new Set(targets.map(({ key }) => key));
+    this.hubKeys = new Set(targets.flatMap(({ key, hub }) => (hub ? [key] : [])));
     for (const collection of [this.idleSince, this.attempted, this.last, this.wakes]) {
       for (const key of collection.keys()) if (!keys.has(key)) collection.delete(key);
     }
@@ -192,7 +179,7 @@ export class WindowStarter {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
         await this.runHub(hub.id, hub.accountId, provider, () => {
-          if (!this.settings.enabled || !this.hubs.some((account) => account.key === key))
+          if (!this.settings.enabled || !this.hubKeys.has(key))
             throw new Error("Automation is no longer enabled for this account.");
         });
       } else await this.runDirect(provider, wake);

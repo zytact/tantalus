@@ -315,12 +315,12 @@ describe("hub automation", () => {
       ["hub", "claude.json", "claude"],
       ["hub", "codex.json", "codex"],
     ]);
-    expect((await instance.read()).hubs.every((hub) => hub.last?.error === null)).toBe(true);
+    expect(Object.values(instance.results()).every((attempt) => attempt?.error === null)).toBe(true);
     instance.observe(hubSnapshot(1600));
     await settle();
     expect(runHub).toHaveBeenCalledTimes(2);
     instance.observe(snapshot(emptyProviderUsage(), false));
-    expect((await instance.read()).hubs).toEqual([]);
+    expect(instance.results()).toEqual({});
     instance.observe(hubSnapshot(1900));
     instance.observe(hubSnapshot(2200));
     await settle();
@@ -366,7 +366,7 @@ describe("hub automation", () => {
     expect(runHub).toHaveBeenCalledTimes(3);
     expect(runHub.mock.calls[2]).toEqual(["hub", "second", provider, expect.any(Function)]);
     expect(Object.keys(instance.results())).toHaveLength(3);
-    expect((await instance.read()).hubs.find((account) => account.accountId === "second")?.last?.error).toBeNull();
+    expect(instance.results()[JSON.stringify(["hub", provider, "second"])]?.error).toBeNull();
   });
 
   it("switches wake off for hub Claude and rejects attempts to enable it", async () => {
