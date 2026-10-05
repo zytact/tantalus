@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.30](https://github.com/zytact/tantalus/compare/v0.0.29...v0.0.30) (2026-10-05)
+
+
+### Features
+
+* **hubs:** enforce provider ownership and add dashboard controls ([#94](https://github.com/zytact/tantalus/issues/94)) ([755c8a3](https://github.com/zytact/tantalus/commit/755c8a3774920b1ae066ba4dc1448b0da61b3ea1))
+* **usage:** share usual usage learning by provider and tier ([#95](https://github.com/zytact/tantalus/issues/95)) ([aa68af0](https://github.com/zytact/tantalus/commit/aa68af0bea5660bcc61d632da864e52386f0f956))
+* **usage:** start hub windows independently for each account ([#92](https://github.com/zytact/tantalus/issues/92)) ([2516001](https://github.com/zytact/tantalus/commit/251600159d3af147c3c5066b0d06aa565de32586))
+
+
+### Bug Fixes
+
+* **settings:** show start controls for available providers ([#93](https://github.com/zytact/tantalus/issues/93)) ([0d19031](https://github.com/zytact/tantalus/commit/0d1903117027ae18a8ddabca2fd02d529a3cbbda))
+* **verification:** seed shared-tier usual pace ([#97](https://github.com/zytact/tantalus/issues/97)) ([1dc5350](https://github.com/zytact/tantalus/commit/1dc5350f105f972649cf5439bf76375ac17545f5))
+
 ## [0.0.29](https://github.com/zytact/tantalus/compare/v0.0.28...v0.0.29) (2026-10-03)
 
 
