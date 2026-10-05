@@ -187,7 +187,7 @@ describe("release manifest", () => {
       "### Features",
       "* **tray:** add up a hub's accounts ([#110](https://github.com/zytact/tantalus/issues/110)) ([44339e1](https://github.com/zytact/tantalus/commit/44339e1))",
       "### Bug Fixes",
-      "* stop a wrong key from banning your IP ([#55](https://github.com/zytact/tantalus/issues/55))",
+      "* Windows: keep the tray icon visible ([#55](https://github.com/zytact/tantalus/issues/55))",
       "### Performance Improvements",
       "* **usage:** show each account as soon as it's read ([#109](https://github.com/zytact/tantalus/issues/109))",
     ].join("\n");
@@ -195,7 +195,7 @@ describe("release manifest", () => {
 
     expect(parseReleases(listing, "0.0.33", "0.0.34")[0].changes).toEqual([
       { kind: "new", scope: "tray", summary: "add up a hub's accounts" },
-      { kind: "fixed", scope: null, summary: "stop a wrong key from banning your IP" },
+      { kind: "fixed", scope: null, summary: "Windows: keep the tray icon visible" },
       { kind: "changed", scope: "usage", summary: "show each account as soon as it's read" },
     ]);
   });

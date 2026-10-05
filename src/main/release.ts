@@ -87,31 +87,36 @@ const sections = new Map<string, ReleaseChange["kind"]>([
   ["Bug Fixes", "fixed"],
 ]);
 
-/** Reads the bullets of a release body in either format the releases have used. Release-please writes
- * `* **scope:** summary ([#1](pull url)) ([abc1234](commit url))` under a heading per commit type, and
- * GitHub's generated notes wrote `* feat(scope): summary by @author in https://github.com/owner/repo/pull/1`.
- * Bullets under New Contributors credit people rather than describe changes, so they are left out. */
+/** Reads the bullets of a release body. GitHub's generated notes list every change under What's Changed,
+ * and release-please files each under a heading for its commit type. Bullets under New Contributors
+ * credit people rather than describe changes, so they are left out. */
 function parseChanges(body: string): ReleaseChange[] {
   let section = "";
   return body.split(/\r?\n/).flatMap((line): ReleaseChange[] => {
     const heading = /^#+\s+(.*)$/.exec(line);
     if (heading) section = heading[1].trim();
     const bullet = /^\s*[-*]\s+(.+)$/.exec(line);
-    return section === "New Contributors" || !bullet ? [] : [readChange(bullet[1], sections.get(section))];
+    if (section === "New Contributors" || !bullet) return [];
+    return [
+      section === "What's Changed" ? readTitled(bullet[1]) : readFiled(bullet[1], sections.get(section) ?? "changed"),
+    ];
   });
 }
 
-/** `filed` is the kind of the heading the bullet sits under, if that heading names one. */
-function readChange(bullet: string, filed: ReleaseChange["kind"] | undefined): ReleaseChange {
-  const text = bullet
-    .replace(/ by @\S+ in \S+$/, "")
-    .replace(/(\s*\(\[[^\]]*\]\([^)]*\)\))+$/, "")
-    .trim();
-  const scoped = /^\*\*([^*]+):\*\*\s*(.+)$/.exec(text);
-  if (scoped) return { kind: filed ?? "changed", scope: scoped[1], summary: scoped[2] };
+/** Reads a change as GitHub's generated notes write it: `feat(scope): summary by @author in url`. */
+function readTitled(bullet: string): ReleaseChange {
+  const text = bullet.replace(/ by @\S+ in \S+$/, "").trim();
   const title = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.+)$/.exec(text);
-  if (!title) return { kind: filed ?? "changed", scope: null, summary: text };
+  if (!title) return { kind: "changed", scope: null, summary: text };
   return { kind: kinds.get(title[1]) ?? "changed", scope: title[2] || null, summary: title[3] };
+}
+
+/** Reads a change as release-please writes it under the heading for its `kind`:
+ * `**scope:** summary ([#1](pull url)) ([abc1234](commit url))`. */
+function readFiled(bullet: string, kind: ReleaseChange["kind"]): ReleaseChange {
+  const text = bullet.replace(/(\s*\(\[[^\]]*\]\([^)]*\)\))+$/, "").trim();
+  const scoped = /^\*\*([^*]+):\*\*\s*(.+)$/.exec(text);
+  return scoped ? { kind, scope: scoped[1], summary: scoped[2] } : { kind, scope: null, summary: text };
 }
 
 /** Reads a download whole, reporting progress at most once per `interval` ms so a fast connection does
