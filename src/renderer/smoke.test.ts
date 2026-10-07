@@ -10,6 +10,7 @@ import {
   creditExpiry,
   installStatus,
   isRefreshShortcut,
+  remainingCredits,
   remainingPercent,
   startStatus,
   statusLine,
@@ -47,12 +48,22 @@ describe("display contract", () => {
     expect(usagePercent(0)).toBe("0%");
     expect(remainingPercent(null)).toBe("Unavailable");
     expect(remainingPercent(100)).toBe("0%");
+    expect(remainingPercent(0)).toBe("100%");
+    expect(remainingPercent(140)).toBe("0%");
   });
 
   it("keeps a fractional reading instead of rounding it away", () => {
     expect(usagePercent(12.74)).toBe("12.7%");
     expect(remainingPercent(12.7)).toBe("87.3%");
     expect(usagePercent(42)).toBe("42%");
+  });
+
+  it("counts down Claude's extra budget only when its limit and spend are known", () => {
+    const extra = { enabled: true, used_credits: 12.5, monthly_limit: 50, currency: "USD", decimal_places: 2 };
+    expect(remainingCredits(extra)).toBe(37.5);
+    expect(remainingCredits({ ...extra, used_credits: 60 })).toBe(0);
+    expect(remainingCredits({ ...extra, used_credits: null })).toBeNull();
+    expect(remainingCredits({ ...extra, monthly_limit: null })).toBeNull();
   });
 
   it("keeps an unknown reset distinct from an imminent one", () => {
@@ -268,7 +279,7 @@ describe("creature tooltip", () => {
   it("says when a dragon runs the window out, and when it does not", () => {
     const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
     expect(creatureTip(dragon, 64, resetIn(4.1), now)).toBe(
-      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate you'll use 100% in 1h 30m. The window resets in 4h 6m.",
+      "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate you'll have 0% remaining in 1h 30m. The window resets in 4h 6m.",
     );
     expect(creatureTip(dragon, 64, resetIn(1), now)).toBe(
       "Faster than usual. 24%/h now, against your usual 8.5%/h. At this rate it lasts until the reset.",
@@ -278,20 +289,20 @@ describe("creature tooltip", () => {
   it("says when a dragon has already exhausted the window", () => {
     const dragon = { kind: "dragon", rate: 24, usual: 8.5 } as const;
     expect(creatureTip(dragon, 100, resetIn(1 / 60), now)).toBe(
-      "2.8× your usual pace for this window. You've used all your available usage. The window resets in 1m.",
+      "2.8× your usual pace for this window. You have 0% remaining. The window resets in 1m.",
     );
     expect(creatureTip(dragon, 100, resetIn(59 / 3600), now)).toBe(
-      "2.8× your usual pace for this window. You've used all your available usage. The window resets in under 1m.",
+      "2.8× your usual pace for this window. You have 0% remaining. The window resets in under 1m.",
     );
   });
 
   it("says where a tortoise leaves the window at the reset", () => {
     const tortoise = { kind: "tortoise", rate: 0.3, usual: 1.1 } as const;
     expect(creatureTip(tortoise, 22, resetIn(120), now)).toBe(
-      "Slower than usual. 0.30%/h now, against your usual 1.1%/h. At this rate you'd be at about 58% when it resets.",
+      "Slower than usual. 0.30%/h now, against your usual 1.1%/h. At this rate you'd have about 42% remaining when it resets.",
     );
     const pace = { expectedPercent: 40, status: "under", label: "Under pace" } as const;
-    expect(usageValueText(22, pace, tortoise)).toBe("22% used, under pace, 27% of your usual pace");
-    expect(usageValueText(null, null, null)).toBe("Unavailable used");
+    expect(usageValueText(22, pace, tortoise)).toBe("78% remaining, under pace, 27% of your usual pace");
+    expect(usageValueText(null, null, null)).toBe("Unavailable");
   });
 });

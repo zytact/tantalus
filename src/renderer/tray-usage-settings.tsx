@@ -48,9 +48,9 @@ export function TrayUsageRows({ snapshot }: { snapshot: UsageSnapshot | null }) 
         <div className="setting-copy">
           <h2>Usage in tray</h2>
           <p>
-            Shows one account&apos;s 5-hour usage beside the tray icon, in its provider&apos;s color. Codex Go and free
-            accounts show their monthly window instead. A hub&apos;s pooled option adds up its accounts, so three
-            accounts read up to 300%. On Windows the number replaces the icon.
+            Shows one account&apos;s remaining 5-hour allowance beside the tray icon, in its provider&apos;s color.
+            Codex Go and free accounts show their monthly window instead. A hub&apos;s pooled option adds up its
+            accounts, so three accounts start at 300% and count down to 0. On Windows the number replaces the icon.
           </p>
         </div>
         <TrayUsageToggle settings={settings} saving={saving} onSave={(next) => void save(next)} />

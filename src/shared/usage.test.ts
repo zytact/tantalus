@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { emptyProviderUsage, namedHubAccounts } from "./usage";
+import { emptyProviderUsage, namedHubAccounts, remainingUsage } from "./usage";
 import type { ProxyHubProviderId } from "./usage";
 
 const account = (id: string, provider: ProxyHubProviderId, email: string | null = null) => ({
@@ -8,6 +8,13 @@ const account = (id: string, provider: ProxyHubProviderId, email: string | null 
   plan: null,
   provider,
   usage: emptyProviderUsage(),
+});
+
+describe("remaining usage", () => {
+  it("counts down to zero within the allowance", () => {
+    expect([0, 12.7, 40, 100, 140, -5].map((used) => remainingUsage(used))).toEqual([100, 87.3, 60, 0, 0, 100]);
+    expect(remainingUsage(350, 2000)).toBe(1650);
+  });
 });
 
 describe("namedHubAccounts", () => {

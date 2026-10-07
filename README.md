@@ -2,6 +2,8 @@
 
 An Electron app for Linux, macOS, and Windows that shows Codex, Claude, and Opencode usage from the system tray. The main process reads local credentials and calls the usage APIs. The React window receives only a token-free usage snapshot.
 
+The headline figures, bars, tray number, and tooltips show remaining allowance and count down to zero. The window keeps used usage as a secondary figure. CLIProxyAPI accounts use the same display, and a tray pool adds up the remaining allowance of its accounts.
+
 Claude reports a 5-hour and a 7-day window, and Opencode adds a monthly one. Codex reports whichever windows the plan has: a 5-hour and a 7-day one on Plus, a monthly one alone on Go and free. OpenAI switches the 5-hour window off for a plan from time to time, so Tantalus shows the windows a reading carries rather than assuming a fixed set.
 
 Named for Tantalus, who stood in water he could never drink under fruit he could never reach. The app shows you a limit you cannot exceed.

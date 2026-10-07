@@ -1,4 +1,4 @@
-import { directAccountName, namedHubAccounts, providerIds, providerNames } from "./usage";
+import { directAccountName, namedHubAccounts, providerIds, providerNames, remainingUsage } from "./usage";
 import type { AccountName, ProviderId, ProviderUsage, ProxyHubSnapshot, UsageSnapshot } from "./usage";
 
 /** `source` is the key of the account the tray shows, or null for the first one available. */
@@ -20,7 +20,7 @@ export type TrayUsageOption = {
   key: string;
   provider: ProviderId;
   name: AccountName;
-  window: { span: "5h" | "30d"; used: number; limit: number } | null;
+  window: { span: "5h" | "30d"; remaining: number; limit: number } | null;
 };
 
 /** Every direct provider switched on, then each hub's accounts in the order the allowance view lists
@@ -50,20 +50,26 @@ export function trayUsageOptions(snapshot: UsageSnapshot, now: number): TrayUsag
 function shownWindow(usage: ProviderUsage): TrayUsageOption["window"] {
   const window = usage.five_hour.limit_window_seconds !== null ? usage.five_hour : usage.monthly;
   if (window.limit_window_seconds === null || window.used_percent === null) return null;
-  return { span: window === usage.five_hour ? "5h" : "30d", used: window.used_percent, limit: 100 };
+  return {
+    span: window === usage.five_hour ? "5h" : "30d",
+    remaining: remainingUsage(window.used_percent),
+    limit: 100,
+  };
 }
 
-/** The summed 5-hour usage of a hub's accounts of one provider, so three accounts at 80%, 20% and 50%
- * read 150% of 300%. A window whose reset has passed since it was read counts as empty, and an account
+/** The summed remaining 5-hour allowance of a hub's accounts of one provider, so three accounts at 80%, 20% and 50% used
+ * have 150% of 300% remaining. A window whose reset has passed since it was read counts as full, and an account
  * without a 5-hour reading is left out. */
 function pooledOptions(hub: ProxyHubSnapshot, now: number): TrayUsageOption[] {
   const providers = [...new Set(hub.accounts.map(({ provider }) => provider))];
   return providers.flatMap((provider) => {
     const accounts = hub.accounts.filter((account) => account.provider === provider);
     if (accounts.length < 2) return [];
-    const used = accounts.flatMap(({ usage: { five_hour: window } }) => {
+    const remaining = accounts.flatMap(({ usage: { five_hour: window } }) => {
       if (window.limit_window_seconds === null || window.used_percent === null) return [];
-      return [window.reset_at_epoch !== null && window.reset_at_epoch <= now ? 0 : window.used_percent];
+      return [
+        window.reset_at_epoch !== null && window.reset_at_epoch <= now ? 100 : remainingUsage(window.used_percent),
+      ];
     });
     const title = `${hub.label} · ${providerNames[provider]} · All ${accounts.length} accounts`;
     return [
@@ -73,8 +79,8 @@ function pooledOptions(hub: ProxyHubSnapshot, now: number): TrayUsageOption[] {
         provider,
         name: { title, email: null, label: title },
         window:
-          used.length > 0
-            ? { span: "5h", used: used.reduce((sum, value) => sum + value), limit: used.length * 100 }
+          remaining.length > 0
+            ? { span: "5h", remaining: remaining.reduce((sum, value) => sum + value), limit: remaining.length * 100 }
             : null,
       },
     ];

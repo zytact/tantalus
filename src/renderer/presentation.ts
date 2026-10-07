@@ -1,6 +1,6 @@
 import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
-import { fiveHourSeconds, monthlySeconds, percent, sevenDaySeconds } from "../shared/usage";
+import { fiveHourSeconds, monthlySeconds, percent, remainingUsage, sevenDaySeconds } from "../shared/usage";
 import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
 import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 
@@ -60,7 +60,13 @@ export function usagePercent(value: number | null): string {
 }
 
 export function remainingPercent(value: number | null): string {
-  return value === null ? "Unavailable" : percent(100 - value);
+  return value === null ? "Unavailable" : percent(remainingUsage(value));
+}
+
+export function remainingCredits(extra: ExtraUsage): number | null {
+  return extra.used_credits === null || extra.monthly_limit === null
+    ? null
+    : remainingUsage(extra.used_credits, extra.monthly_limit);
 }
 
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
@@ -159,24 +165,26 @@ export function creatureTip(rider: Rider, used: number, resetAt: number | null, 
   const lead = `${paceDirection[kind]} than usual. ${perHour(rate)} now, against your usual ${perHour(usual)}.`;
   const reset = resetAt === null ? "" : ` The window resets in ${countdown(resetAt, now)}.`;
   if (kind === "dragon" && used >= 100) {
-    return `${paceComparison(rider)} for this window. You've used all your available usage.${reset}`;
+    return `${paceComparison(rider)} for this window. You have 0% remaining.${reset}`;
   }
   if (resetAt === null) return lead;
   const hoursLeft = Math.max(0, resetAt - now) / 3600;
   if (kind === "tortoise") {
     const atReset = Math.min(100, used + rate * hoursLeft);
-    return `${lead} At this rate you'd be at about ${percent(Math.round(atReset))} when it resets.`;
+    return `${lead} At this rate you'd have about ${percent(Math.round(remainingUsage(atReset)))} remaining when it resets.`;
   }
   const runway = Math.max(0, 100 - used) / rate;
   return runway < hoursLeft
-    ? `${lead} At this rate you'll use 100% in ${countdown(now + runway * 3600, now)}.${reset}`
+    ? `${lead} At this rate you'll have 0% remaining in ${countdown(now + runway * 3600, now)}.${reset}`
     : `${lead} At this rate it lasts until the reset.`;
 }
 
-/** What a screen reader hears for a window's bar: how much is used, the pace, and how fast it moves. */
+/** What a screen reader hears for a window's bar: how much remains, the pace, and how fast it moves. */
 export function usageValueText(used: number | null, pace: UsagePace | null, rider: Rider | null): string {
   const comparison = rider && paceComparison(rider);
-  return [`${usagePercent(used)} used`, pace?.label.toLowerCase(), comparison].filter(Boolean).join(", ");
+  return [used === null ? "Unavailable" : `${remainingPercent(used)} remaining`, pace?.label.toLowerCase(), comparison]
+    .filter(Boolean)
+    .join(", ");
 }
 
 /** Bar tone thresholds: amber from 75% of the window spent, red from 90%. */

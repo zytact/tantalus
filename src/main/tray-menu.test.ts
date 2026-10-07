@@ -15,12 +15,16 @@ describe("tray rows", () => {
   it("keeps a fractional percentage", () => {
     expect(
       trayRows(provider({ five_hour: window(fiveHourSeconds, 12.74), seven_day: window(sevenDaySeconds, 3) }), 0),
-    ).toEqual(["   5h   █▎░░░░░░░░  12.7%", "   7d   ▎░░░░░░░░░  3%"]);
+    ).toEqual(["   5h   ████████▊░  87.3% remaining", "   7d   █████████▊  97% remaining"]);
   });
 
   it("carries only the windows the account has", () => {
-    expect(trayRows(provider({ monthly: window(monthlySeconds, 50) }), 0)).toEqual(["   30d  █████░░░░░  50%"]);
-    expect(trayRows(provider({ seven_day: window(sevenDaySeconds, 41) }), 0)).toEqual(["   7d   ████▏░░░░░  41%"]);
+    expect(trayRows(provider({ monthly: window(monthlySeconds, 50) }), 0)).toEqual([
+      "   30d  █████░░░░░  50% remaining",
+    ]);
+    expect(trayRows(provider({ seven_day: window(sevenDaySeconds, 41) }), 0)).toEqual([
+      "   7d   █████▉░░░░  59% remaining",
+    ]);
   });
 
   it("says nothing was read rather than inventing a bar", () => {
@@ -32,7 +36,7 @@ describe("tray rows", () => {
     const now = 1_000_000;
     const reset = now + (sevenDaySeconds * 6) / 7;
     const row = (used: number) => trayRows(provider({ seven_day: window(sevenDaySeconds, used, reset) }), now)[0];
-    expect(row(12)).toMatch(/12%  Under pace$/);
+    expect(row(12)).toMatch(/88% remaining  Under pace$/);
     expect(row(12.5)).toMatch(/On pace$/);
     expect(row(16)).toMatch(/On pace$/);
     expect(row(16.5)).toMatch(/Ahead of pace$/);
@@ -70,7 +74,7 @@ describe("tray menu", () => {
     );
     expect(items).toEqual([
       { label: "Codex · Plus", action: "show" },
-      { label: "   7d   ████▏░░░░░  41%", action: "show" },
+      { label: "   7d   █████▉░░░░  59% remaining", action: "show" },
       { label: "Refreshed 1 minute ago", action: null },
       "separator",
       { label: "Update to v0.1.0", action: "show" },
@@ -128,13 +132,13 @@ describe("tray menu", () => {
     ];
     expect(trayItems(usage, null, 1000).slice(0, 12)).toEqual([
       { label: "Codex · Plus", action: "show" },
-      { label: "   7d   ████▏░░░░░  41%", action: "show" },
+      { label: "   7d   █████▉░░░░  59% remaining", action: "show" },
       "separator",
       { label: "Home hub", action: "show" },
       { label: "Codex 1 · Pro", action: "show" },
-      { label: "   7d   ██░░░░░░░░  20%", action: "show" },
+      { label: "   7d   ████████░░  80% remaining", action: "show" },
       { label: "Claude 1", action: "show" },
-      { label: "   5h   ███████░░░  70%", action: "show" },
+      { label: "   5h   ███░░░░░░░  30% remaining", action: "show" },
       "separator",
       { label: "Work hub", action: "show" },
       { label: "   The hub could not list accounts.", action: null },

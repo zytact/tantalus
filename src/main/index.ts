@@ -227,10 +227,12 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
   const render = () => {
     const reading = trayUsageReading(snapshot(), settings, nowEpoch());
     if (!reading) return show(identity.productName, null, trayImage);
-    const text = trayPercent(reading.used, reading.limit);
+    const text = trayPercent(reading.remaining, reading.limit);
     const of = reading.limit > 100 ? ` of ${reading.limit}%` : "";
-    show(`${identity.productName}\n${reading.name.label} ${reading.span} ${percent(reading.used)}${of}`, text, () =>
-      usageTrayImage(text, trayUsageColors[reading.provider]),
+    show(
+      `${identity.productName}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)}${of} remaining`,
+      text,
+      () => usageTrayImage(text, trayUsageColors[reading.provider]),
     );
   };
   handle("trayUsage", () => settings);
