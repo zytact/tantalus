@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.36](https://github.com/zytact/tantalus/compare/v0.0.35...v0.0.36) (2026-10-07)
+
+
+### Features
+
+* **usage:** show remaining allowance first ([#115](https://github.com/zytact/tantalus/issues/115)) ([b717cbd](https://github.com/zytact/tantalus/commit/b717cbd42f4381ba10db8d2444fdd0098594e9b3))
+
 ## [0.0.35](https://github.com/zytact/tantalus/compare/v0.0.34...v0.0.35) (2026-10-05)
 
 
