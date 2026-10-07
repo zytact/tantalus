@@ -78,6 +78,7 @@ try {
     }
     case "focus": {
       const [role, name] = args;
+      await page.keyboard.press("Tab");
       await target(role, name).focus();
       console.log(`FOCUSED ${role} "${name}"`);
       break;
