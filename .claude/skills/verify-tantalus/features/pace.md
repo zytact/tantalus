@@ -14,7 +14,7 @@ Enable Opencode and open Settings, scroll to `Dragon and tortoise details`, and 
 
 The allowance bar shows remaining allowance. Its pace marker sits at 100 minus the expected consumed share, and a creature rides its remaining fill head. Consumption rates and pace labels keep their meaning. A dragon's tooltip predicts when 0% will remain, while a tortoise's projection names what will remain at reset.
 
-For a seeded moving mock log, read the creature's full accessible name in `snapshot`, then use `drive.ts hover img "<exact name>"` or `focus img "<exact name>"` before a screenshot. Use `--nth INDEX` when an account's bar shares its accessible name with another account. Confirm the creature sits at the remaining fill head in both schemes.
+For a seeded moving mock log, read the creature's full accessible name in a fresh `snapshot`, then use `drive.ts focus img "<exact name>"` before a screenshot. Focus opens its tooltip and pauses its animation so a following `hover img "<exact name>"` or scroll can wait for a stable element. Use `--nth INDEX` when an account's bar shares its accessible name with another account. Confirm the creature sits at the remaining fill head in both schemes.
 
 The allowance view shows `Learning your usual pace` with each window's done time, or the need for more use after the watch period. The stock fixture and seed do not provide a moving stretch, so they exercise learning and details without a creature. `src/shared/pace.test.ts` covers creature selection. Seeing creatures and their one-time explainer live needs an active learned account, or a mock log seeded with a recent moving stretch; a tortoise also needs recent local session activity.
 

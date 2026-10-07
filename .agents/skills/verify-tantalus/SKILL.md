@@ -94,10 +94,11 @@ node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" sett
 
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
-When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. `hover ROLE NAME` and `focus ROLE NAME` open a creature's tooltip. After one of those commands, capture the same scheme to inspect its text and position.
+When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. Take a fresh snapshot before targeting a creature because its name includes a changing projection. Use `focus ROLE NAME` to open its tooltip and pause its animation before `hover ROLE NAME` or `scroll ROLE NAME`, which wait for a stable element. Capture the same scheme to inspect its text and position.
 
 ```sh
 node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll progressbar "Short window remaining"
+node .agents/skills/verify-tantalus/scripts/drive.ts focus img "<exact creature name from snapshot>"
 node .agents/skills/verify-tantalus/scripts/drive.ts hover img "<exact creature name from snapshot>"
 ```
 
