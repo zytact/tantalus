@@ -2,13 +2,13 @@
 //   drive.ts snapshot                       print the page's accessibility tree
 //   drive.ts click <role> <name>            click an element by ARIA role and accessible name
 //   drive.ts fill <role> <name> <text>      replace a field's text, e.g. fill textbox "Hub URL" http://...
-//   drive.ts scroll <role> <name>           scroll an element into view before a screenshot
+//   drive.ts scroll|hover|focus <role> <name> scroll to, hover, or focus an element
 //   drive.ts press <key>                    press a key or chord, e.g. Control+R
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a fresh
 // headless Chrome at phone size. TANTALUS_CHROME overrides the Chrome executable.
 // Prefix any command with `--scheme light` or `--scheme dark` to render the page in that color scheme
-// while the command runs. Without it the page follows the display's scheme.
+// while the command runs. Without it the page follows the display's scheme. --nth INDEX selects a zero-based match.
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -23,6 +23,10 @@ const option = (flag: string) => (argv[0] === flag ? argv.splice(0, 2)[1] : null
 const webUrl = option("--web");
 const scheme = option("--scheme");
 if (scheme !== null && scheme !== "light" && scheme !== "dark") throw new Error("--scheme takes light or dark.");
+const nth = option("--nth");
+if (nth !== null && !/^\d+$/.test(nth)) throw new Error("--nth takes a zero-based match index.");
+const matchIndex = nth === null ? null : Number(nth);
+if (matchIndex !== null && !Number.isSafeInteger(matchIndex)) throw new Error("--nth index is too large.");
 const [command, ...args] = argv;
 const browser = webUrl
   ? await chromium.launch({ executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome" })
@@ -40,26 +44,42 @@ try {
   }
   await page.waitForLoadState("load");
   if (scheme) await page.emulateMedia({ colorScheme: scheme });
+  const target = (role: string, name: string) => {
+    const matches = page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true });
+    return matchIndex === null ? matches : matches.nth(matchIndex);
+  };
   switch (command) {
     case "snapshot":
       console.log(await page.locator("body").ariaSnapshot());
       break;
     case "click": {
       const [role, name] = args;
-      await page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true }).click();
+      await target(role, name).click();
       console.log(`CLICKED ${role} "${name}"`);
       break;
     }
     case "fill": {
       const [role, name, text] = args;
-      await page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true }).fill(text);
+      await target(role, name).fill(text);
       console.log(`FILLED ${role} "${name}"`);
       break;
     }
     case "scroll": {
       const [role, name] = args;
-      await page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true }).scrollIntoViewIfNeeded();
+      await target(role, name).scrollIntoViewIfNeeded();
       console.log(`SCROLLED to ${role} "${name}"`);
+      break;
+    }
+    case "hover": {
+      const [role, name] = args;
+      await target(role, name).hover();
+      console.log(`HOVERED ${role} "${name}"`);
+      break;
+    }
+    case "focus": {
+      const [role, name] = args;
+      await target(role, name).focus();
+      console.log(`FOCUSED ${role} "${name}"`);
       break;
     }
     case "press":
@@ -74,7 +94,7 @@ try {
     }
     default:
       throw new Error(
-        "usage: drive.ts [--web URL] [--scheme light|dark] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>",
+        "usage: drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>",
       );
   }
 } finally {
