@@ -94,6 +94,14 @@ node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" sett
 
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
+When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. Take a fresh snapshot before targeting a creature because its name includes a changing projection. Use `focus ROLE NAME` to open its tooltip and pause its animation before `hover ROLE NAME` or `scroll ROLE NAME`, which wait for a stable element. Capture the same scheme to inspect its text and position.
+
+```sh
+node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll progressbar "Short window remaining"
+node .agents/skills/verify-tantalus/scripts/drive.ts focus img "<exact creature name from snapshot>"
+node .agents/skills/verify-tantalus/scripts/drive.ts hover img "<exact creature name from snapshot>"
+```
+
 The Xvfb display reports a light color scheme. Prefix a command with `--scheme dark` or `--scheme light` to render the page in that scheme while the command runs; the page goes back to the display's scheme when it ends, and page state such as an open menu stays as it was. `--web <url>` comes first when both are given.
 
 ### Light and dark
@@ -169,7 +177,7 @@ All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it, and refuses while a harness preview runs
 - `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
-- `drive.ts [--web URL] [--scheme light|dark] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
+- `drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)

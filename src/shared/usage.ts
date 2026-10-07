@@ -183,6 +183,10 @@ export function percent(value: number): string {
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
 }
 
+export function remainingUsage(used: number, limit = 100): number {
+  return Math.min(limit, Math.max(0, limit - used));
+}
+
 const PACE_TOLERANCE = 2;
 
 const paceLabels = {

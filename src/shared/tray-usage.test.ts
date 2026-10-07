@@ -53,7 +53,7 @@ describe("tray usage", () => {
     ]);
   });
 
-  it("sums a pool's 5-hour usage, counting a window that has since reset as empty", () => {
+  it("sums a pool's remaining allowance, counting a window that has since reset as full", () => {
     const pool = (accounts: ProxyHubAccount[]) =>
       trayUsageReading(
         { ...snapshot, proxy_hubs: [{ ...snapshot.proxy_hubs[0], accounts }] },
@@ -62,25 +62,26 @@ describe("tray usage", () => {
       );
     const codex = (id: string, used: number | null, reset: number | null = null) =>
       account(id, "codex", window(fiveHourSeconds, used, reset));
-    expect(pool([codex("a", 80), codex("b", 20), codex("c", 50)])).toMatchObject({ used: 150, limit: 300 });
-    expect(pool([codex("a", 80, now), codex("b", 20, now + 60)])).toMatchObject({ used: 20, limit: 200 });
-    expect(pool([codex("a", 80), codex("b", null)])).toMatchObject({ used: 80, limit: 100 });
+    expect(pool([codex("a", 80), codex("b", 20), codex("c", 50)])).toMatchObject({ remaining: 150, limit: 300 });
+    expect(pool([codex("a", 80, now), codex("b", 20, now + 60)])).toMatchObject({ remaining: 180, limit: 200 });
+    expect(pool([codex("a", 80), codex("b", null)])).toMatchObject({ remaining: 20, limit: 100 });
+    expect(pool([codex("a", 140), codex("b", 20)])).toMatchObject({ remaining: 80, limit: 200 });
     expect(pool([codex("a", null), codex("b", null)])).toBeNull();
   });
 
   it("shows the monthly window for an account without a 5-hour one", () => {
     expect(trayUsageReading(snapshot, { enabled: true, source: "codex" }, now)).toMatchObject({
       span: "30d",
-      used: 30,
+      remaining: 70,
     });
     expect(trayUsageReading(snapshot, { enabled: true, source: "claude" }, now)).toMatchObject({
       span: "5h",
-      used: 42,
+      remaining: 58,
     });
   });
 
   it("shows the saved hub account, or the first account when none is saved", () => {
-    expect(trayUsageReading(snapshot, { enabled: true, source: "hub:claude:b" }, now)).toMatchObject({ used: 7 });
+    expect(trayUsageReading(snapshot, { enabled: true, source: "hub:claude:b" }, now)).toMatchObject({ remaining: 93 });
     expect(trayUsageReading(snapshot, { enabled: true, source: null }, now)).toMatchObject({ provider: "codex" });
   });
 

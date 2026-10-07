@@ -6,6 +6,7 @@ import {
   providerNames,
   refreshedAgo,
   refreshedEpoch,
+  remainingUsage,
   usagePace,
 } from "../shared/usage";
 import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from "../shared/usage";
@@ -80,7 +81,8 @@ function trayRow(span: string, window: WindowUsage, now: number): string {
   const head = `${ROW_INDENT}${span.padEnd(3)}  `;
   if (window.used_percent === null) return `${head}--`;
   const pace = usagePace(window, now);
-  return `${head}${bar(window.used_percent)}  ${percent(window.used_percent)}${pace ? `  ${pace.label}` : ""}`;
+  const remaining = remainingUsage(window.used_percent);
+  return `${head}${bar(remaining)}  ${percent(remaining)} remaining${pace ? `  ${pace.label}` : ""}`;
 }
 
 const BAR_CELLS = 10;
@@ -92,9 +94,9 @@ const ROW_INDENT = "   ";
 
 /** Menu rows carry no icon or widget on Linux, so the bar is text. Eighth-blocks put the edge within
  * 1.25 percent of the reading, and a reading short of its limit keeps the last eighth empty, so a
- * solid bar always means the allowance is gone. */
-export function bar(usedPercent: number): string {
-  const clamped = Math.min(100, Math.max(0, usedPercent));
+ * solid bar always means the full allowance remains. */
+export function bar(remainingPercent: number): string {
+  const clamped = Math.min(100, Math.max(0, remainingPercent));
   const full = BAR_CELLS * 8;
   const rounded = Math.round((clamped / 100) * full);
   const eighths = rounded === full && clamped < 100 ? full - 1 : rounded;

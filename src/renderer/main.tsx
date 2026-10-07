@@ -13,6 +13,7 @@ import {
   proxyHubManagementUrl,
   refreshedAgo,
   refreshedEpoch,
+  remainingUsage,
   usagePace,
 } from "../shared/usage";
 import type {
@@ -39,6 +40,7 @@ import {
   creditExpiry,
   isRefreshShortcut,
   providerExtras,
+  remainingCredits,
   remainingPercent,
   statusLine,
   statusTone,
@@ -56,7 +58,7 @@ import { UpdateNotice } from "./update-notice";
 import { webBridge } from "./web-bridge";
 import "./styles.css";
 
-/** One window as a ledger entry: headline figure, consumption rule, then the supporting facts. */
+/** One window as a ledger entry: remaining figure and bar, then the supporting facts. */
 function Entry({
   label,
   span,
@@ -74,6 +76,7 @@ function Entry({
 }) {
   const reported = usage.limit_window_seconds === duration;
   const used = reported ? usage.used_percent : null;
+  const remaining = used === null ? null : remainingUsage(used);
   const pace = reported ? usagePace(usage, now) : null;
   const rider = riderOf(speed);
   const entryLabel = reported ? label : "Window unavailable";
@@ -91,20 +94,28 @@ function Entry({
             </span>
           )}
         </div>
-        <strong className="figure">{usagePercent(used)}</strong>
+        <strong className="figure" aria-label={used === null ? "Unavailable" : `${remainingPercent(used)} remaining`}>
+          {remainingPercent(used)}
+        </strong>
       </div>
       <div
         className="rule"
         data-tier={usageTier(used)}
         role="progressbar"
-        aria-label={`${entryLabel} usage`}
+        aria-label={`${entryLabel} remaining`}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={used ?? undefined}
+        aria-valuenow={remaining ?? undefined}
         aria-valuetext={usageValueText(used, pace, rider)}
       >
-        <span className="rule-fill" style={{ width: `${Math.min(100, Math.max(0, used ?? 0))}%` }} />
-        {pace && <span className="pace-marker" style={{ left: `${pace.expectedPercent}%` }} aria-hidden="true" />}
+        <span className="rule-fill" style={{ width: `${remaining ?? 0}%` }} />
+        {pace && (
+          <span
+            className="pace-marker"
+            style={{ left: `${remainingUsage(pace.expectedPercent)}%` }}
+            aria-hidden="true"
+          />
+        )}
         <CreatureRider rider={rider} used={used} resetAt={usage.reset_at_epoch} now={now} />
       </div>
       <dl className="facts">
@@ -117,8 +128,8 @@ function Entry({
           <dd>{absoluteTime(reported ? usage.reset_at_epoch : null)}</dd>
         </div>
         <div>
-          <dt>Remaining</dt>
-          <dd>{remainingPercent(used)}</dd>
+          <dt>Used</dt>
+          <dd>{usagePercent(used)}</dd>
         </div>
       </dl>
     </section>
@@ -141,7 +152,7 @@ function CreatureRider({
   now: number;
 }) {
   if (!rider || used === null) return null;
-  const head = Math.min(100, Math.max(0, used));
+  const head = remainingUsage(used);
   const tip = creatureTip(rider, used, resetAt, now);
   return (
     <span
@@ -166,9 +177,9 @@ function Spend({ extra }: { extra: ExtraUsage }) {
     <section className="entry" aria-label="Extra usage">
       <div className="entry-head">
         <h3>
-          Extra usage<i>{extra.enabled ? "enabled" : "off"}</i>
+          Extra usage<i>{extra.enabled ? "remaining" : "off"}</i>
         </h3>
-        <strong className="figure">{creditAmount(extra.used_credits, extra)}</strong>
+        <strong className="figure">{creditAmount(remainingCredits(extra), extra)}</strong>
       </div>
       <ol className="credits">
         <li>

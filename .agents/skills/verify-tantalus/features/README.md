@@ -2,15 +2,16 @@
 
 One file covers each user-facing feature backed by `src/` and the README.
 
-- [short-window](short-window.md) - 5-hour usage entry
-- [long-window](long-window.md) - 7-day usage entry
-- [monthly-window](monthly-window.md) - 30-day usage entry
-- [reset-credits](reset-credits.md) - Codex banked reset credits
+- [short-window](short-window.md) - 5-hour remaining allowance
+- [long-window](long-window.md) - 7-day remaining allowance
+- [monthly-window](monthly-window.md) - 30-day remaining allowance
+- [reset-credits](reset-credits.md) - Codex and Claude banked reset credits
+- [extra-usage](extra-usage.md) - Claude remaining monthly overflow budget
 - [manual-refresh](manual-refresh.md) - button, shortcut, tray refresh, and failure states
 - [pace](pace.md) - dragon and tortoise, learning, presets, and reset
 - [proxy-hubs](proxy-hubs.md) - CLIProxyAPI hubs and their pooled accounts
 - [window-start](window-start.md) - starting idle Claude and Codex 5-hour windows through their CLIs
-- [tray-usage](tray-usage.md) - one account's usage beside the tray icon, and its account picker
+- [tray-usage](tray-usage.md) - one account or pool's remaining allowance beside the tray icon, and its account picker
 - [provider-switch](provider-switch.md) - provider enablement and persistence
 - [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - read-only page over the local network and Tailscale
