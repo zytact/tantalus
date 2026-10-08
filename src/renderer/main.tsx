@@ -353,13 +353,16 @@ const hubStatusTones = {
   rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
+/** `managed` hubs belong to this machine, so their management page can open from here. */
 function HubSection({
   hub,
+  managed,
   now,
   paces,
   starts,
 }: {
   hub: ProxyHubSnapshot;
+  managed: boolean;
   now: number;
   paces: PaceSnapshot["windows"];
   starts: UsageSnapshot["window_starts"];
@@ -372,7 +375,7 @@ function HubSection({
           {hubStatusLabels[hub.status]}
         </span>
       </div>
-      {!remote && (
+      {managed && (
         <a
           className="management-link"
           href={proxyHubManagementUrl(hub.url)}
@@ -651,6 +654,7 @@ function App() {
               <HubSection
                 key={hub.id}
                 hub={hub}
+                managed={!remote && !hostLink}
                 now={now}
                 paces={snapshot.pace.windows}
                 starts={snapshot.window_starts}
