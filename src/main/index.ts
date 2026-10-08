@@ -149,7 +149,7 @@ function start() {
       publish("hostLink", hostLink);
     },
   });
-  const { usage, tray: trayUsage, refresh } = usageSource(link, state);
+  const { usage, tray: trayUsage, refresh, sameSource } = usageSource(link, state);
   const polling = localPolling(state);
   const updater = new Updater(
     (update) => {
@@ -192,7 +192,7 @@ function start() {
     hostLink: () => link.read(),
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);
-  registerUsageHandlers(state, refresh);
+  registerUsageHandlers(state, refresh, sameSource);
   handle("checkForUpdate", async () => {
     if (!updatesEnabled) throw new Error("Dev and preview builds do not check for updates.");
     return updater.check().catch((error: unknown) => {
@@ -322,16 +322,19 @@ function tokenVault(): TokenVault {
  * until a followed host publishes, and `tray` stands in an empty reading for the tray. */
 function usageSource(link: HostLinkClient, state: UsageState) {
   const usage = () => (link.active ? link.snapshot : state.snapshot);
+  /** Refuses a reply from the side that stopped reading while it ran, so it cannot replace the
+   * other side's usage in the window. */
+  const sameSource = async <T>(run: () => T | Promise<T>): Promise<T> => {
+    const following = link.active;
+    const result = await run();
+    if (link.active !== following) throw new Error("Usage now comes from elsewhere.");
+    return result;
+  };
   return {
     usage,
     tray: () => usage() ?? noUsage(),
-    /** A reply from the side that stopped reading while it ran is refused, so it cannot replace the other's usage. */
-    refresh: async () => {
-      const following = link.active;
-      const snapshot = await (following ? link.refresh() : state.refresh());
-      if (link.active !== following) throw new Error("Usage now comes from elsewhere.");
-      return snapshot;
-    },
+    refresh: () => sameSource(() => (link.active ? link.refresh() : state.refresh())),
+    sameSource,
   };
 }
 
@@ -412,32 +415,45 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot, problem: () =>
   return render;
 }
 
-function registerUsageHandlers(state: UsageState, refresh: () => Promise<UsageSnapshot>) {
+/** Every command that answers with a snapshot runs through `sameSource`. */
+function registerUsageHandlers(
+  state: UsageState,
+  refresh: () => Promise<UsageSnapshot>,
+  sameSource: <T>(run: () => T | Promise<T>) => Promise<T>,
+) {
   handle("refreshUsage", refresh);
-  handle("setProviderEnabled", (provider, enabled) => {
-    if (!providerIds.includes(provider) || typeof enabled !== "boolean") throw new Error("Unknown provider setting.");
-    try {
-      return state.setProviderEnabled(provider, enabled);
-    } catch (error) {
-      throw new Error(`Could not save provider setting: ${message(error)}`);
-    }
-  });
-  handle("setPaceSettings", (settings) => {
-    const parsed = paceSettings(settings);
-    if (!parsed) throw new Error("Unknown pace setting.");
-    try {
-      return state.setPaceSettings(parsed);
-    } catch (error) {
-      throw new Error(`Could not save pace setting: ${message(error)}`);
-    }
-  });
-  handle("resetPace", () => {
-    try {
-      return state.resetPace();
-    } catch (error) {
-      throw new Error(`Could not reset pace learning: ${message(error)}`);
-    }
-  });
+  handle("setProviderEnabled", (provider, enabled) =>
+    sameSource(() => {
+      if (!providerIds.includes(provider) || typeof enabled !== "boolean") {
+        throw new Error("Unknown provider setting.");
+      }
+      try {
+        return state.setProviderEnabled(provider, enabled);
+      } catch (error) {
+        throw new Error(`Could not save provider setting: ${message(error)}`);
+      }
+    }),
+  );
+  handle("setPaceSettings", (settings) =>
+    sameSource(() => {
+      const parsed = paceSettings(settings);
+      if (!parsed) throw new Error("Unknown pace setting.");
+      try {
+        return state.setPaceSettings(parsed);
+      } catch (error) {
+        throw new Error(`Could not save pace setting: ${message(error)}`);
+      }
+    }),
+  );
+  handle("resetPace", () =>
+    sameSource(() => {
+      try {
+        return state.resetPace();
+      } catch (error) {
+        throw new Error(`Could not reset pace learning: ${message(error)}`);
+      }
+    }),
+  );
   handle("proxyHubs", () => state.proxyHubs());
   handle("addProxyHub", (input) => {
     assertProxyHubInput(input);
