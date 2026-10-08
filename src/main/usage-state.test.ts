@@ -129,6 +129,18 @@ describe("usage state", () => {
     expect(published.at(-1)).toBe(await first);
   });
 
+  it("keeps nothing read while paused and starts no read", async () => {
+    const { reads, read } = heldReads();
+    const published: UsageSnapshot[] = [];
+    const state = createState(read, (snapshot) => published.push(snapshot));
+    const refreshed = state.refresh();
+    state.paused = true;
+    for (const { release } of reads) release(ready(42));
+    expect((await refreshed).codex.status).toBe("loading");
+    await state.refresh();
+    expect(reads).toHaveLength(2);
+  });
+
   it("reads a provider switched on during a refresh", async () => {
     const { reads, read } = heldReads();
     const state = createState(read);

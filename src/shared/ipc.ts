@@ -39,6 +39,18 @@ export type PairedDevice = {
 /** The one-time code a new device enters, while one is offered. */
 export type PairingCode = { code: string; expiresAt: number };
 export type RemoteDevices = { devices: PairedDevice[]; pairing: PairingCode | null };
+/** The wire format a host serves to another Tantalus. It changes only when that format breaks, and a
+ * client refuses a host on any other. */
+export const PROTOCOL = 1;
+/** What a host says about itself before a client pairs or follows it. */
+export type HostHello = { protocol: number; name: string };
+
+/** Where a client stands with the host it follows. */
+export type HostLinkState = "connecting" | "connected" | "unreachable" | "removed" | "update-host" | "update-client";
+/** The host a client follows. `host` is the host's machine name, and `since` is when the link last
+ * stopped delivering usage. */
+export type HostLink = { url: string; host: string; state: HostLinkState; since: number | null };
+
 export type ProxyHubInput = { label: string; url: string; managementKey: string };
 
 /** Every request the window can make of the main process, keyed by channel. */
@@ -73,18 +85,25 @@ export type Commands = {
   renameDevice: (id: string, name: string) => RemoteDevices;
   /** Cuts the device off at once, including a stream it has open. */
   removeDevice: (id: string) => RemoteDevices;
+  /** Pairs with the host at `url` and follows its usage instead of reading this machine's. */
+  connectHost: (url: string, code: string) => HostLink;
+  /** Forgets the host and reads this machine's usage again. */
+  disconnectHost: () => void;
 };
 
 /** What the main process publishes to the window, keyed by channel. The window can also read the
  * latest value of each, which is null until there is one. */
 export type Events = {
-  usageSnapshot: UsageSnapshot;
+  /** Null while a followed host has published nothing yet. */
+  usageSnapshot: UsageSnapshot | null;
   toast: string;
   updateAvailable: AvailableUpdate;
   /** Null once an install ends without relaunching. */
   installProgress: InstallProgress | null;
   serverEpoch: number;
   remoteDevices: RemoteDevices;
+  /** Null while this machine reads its own usage. */
+  hostLink: HostLink | null;
 };
 
 /** The channel that serves the latest value of an event. */

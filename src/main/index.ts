@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, shell, Tray } from "electron";
 import type { MenuItemConstructorOptions, NativeImage } from "electron";
 import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
@@ -8,18 +8,28 @@ import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
+import { defaultPaceSettings } from "../shared/pace";
 import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
-import { nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import { emptyProviderUsage, nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { readCredentials } from "./auth";
 import { runCli, startCli } from "./cli";
+import { HostLinkClient } from "./host-link";
+import type { TokenVault } from "./host-link";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
 import { Pairing } from "./pairing";
-import { loadTrayUsageSettings, paceSettings, saveSettings, trayUsageSettings, windowStartSettings } from "./settings";
+import {
+  loadTrayUsageSettings,
+  noProviders,
+  paceSettings,
+  saveSettings,
+  trayUsageSettings,
+  windowStartSettings,
+} from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
 import { trayPercent, usageBitmap } from "./tray-icon";
@@ -97,6 +107,8 @@ function start() {
     async (provider) => api.fetch(provider, await readCredentials(provider)),
     (config) => proxyHubs.read(config),
     (snapshot) => {
+      // A read that was running when this machine started following a host is not shown.
+      if (link.active) return;
       starter.observe(snapshot);
       snapshot.window_starts = starter.results();
       renderTray();
@@ -125,6 +137,20 @@ function start() {
     notify,
   );
   const remote = new RemoteAccessRoutes(join(app.getPath("userData"), "remote-access.json"), identity.ports, web);
+  const link = new HostLinkClient({
+    path: join(app.getPath("userData"), "host-link.json"),
+    vault: tokenVault(),
+    onSnapshot: (snapshot) => {
+      renderTray();
+      publish("usageSnapshot", snapshot);
+    },
+    onChange: (hostLink) => {
+      renderTray();
+      publish("hostLink", hostLink);
+    },
+  });
+  const { usage, tray: trayUsage, refresh, sameSource } = usageSource(link, state);
+  const polling = localPolling(state, starter);
   const updater = new Updater(
     (update) => {
       renderTray();
@@ -138,16 +164,16 @@ function start() {
 
   const tray = new Tray(trayImage());
   bindTrayClick(tray);
-  const renderTrayIcon = trayUsageIcon(tray, () => state.snapshot);
+  const renderTrayIcon = trayUsageIcon(tray, trayUsage, () => link.problem());
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
-    refresh: () => void state.refresh(),
+    refresh: () => void refresh().catch(() => {}),
     quit: () => app.quit(),
   };
   let shownTray = "";
   function renderTray() {
     renderTrayIcon();
-    const items = trayItems(state.snapshot, updater.available(), nowEpoch());
+    const items = trayItems(trayUsage(), updater.available(), nowEpoch());
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
     shownTray = shown;
@@ -157,15 +183,16 @@ function start() {
   setInterval(renderTray, TRAY_TICK);
 
   const current: { [E in keyof Events]: () => Events[E] | null } = {
-    usageSnapshot: () => state.snapshot,
+    usageSnapshot: usage,
     toast: () => toast,
     updateAvailable: () => updater.available(),
     installProgress: () => updater.installProgress(),
     serverEpoch: nowEpoch,
     remoteDevices,
+    hostLink: () => link.read(),
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);
-  registerUsageHandlers(state);
+  registerUsageHandlers(state, refresh, sameSource);
   handle("checkForUpdate", async () => {
     if (!updatesEnabled) throw new Error("Dev and preview builds do not check for updates.");
     return updater.check().catch((error: unknown) => {
@@ -210,10 +237,117 @@ function start() {
     return remoteDevices();
   });
 
+  // Each side's usage replaces the other's at once, so neither shows under the other's name.
+  const showUsage = () => {
+    publish("usageSnapshot", usage());
+    renderTray();
+  };
+  registerHostLinkHandlers(link, polling, remote, showUsage, showUsage);
+
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
-  startBackgroundServices(state, remote, updater, updatesEnabled);
+  startBackgroundServices(link, polling, remote, updater, updatesEnabled);
 }
+
+/** `onFollow` and `onLocal` show the usage of whichever side now reads it. */
+function registerHostLinkHandlers(
+  link: HostLinkClient,
+  polling: ReturnType<typeof localPolling>,
+  remote: RemoteAccessRoutes,
+  onFollow: () => void,
+  onLocal: () => void,
+) {
+  handle("connectHost", async (url, code) => {
+    if (typeof url !== "string" || typeof code !== "string") throw new Error("Unknown host setting.");
+    const hostLink = await link.connect(url, code);
+    polling.stop();
+    onFollow();
+    await remote.stop();
+    return hostLink;
+  });
+  handle("disconnectHost", () => {
+    link.disconnect();
+    onLocal();
+    polling.start();
+    void remote.start();
+  });
+}
+
+/** A machine following a host reads nothing itself and serves nothing to other devices. */
+function startBackgroundServices(
+  link: HostLinkClient,
+  polling: ReturnType<typeof localPolling>,
+  remote: RemoteAccessRoutes,
+  updater: Updater,
+  updatesEnabled: boolean,
+) {
+  if (!launchedHidden()) showWindow();
+  if (updatesEnabled) void updater.watch();
+  if (link.active) return link.start();
+  polling.start();
+  void remote.start();
+}
+
+/** Polls this machine's own usage until stopped, and again once started. Stopping also pauses reads
+ * and window starts already under way, so none continues while this machine follows a host. */
+function localPolling(state: UsageState, starter: WindowStarter) {
+  let running: AbortController | null = null;
+  return {
+    start() {
+      if (running) return;
+      state.paused = false;
+      starter.paused = false;
+      const { signal } = (running = new AbortController());
+      void pollUsage(state, (milliseconds) => sleep(milliseconds, undefined, { signal })).catch(() => {});
+    },
+    stop() {
+      state.paused = true;
+      starter.paused = true;
+      running?.abort();
+      running = null;
+    },
+  };
+}
+
+/** Seals a host's token with the operating system's keychain, where there is one. */
+function tokenVault(): TokenVault {
+  return {
+    seal: (token) =>
+      safeStorage.isEncryptionAvailable()
+        ? { sealed: safeStorage.encryptString(token).toString("base64") }
+        : { plain: token },
+    open: (token) => ("sealed" in token ? safeStorage.decryptString(Buffer.from(token.sealed, "base64")) : token.plain),
+  };
+}
+
+/** What the tray and window show: the followed host's usage, or this machine's own. `usage` is null
+ * until a followed host publishes, and `tray` stands in an empty reading for the tray. */
+function usageSource(link: HostLinkClient, state: UsageState) {
+  const usage = () => (link.active ? link.snapshot : state.snapshot);
+  /** Refuses a reply from the side that stopped reading while it ran, so it cannot replace the
+   * other side's usage in the window. */
+  const sameSource = async <T>(run: () => T | Promise<T>): Promise<T> => {
+    const following = link.active;
+    const result = await run();
+    if (link.active !== following) throw new Error("Usage now comes from elsewhere.");
+    return result;
+  };
+  return {
+    usage,
+    tray: () => usage() ?? noUsage(),
+    refresh: () => sameSource(() => (link.active ? link.refresh() : state.refresh())),
+    sameSource,
+  };
+}
+
+const noUsage = (): UsageSnapshot => ({
+  codex: emptyProviderUsage(),
+  claude: emptyProviderUsage(),
+  opencode: emptyProviderUsage(),
+  enabled: noProviders,
+  proxy_hubs: [],
+  pace: { settings: defaultPaceSettings, windows: {} },
+});
 
 function menuTemplate(items: TrayItem[], actions: Record<TrayAction, () => void>): MenuItemConstructorOptions[] {
   return items.map((item) => {
@@ -242,9 +376,12 @@ function bindTrayClick(tray: Tray) {
   if (process.platform !== "darwin") tray.on("click", showWindow);
 }
 
+/** A followed host that is not delivering usage leaves the number gray, and says why in the tooltip. */
+const STALE_TRAY_COLOR = "#8e8e93";
+
 /** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
  * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
-function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
+function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot, problem: () => string | null): () => void {
   const path = join(app.getPath("userData"), "tray-usage.json");
   let settings = loadTrayUsageSettings(path);
   let shown: string | null = null;
@@ -257,13 +394,15 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
   };
   const render = () => {
     const reading = trayUsageReading(snapshot(), settings, nowEpoch());
-    if (!reading) return show(identity.productName, null, trayImage);
+    const stale = problem();
+    const title = stale ? `${identity.productName}\n${stale}` : identity.productName;
+    if (!reading) return show(title, null, trayImage);
     const text = trayPercent(reading.remaining, reading.limit);
     const of = reading.limit > 100 ? ` of ${reading.limit}%` : "";
     show(
-      `${identity.productName}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)}${of} remaining`,
-      text,
-      () => usageTrayImage(text, trayUsageColors[reading.provider]),
+      `${title}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)}${of} remaining`,
+      `${text}:${stale !== null}`,
+      () => usageTrayImage(text, stale ? STALE_TRAY_COLOR : trayUsageColors[reading.provider]),
     );
   };
   handle("trayUsage", () => settings);
@@ -278,44 +417,45 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot): () => void {
   return render;
 }
 
-function startBackgroundServices(
+/** Every command that answers with a snapshot runs through `sameSource`. */
+function registerUsageHandlers(
   state: UsageState,
-  remote: RemoteAccessRoutes,
-  updater: Updater,
-  updatesEnabled: boolean,
+  refresh: () => Promise<UsageSnapshot>,
+  sameSource: <T>(run: () => T | Promise<T>) => Promise<T>,
 ) {
-  if (!launchedHidden()) showWindow();
-  void pollUsage(state, sleep);
-  void remote.start();
-  if (updatesEnabled) void updater.watch();
-}
-
-function registerUsageHandlers(state: UsageState) {
-  handle("refreshUsage", () => state.refresh());
-  handle("setProviderEnabled", (provider, enabled) => {
-    if (!providerIds.includes(provider) || typeof enabled !== "boolean") throw new Error("Unknown provider setting.");
-    try {
-      return state.setProviderEnabled(provider, enabled);
-    } catch (error) {
-      throw new Error(`Could not save provider setting: ${message(error)}`);
-    }
-  });
-  handle("setPaceSettings", (settings) => {
-    const parsed = paceSettings(settings);
-    if (!parsed) throw new Error("Unknown pace setting.");
-    try {
-      return state.setPaceSettings(parsed);
-    } catch (error) {
-      throw new Error(`Could not save pace setting: ${message(error)}`);
-    }
-  });
-  handle("resetPace", () => {
-    try {
-      return state.resetPace();
-    } catch (error) {
-      throw new Error(`Could not reset pace learning: ${message(error)}`);
-    }
-  });
+  handle("refreshUsage", refresh);
+  handle("setProviderEnabled", (provider, enabled) =>
+    sameSource(() => {
+      if (!providerIds.includes(provider) || typeof enabled !== "boolean") {
+        throw new Error("Unknown provider setting.");
+      }
+      try {
+        return state.setProviderEnabled(provider, enabled);
+      } catch (error) {
+        throw new Error(`Could not save provider setting: ${message(error)}`);
+      }
+    }),
+  );
+  handle("setPaceSettings", (settings) =>
+    sameSource(() => {
+      const parsed = paceSettings(settings);
+      if (!parsed) throw new Error("Unknown pace setting.");
+      try {
+        return state.setPaceSettings(parsed);
+      } catch (error) {
+        throw new Error(`Could not save pace setting: ${message(error)}`);
+      }
+    }),
+  );
+  handle("resetPace", () =>
+    sameSource(() => {
+      try {
+        return state.resetPace();
+      } catch (error) {
+        throw new Error(`Could not reset pace learning: ${message(error)}`);
+      }
+    }),
+  );
   handle("proxyHubs", () => state.proxyHubs());
   handle("addProxyHub", (input) => {
     assertProxyHubInput(input);

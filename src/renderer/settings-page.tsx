@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { version } from "../../package.json";
 import { remoteRoutes } from "../shared/ipc";
-import type { RemoteAccess, RemoteRoute } from "../shared/ipc";
+import type { HostLink, RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames } from "../shared/usage";
 import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { BusyButton } from "./busy";
 import type { Loadable } from "./busy";
+import { ConnectRows, HostRows } from "./host-link";
 import { PaceSettingsRows } from "./pace-settings";
 import { PairedDevicesRows } from "./paired-devices";
 import { ProviderIcon } from "./provider-icon";
@@ -241,17 +242,7 @@ function VersionRow() {
   );
 }
 
-export function SettingsPage({
-  providers,
-  snapshot,
-  onSnapshot,
-  onBack,
-}: {
-  providers: ProviderChoice;
-  snapshot: UsageSnapshot | null;
-  onSnapshot: (snapshot: UsageSnapshot) => void;
-  onBack: () => void;
-}) {
+function OpenAtLoginRow() {
   const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [savingStartup, setSavingStartup] = useState(false);
@@ -290,49 +281,82 @@ export function SettingsPage({
 
   return (
     <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>Open at login</h2>
+          <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
+        </div>
+        {startupEnabled === null ? (
+          <SettingPending failed={startupError !== null} />
+        ) : (
+          <Toggle
+            label="Open at login"
+            checked={startupEnabled}
+            busy={savingStartup}
+            onToggle={() => void toggleStartup()}
+          />
+        )}
+      </section>
+      {startupError && (
+        <p className="notice settings-notice" role="alert">
+          {startupError}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** While following a host, only this machine's own settings show. The rest belong to the host. */
+export function SettingsPage({
+  providers,
+  snapshot,
+  hostLink,
+  onSnapshot,
+  onBack,
+}: {
+  providers: ProviderChoice;
+  snapshot: UsageSnapshot | null;
+  hostLink: HostLink | null;
+  onSnapshot: (snapshot: UsageSnapshot) => void;
+  onBack: () => void;
+}) {
+  return (
+    <>
       <header>
         <h1>Settings</h1>
         <button onClick={onBack}>Back</button>
       </header>
 
       <div className="settings-list">
-        {providerIds.map((id) => (
-          <ProviderRow key={id} id={id} choice={providers} onChange={onSnapshot} />
-        ))}
+        {hostLink ? (
+          <HostRows link={hostLink} />
+        ) : (
+          <>
+            {providerIds.map((id) => (
+              <ProviderRow key={id} id={id} choice={providers} onChange={onSnapshot} />
+            ))}
 
-        <ProxyHubSettingsRows />
+            <ProxyHubSettingsRows />
 
-        <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
+            <PaceSettingsRows snapshot={snapshot} failed={providers === "unavailable"} onSnapshot={onSnapshot} />
 
-        <WindowStartRows snapshot={snapshot} />
+            <WindowStartRows snapshot={snapshot} />
+          </>
+        )}
 
         <TrayUsageRows snapshot={snapshot} />
 
-        <section className="setting-row">
-          <div className="setting-copy">
-            <h2>Open at login</h2>
-            <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
-          </div>
-          {startupEnabled === null ? (
-            <SettingPending failed={startupError !== null} />
-          ) : (
-            <Toggle
-              label="Open at login"
-              checked={startupEnabled}
-              busy={savingStartup}
-              onToggle={() => void toggleStartup()}
-            />
-          )}
-        </section>
-        {startupError && (
-          <p className="notice settings-notice" role="alert">
-            {startupError}
-          </p>
+        <OpenAtLoginRow />
+
+        {!hostLink && (
+          <>
+            <ConnectRows />
+
+            <RemoteAccessRows />
+
+            <PairedDevicesRows />
+          </>
         )}
-
-        <RemoteAccessRows />
-
-        <PairedDevicesRows />
 
         <VersionRow />
       </div>

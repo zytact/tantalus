@@ -50,6 +50,7 @@ import {
   usageValueText,
   windowEntries,
 } from "./presentation";
+import { HostBanner } from "./host-link";
 import { PairPage } from "./pair-page";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
@@ -352,13 +353,16 @@ const hubStatusTones = {
   rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
+/** `managed` hubs belong to this machine, so their management page can open from here. */
 function HubSection({
   hub,
+  managed,
   now,
   paces,
   starts,
 }: {
   hub: ProxyHubSnapshot;
+  managed: boolean;
   now: number;
   paces: PaceSnapshot["windows"];
   starts: UsageSnapshot["window_starts"];
@@ -371,7 +375,7 @@ function HubSection({
           {hubStatusLabels[hub.status]}
         </span>
       </div>
-      {!remote && (
+      {managed && (
         <a
           className="management-link"
           href={proxyHubManagementUrl(hub.url)}
@@ -553,6 +557,7 @@ const remote = !("tantalus" in window);
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
+  const [hostLink] = usePublishedState("hostLink");
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow(remote);
 
@@ -587,6 +592,7 @@ function App() {
         <SettingsPage
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
           snapshot={snapshot}
+          hostLink={hostLink}
           onSnapshot={setSnapshot}
           onBack={() => setPage("allowance")}
         />
@@ -597,7 +603,7 @@ function App() {
               <h1>Allowance</h1>
               <p className="status">
                 {snapshot ? (
-                  refreshedAgo(refreshedEpoch(snapshot), now)
+                  `${refreshedAgo(refreshedEpoch(snapshot), now)}${hostLink ? ` on ${hostLink.host}` : ""}`
                 ) : (
                   <PendingLabel
                     failed={snapshotError}
@@ -620,7 +626,11 @@ function App() {
             </div>
           </header>
 
-          {!remote && <Notices snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />}
+          {hostLink && <HostBanner link={hostLink} snapshot={snapshot} />}
+
+          {!remote && !hostLink && (
+            <Notices snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
+          )}
 
           {snapshot && shown.length === 0 && snapshot.proxy_hubs.length === 0 && (
             <p className="empty">No providers are on. Turn one on in Settings.</p>
@@ -644,6 +654,7 @@ function App() {
               <HubSection
                 key={hub.id}
                 hub={hub}
+                managed={!remote && !hostLink}
                 now={now}
                 paces={snapshot.pace.windows}
                 starts={snapshot.window_starts}

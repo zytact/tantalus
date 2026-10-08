@@ -42,6 +42,11 @@ export class RemoteAccessRoutes {
     });
   }
 
+  /** Stops listening while this machine follows another host, leaving the saved routes for later. */
+  stop() {
+    return this.serial(() => this.server.listen(null));
+  }
+
   /** Saves first, so a failed save changes nothing. Tailscale goes last, so a failure there leaves only
    * the listener and the file to restore. */
   set(route: RemoteRoute, enabled: boolean): Promise<RemoteAccess> {
