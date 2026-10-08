@@ -32,8 +32,12 @@ const COOKIE_SECONDS = 10 * 365 * 24 * 60 * 60;
 export type WebServerOptions = {
   root: string;
   port: number;
+  /** The host ID `/api/version` reports. */
+  id: string;
   snapshot: () => UsageSnapshot;
   refresh: () => Promise<UsageSnapshot>;
+  /** Every address the page is served on, which a paired Tantalus falls back between. */
+  routes: () => Promise<string[]>;
   pairing: Pairing;
   /** Called when a device starts or stops following usage. */
   onConnections: () => void;
@@ -122,7 +126,8 @@ export class WebServer {
   private respond(request: IncomingMessage, response: ServerResponse) {
     if (!trustedHost(request.headers.host)) return send(response, 403, "text/plain", "Forbidden");
     const path = pathname(request.url);
-    if (path === "/api/version") return this.sendJson(response, { protocol: PROTOCOL, name: hostname() });
+    if (path === "/api/version")
+      return this.sendJson(response, { protocol: PROTOCOL, name: hostname(), id: this.options.id });
     if (path === "/api/pair") return this.routePair(request, response);
     if (path?.startsWith("/api/")) {
       const token = bearer(request.headers.authorization) ?? cookie(request.headers.cookie, this.cookie);
@@ -147,6 +152,12 @@ export class WebServer {
     }
     if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     if (path === "/api/events") return this.stream(device, request, response);
+    if (path === "/api/routes") {
+      return void this.options.routes().then(
+        (routes) => this.sendJson(response, routes),
+        () => send(response, 500, "text/plain", "Could not read routes"),
+      );
+    }
     if (path.startsWith("/api/current/")) return this.sendCurrent(response, path);
     send(response, 404, "text/plain", "Not found");
   }
@@ -186,7 +197,7 @@ export class WebServer {
     this.sendJson(response, { token });
   }
 
-  private sendJson(response: ServerResponse, body: HostHello | { token: string }) {
+  private sendJson(response: ServerResponse, body: HostHello | { token: string } | string[]) {
     send(response, 200, "application/json", JSON.stringify(body));
   }
 

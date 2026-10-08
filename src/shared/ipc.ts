@@ -24,6 +24,7 @@ export type ReleaseNotes = { version: string; publishedAt: string | null; change
 /** The ways another device can open the allowance page, and whether each is switched on. */
 export const remoteRoutes = ["localNetwork", "tailscale"] as const;
 export type RemoteRoute = (typeof remoteRoutes)[number];
+export const remoteRouteNames: Record<RemoteRoute, string> = { localNetwork: "Local network", tailscale: "Tailscale" };
 export type RemoteSettings = Record<RemoteRoute, boolean>;
 /** Each route with the addresses it answers on. A route that is off, or whose address cannot be read,
  * has none. `error` says why the switched-on routes are not being served. */
@@ -42,14 +43,25 @@ export type RemoteDevices = { devices: PairedDevice[]; pairing: PairingCode | nu
 /** The wire format a host serves to another Tantalus. It changes only when that format breaks, and a
  * client refuses a host on any other. */
 export const PROTOCOL = 2;
-/** What a host says about itself before a client pairs or follows it. */
-export type HostHello = { protocol: number; name: string };
+/** What a host says about itself before a client pairs or follows it. `id` is random and saved on
+ * the host, so a client can tell it from another Tantalus at the same address. A host from before
+ * routes has none. */
+export type HostHello = { protocol: number; name: string; id: string | null };
 
 /** Where a client stands with the host it follows. */
 export type HostLinkState = "connecting" | "connected" | "unreachable" | "removed" | "update-host" | "update-client";
+/** An address a client can reach its host on. `found` marks one the host reported, as opposed to one
+ * typed on this device. */
+export type HostRoute = { url: string; kind: RemoteRoute; found: boolean };
 /** The host a client follows. `host` is the host's machine name, and `since` is when the link last
- * stopped delivering usage. */
-export type HostLink = { url: string; host: string; state: HostLinkState; since: number | null };
+ * stopped delivering usage. `routes` are in preference order, and `active` is the one delivering usage. */
+export type HostLink = {
+  host: string;
+  state: HostLinkState;
+  since: number | null;
+  routes: HostRoute[];
+  active: string | null;
+};
 
 export type ProxyHubInput = { label: string; url: string; managementKey: string };
 
@@ -89,6 +101,8 @@ export type Commands = {
   removeDevice: (id: string) => RemoteDevices;
   /** Pairs with the host at `url` and follows its usage instead of reading this machine's. */
   connectHost: (url: string, code: string) => HostLink;
+  /** Adds an address the followed host answers on, once it reports the same host ID. */
+  addHostRoute: (url: string) => HostLink;
   /** Forgets the host and reads this machine's usage again. */
   disconnectHost: () => void;
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { version } from "../../package.json";
-import { remoteRoutes } from "../shared/ipc";
+import { remoteRouteNames, remoteRoutes } from "../shared/ipc";
 import type { HostLink, RemoteAccess, RemoteRoute } from "../shared/ipc";
 import { providerIds, providerNames, signInSources } from "../shared/usage";
 import type { ProviderId, SignInSettings, SignInSource, UsageSnapshot } from "../shared/usage";
@@ -132,17 +132,11 @@ function SignInRows({
   ));
 }
 
-const remoteRouteCopy = {
-  localNetwork: {
-    name: "Local network",
-    description:
-      "Open this page from a paired device on the same network. The connection is not encrypted, so use it only on a network you trust.",
-  },
-  tailscale: {
-    name: "Tailscale",
-    description: "Serve this page over HTTPS to paired devices on your tailnet.",
-  },
-} satisfies Record<RemoteRoute, { name: string; description: string }>;
+const remoteRouteDescriptions: Record<RemoteRoute, string> = {
+  localNetwork:
+    "Open this page from a paired device on the same network. The connection is not encrypted, so use it only on a network you trust.",
+  tailscale: "Serve this page over HTTPS to paired devices on your tailnet.",
+};
 
 type RemoteAccessState = Loadable<RemoteAccess>;
 
@@ -233,7 +227,8 @@ function RemoteRow({
   error: string | null;
   onToggle: (enabled: boolean) => void;
 }) {
-  const { name, description } = remoteRouteCopy[route];
+  const name = remoteRouteNames[route];
+  const description = remoteRouteDescriptions[route];
   return (
     <>
       <section className="setting-row">

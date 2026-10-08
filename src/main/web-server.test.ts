@@ -62,6 +62,7 @@ beforeAll(async () => {
   server = new WebServer({
     root,
     port: PORT,
+    id: "host-id",
     snapshot: () => current,
     refresh: async () => {
       await gate;
@@ -69,6 +70,7 @@ beforeAll(async () => {
       current = snapshot(false);
       return current;
     },
+    routes: async () => ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"],
     pairing,
     onConnections: () => {},
     now: () => 1_234_567,
@@ -92,7 +94,7 @@ describe("web server", () => {
   });
 
   it("serves usage only to a paired device", async () => {
-    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events"]) {
+    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events", "/api/routes"]) {
       expect((await fetch(`${origin}${path}`)).status).toBe(401);
       expect((await fetch(`${origin}${path}`, { headers: { cookie: "tantalus-47470=forged" } })).status).toBe(401);
     }
@@ -119,6 +121,14 @@ describe("web server", () => {
     expect(await (await paired("/api/current/usageSnapshot")).json()).toEqual(current);
     expect(await (await paired("/api/current/serverEpoch")).json()).toBe(1_234_567);
     expect(await (await paired("/api/current/updateAvailable")).json()).toBeNull();
+  });
+
+  it("reports its ID to anyone, and its routes only to a paired device", async () => {
+    expect(await (await fetch(`${origin}/api/version`)).json()).toMatchObject({ protocol: 1, id: "host-id" });
+    expect(await (await paired("/api/routes")).json()).toEqual([
+      "https://fedora.tail1.ts.net:8443",
+      "http://192.168.1.5:4747",
+    ]);
   });
 
   it("refreshes usage only through POST", async () => {

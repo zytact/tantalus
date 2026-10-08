@@ -24,6 +24,7 @@ import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
 import { Pairing } from "./pairing";
 import {
+  loadHostId,
   loadTrayUsageSettings,
   noProviders,
   paceSettings,
@@ -83,8 +84,13 @@ function start() {
   const web = new WebServer({
     root: page,
     port: identity.ports.web,
+    id: loadHostId(join(app.getPath("userData"), "host-id.json")),
     snapshot: () => state.snapshot,
     refresh: () => state.refresh(),
+    routes: async () => {
+      const access = await remote.read();
+      return [...access.tailscale.urls, ...access.localNetwork.urls];
+    },
     pairing,
     onConnections: () => publish("remoteDevices", remoteDevices()),
   });
@@ -273,6 +279,10 @@ function registerHostLinkHandlers(
     onFollow();
     await remote.stop();
     return hostLink;
+  });
+  handle("addHostRoute", (url) => {
+    if (typeof url !== "string") throw new Error("Unknown host setting.");
+    return link.addRoute(url);
   });
   handle("disconnectHost", () => {
     link.disconnect();

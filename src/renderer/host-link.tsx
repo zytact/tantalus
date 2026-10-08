@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { hostLinkProblem } from "../shared/host-link";
-import type { HostLink } from "../shared/ipc";
+import { remoteRouteNames } from "../shared/ipc";
+import type { HostLink, HostLinkState, HostRoute } from "../shared/ipc";
 import { refreshedEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { absoluteTime } from "./presentation";
+import { RouteIcon } from "./route-icon";
 
 /** Says why a followed host's usage is not live, and how old the usage shown is. */
 export function HostBanner({ link, snapshot }: { link: HostLink; snapshot: UsageSnapshot | null }) {
@@ -20,9 +22,24 @@ export function HostBanner({ link, snapshot }: { link: HostLink; snapshot: Usage
   );
 }
 
-/** Settings while following a host: where usage comes from, and the way back to this machine's own. */
+/** Each state's dot color and the line under the host name. */
+const states: Record<HostLinkState, { tone: "ok" | "warn" | "danger"; status: (link: HostLink) => string }> = {
+  connected: { tone: "ok", status: () => "Connected" },
+  connecting: { tone: "warn", status: () => "Connecting" },
+  unreachable: {
+    tone: "danger",
+    status: ({ since }) => (since === null ? "Unreachable" : `Unreachable since ${absoluteTime(since)}`),
+  },
+  removed: { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
+  "update-host": { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
+  "update-client": { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
+};
+
+/** Settings while following a host: where usage comes from, the routes to it, and the way back to this
+ * machine's own. */
 export function HostRows({ link }: { link: HostLink }) {
   const [error, setError] = useState<string | null>(null);
+  const { tone, status } = states[link.state];
   const disconnect = () => {
     setError(null);
     void window.tantalus.invoke("disconnectHost").catch(() => setError("Could not disconnect."));
@@ -31,13 +48,122 @@ export function HostRows({ link }: { link: HostLink }) {
     <>
       <section className="setting-row">
         <div className="setting-copy">
-          <h2>Following {link.host}</h2>
-          <p>{hostLinkProblem(link) ?? `Showing live usage from ${link.host}.`}</p>
-          <p className="setting-url">{link.url}</p>
+          <h2>
+            <span className={`status-dot ${tone}`} aria-hidden="true" />
+            Following {link.host}
+          </h2>
+          <p>{status(link)}</p>
         </div>
         <button onClick={disconnect}>Disconnect</button>
       </section>
-      {link.state === "removed" && <ConnectForm address={link.url} />}
+      {error && (
+        <p className="notice settings-notice" role="alert">
+          {error}
+        </p>
+      )}
+      {link.state === "removed" && <ConnectForm address={link.routes[0]?.url} />}
+      <Routes link={link} />
+    </>
+  );
+}
+
+/** Every address the host answers on, most preferred first, with the one delivering usage marked. */
+function Routes({ link }: { link: HostLink }) {
+  const [adding, setAdding] = useState(false);
+  return (
+    <section className="routes" aria-labelledby="routes-heading">
+      <h3 id="routes-heading">Routes</h3>
+      <ul className="route-group">
+        {link.routes.map((route) => (
+          <RouteRow key={route.url} route={route} inUse={route.url === link.active} />
+        ))}
+        <li className="route-add">
+          {adding ? (
+            <AddRouteForm onDone={() => setAdding(false)} />
+          ) : (
+            <button className="route-add-button" onClick={() => setAdding(true)}>
+              Add route
+            </button>
+          )}
+        </li>
+      </ul>
+      <OneRouteNote link={link} />
+    </section>
+  );
+}
+
+function RouteRow({ route, inUse }: { route: HostRoute; inUse: boolean }) {
+  return (
+    <li className="route-row">
+      <RouteIcon kind={route.kind} />
+      <div className="route-copy">
+        <p className="route-name">
+          {remoteRouteNames[route.kind]}
+          {route.found && <span className="route-found"> · found automatically</span>}
+        </p>
+        <p className="route-url">{route.url}</p>
+      </div>
+      {inUse && <span className="route-pill">In use</span>}
+    </li>
+  );
+}
+
+/** Falling back needs both routes on at the host. A link with no found route follows a host from
+ * before routes, which reports none, so it gets no note. */
+function OneRouteNote({ link }: { link: HostLink }) {
+  const found = link.routes.find((route) => route.found);
+  if (!found || link.routes.some((route) => route.kind !== found.kind)) return null;
+  const only = remoteRouteNames[found.kind];
+  const other = remoteRouteNames[found.kind === "tailscale" ? "localNetwork" : "tailscale"];
+  return (
+    <p className="route-footer">
+      Only {only} is on at {link.host}. Switch on {other} in its Remote access settings too, so this device can move to
+      it when {only} drops.
+    </p>
+  );
+}
+
+/** Adds an address the host answers on. The main process checks it reaches the same host first. */
+function AddRouteForm({ onDone }: { onDone: () => void }) {
+  const [url, setUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const add = async () => {
+    setAdding(true);
+    setError(null);
+    await window.tantalus.invoke("addHostRoute", url).then(onDone, (reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : "Could not add the route.");
+      setAdding(false);
+    });
+  };
+  return (
+    <>
+      <form
+        className="hub-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void add();
+        }}
+      >
+        <label className="hub-form-wide">
+          Address
+          <input
+            required
+            placeholder="http://192.168.1.5:4747"
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            autoFocus
+          />
+        </label>
+        <div className="setting-actions">
+          <button disabled={adding} type="submit">
+            {adding ? "Checking" : "Add"}
+          </button>
+          <button type="button" onClick={onDone}>
+            Cancel
+          </button>
+        </div>
+      </form>
       {error && (
         <p className="notice settings-notice" role="alert">
           {error}
@@ -63,12 +189,18 @@ export function ConnectRows() {
           {open ? "Cancel" : "Connect"}
         </button>
       </section>
-      {open && <ConnectForm address="" onConnecting={setConnecting} />}
+      {open && <ConnectForm onConnecting={setConnecting} />}
     </>
   );
 }
 
-function ConnectForm({ address, onConnecting }: { address: string; onConnecting?: (connecting: boolean) => void }) {
+function ConnectForm({
+  address = "",
+  onConnecting,
+}: {
+  address?: string;
+  onConnecting?: (connecting: boolean) => void;
+}) {
   const [url, setUrl] = useState(address);
   const [code, setCode] = useState("");
   const [connecting, setConnecting] = useState(false);

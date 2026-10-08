@@ -1,5 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { connect, createServer as createTcpServer } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -7,13 +9,15 @@ import { PROTOCOL } from "../shared/ipc";
 import type { HostLink } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
-import { HostLinkClient, hostUrl } from "./host-link";
+import { HostLinkClient, hostUrl, mergedRoutes, routeKind } from "./host-link";
 import type { TokenVault } from "./host-link";
 import { Pairing } from "./pairing";
 import { WebServer } from "./web-server";
 
 const PORT = 47_480;
 const origin = `http://127.0.0.1:${PORT}`;
+const FORWARD_PORT = 47_482;
+const forwarded = `http://127.0.0.1:${FORWARD_PORT}`;
 
 const snapshot = (claude: boolean): UsageSnapshot => ({
   enabled: { codex: true, claude, opencode: false },
@@ -34,6 +38,8 @@ let pairing: Pairing;
 let server: WebServer;
 let current: UsageSnapshot;
 let clients: HostLinkClient[];
+/** The addresses the host reports. */
+let reported: string[];
 
 /** A client that records what it shows, with retries a few milliseconds apart. */
 function client() {
@@ -56,6 +62,36 @@ const offered = () => {
   return pairing.read(new Set()).pairing!.code;
 };
 
+/** A second route to the host that a test can cut, the way Tailscale Serve forwards to it. */
+async function forwarder() {
+  const sockets = new Set<Socket>();
+  const forward = createTcpServer((socket) => {
+    const upstream = connect(PORT, "127.0.0.1");
+    for (const end of [socket, upstream]) {
+      sockets.add(end);
+      end.on("close", () => sockets.delete(end));
+      end.on("error", () => {});
+    }
+    socket.pipe(upstream).pipe(socket);
+  });
+  await new Promise<void>((resolve) => forward.listen(FORWARD_PORT, "127.0.0.1", resolve));
+  return async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => forward.close(resolve));
+  };
+}
+
+/** Another Tantalus that records whether anyone sent it a token. */
+async function impostor(port: number) {
+  const tokens: string[] = [];
+  const server = createServer((request, response) => {
+    if (request.headers.authorization) tokens.push(request.headers.authorization);
+    response.end(JSON.stringify({ protocol: 1, name: "fedora", id: "someone-else" }));
+  });
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  return { tokens, close: () => new Promise((resolve) => server.close(resolve)) };
+}
+
 async function until(check: () => boolean) {
   for (let tries = 0; !check(); tries += 1) {
     if (tries > 200) throw new Error("Timed out.");
@@ -70,6 +106,7 @@ beforeEach(async () => {
   writeFileSync(join(root, "index.html"), "<main></main>");
   current = snapshot(true);
   clients = [];
+  reported = [];
   pairing = new Pairing(
     join(directory, "paired-devices.json"),
     () => {},
@@ -78,8 +115,10 @@ beforeEach(async () => {
   server = new WebServer({
     root,
     port: PORT,
+    id: "host-id",
     snapshot: () => current,
     refresh: async () => (current = snapshot(false)),
+    routes: async () => reported,
     pairing,
     onConnections: () => {},
   });
@@ -96,7 +135,11 @@ describe("host link", () => {
   it("pairs with an offered code, follows the host's usage and refreshes through it", async () => {
     const { link, shown } = client();
     const connected = await link.connect(`127.0.0.1:${PORT}`, offered());
-    expect(connected).toMatchObject({ url: origin, state: "connecting", since: null });
+    expect(connected).toMatchObject({
+      routes: [{ url: origin, kind: "localNetwork", found: false }],
+      state: "connecting",
+      since: null,
+    });
     await until(() => link.read()?.state === "connected");
     expect(shown.at(-1)).toEqual(current);
 
@@ -170,6 +213,89 @@ describe("host link", () => {
     const restarted = client();
     restarted.link.start();
     await until(() => restarted.link.read()?.state === "connected");
+  });
+});
+
+describe("routes", () => {
+  it("falls back to a route the host reported, and moves back once the preferred one answers", async () => {
+    let cut = await forwarder();
+    reported = [origin];
+    const { link } = client();
+    await link.connect(forwarded, offered());
+    await until(() => link.read()?.active === forwarded && link.read()!.routes.length === 2);
+    expect(link.read()!.routes[1]).toEqual({ url: origin, kind: "localNetwork", found: true });
+
+    await cut();
+    await until(() => link.read()?.active === origin);
+    expect(link.read()?.state).toBe("connected");
+
+    cut = await forwarder();
+    await until(() => link.read()?.active === forwarded);
+    await cut();
+  });
+
+  it("never sends the token to an address where another Tantalus answers", async () => {
+    const other = await impostor(47_481);
+    reported = ["http://127.0.0.1:47481"];
+    const { link } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.routes.length === 2);
+    await expect(link.addRoute("127.0.0.1:47481")).rejects.toThrow("already a route");
+    await expect(link.addRoute(`localhost:${PORT}`)).resolves.toMatchObject({ routes: { length: 3 } });
+
+    await server.listen(null);
+    await until(() => link.read()?.state === "unreachable");
+    expect(other.tokens).toEqual([]);
+    await other.close();
+  });
+
+  it("refuses to add an address where another Tantalus answers", async () => {
+    const other = await impostor(47_481);
+    const { link } = client();
+    await link.connect(origin, offered());
+    await expect(link.addRoute("127.0.0.1:47481")).rejects.toThrow("another Tantalus, not");
+    expect(other.tokens).toEqual([]);
+    await other.close();
+  });
+
+  it("learns the host ID and routes for a link saved before routes", async () => {
+    const token = pairing.pair(offered(), "laptop");
+    writeFileSync(
+      join(directory, "host-link.json"),
+      JSON.stringify({ url: origin, host: "fedora", token: { plain: token } }),
+    );
+    reported = [forwarded];
+    const { link } = client();
+    link.start();
+    await until(() => link.read()?.routes.length === 2);
+    const saved = JSON.parse(readFileSync(join(directory, "host-link.json"), "utf8"));
+    expect(saved).toMatchObject({
+      id: "host-id",
+      routes: [
+        { url: origin, found: false },
+        { url: forwarded, found: true },
+      ],
+    });
+  });
+
+  it("drops a found route the host stopped reporting, unless it is in use", () => {
+    const routes = [
+      { url: "http://192.168.1.5:4747", found: false },
+      { url: "http://192.168.1.6:4747", found: true },
+      { url: "http://192.168.1.7:4747", found: true },
+    ];
+    expect(mergedRoutes(routes, ["http://192.168.1.8:4747"], "http://192.168.1.7:4747")).toEqual([
+      { url: "http://192.168.1.5:4747", found: false },
+      { url: "http://192.168.1.7:4747", found: true },
+      { url: "http://192.168.1.8:4747", found: true },
+    ]);
+  });
+
+  it("tells a Tailscale address from a local network one", () => {
+    expect(routeKind("https://fedora.tail1.ts.net:8443")).toBe("tailscale");
+    expect(routeKind("http://100.101.2.3:4747")).toBe("tailscale");
+    expect(routeKind("http://100.20.2.3:4747")).toBe("localNetwork");
+    expect(routeKind("http://192.168.1.5:4747")).toBe("localNetwork");
   });
 });
 
