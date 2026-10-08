@@ -64,6 +64,23 @@ function storedDevice(value: unknown): StoredDevice | null {
     : null;
 }
 
+/** The host a client follows. The token is sealed by the operating system's keychain where there is
+ * one, and kept as is where there is not. */
+export type SavedHostLink = { url: string; host: string; token: { sealed: string } | { plain: string } };
+
+export function loadHostLink(path: string): SavedHostLink | null {
+  return load<SavedHostLink | null>(path, null, null, (value) => {
+    const url = field(value, "url");
+    const host = field(value, "host");
+    const token = field(value, "token");
+    const sealed = field(token, "sealed");
+    const plain = field(token, "plain");
+    if (typeof url !== "string" || !httpUrl(url) || typeof host !== "string") return null;
+    if (typeof sealed === "string") return { url, host, token: { sealed } };
+    return typeof plain === "string" ? { url, host, token: { plain } } : null;
+  });
+}
+
 export function loadPaceSettings(path: string): PaceSettings {
   return load(path, defaultPaceSettings, defaultPaceSettings, paceSettings);
 }

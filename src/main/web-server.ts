@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
+import { PROTOCOL } from "../shared/ipc";
+import type { HostHello } from "../shared/ipc";
 import type { UsageSnapshot } from "../shared/usage";
 import { nowEpoch } from "../shared/usage";
 import { field } from "./parse";
@@ -18,6 +21,11 @@ const contentTypes: Record<string, string> = {
 
 /** The largest pairing request body read. */
 const PAIR_BODY_BYTES = 1024;
+/** Every open stream gets a comment this often, so a client notices a host that vanished without
+ * closing the connection. */
+export const PING_MILLISECONDS = 15_000;
+/** A name another Tantalus sends is cut to this length. */
+const DEVICE_NAME_LENGTH = 64;
 /** A browser keeps its pairing until the host removes the device. */
 const COOKIE_SECONDS = 10 * 365 * 24 * 60 * 60;
 
@@ -42,6 +50,7 @@ export class WebServer {
   /** Browsers send cookies to every port on a host, so the name keeps a preview's apart from the release's. */
   private readonly cookie: string;
   private readonly now: () => number;
+  private ping: NodeJS.Timeout | null = null;
 
   constructor(private readonly options: WebServerOptions) {
     this.cookie = `tantalus-${options.port}`;
@@ -66,6 +75,9 @@ export class WebServer {
     });
     this.server = server;
     this.host = host;
+    this.ping = setInterval(() => {
+      for (const listener of this.listeners.keys()) listener.write(": ping\n\n");
+    }, PING_MILLISECONDS);
   }
 
   publish(snapshot: UsageSnapshot) {
@@ -98,6 +110,8 @@ export class WebServer {
     const server = this.server;
     this.server = null;
     this.host = null;
+    if (this.ping) clearInterval(this.ping);
+    this.ping = null;
     if (!server) return;
     for (const listener of this.listeners.keys()) this.drop(listener);
     const closed = new Promise((resolve) => server.close(resolve));
@@ -108,12 +122,11 @@ export class WebServer {
   private respond(request: IncomingMessage, response: ServerResponse) {
     if (!trustedHost(request.headers.host)) return send(response, 403, "text/plain", "Forbidden");
     const path = pathname(request.url);
-    if (path === "/api/pair") {
-      if (!action(request, "pair")) return send(response, 405, "text/plain", "Method not allowed");
-      return void this.pair(request, response).catch(() => send(response, 500, "text/plain", "Could not pair"));
-    }
+    if (path === "/api/version") return this.sendJson(response, { protocol: PROTOCOL, name: hostname() });
+    if (path === "/api/pair") return this.routePair(request, response);
     if (path?.startsWith("/api/")) {
-      const device = this.options.pairing.authorize(cookie(request.headers.cookie, this.cookie));
+      const token = bearer(request.headers.authorization) ?? cookie(request.headers.cookie, this.cookie);
+      const device = this.options.pairing.authorize(token);
       if (!device) return send(response, 401, "text/plain", "Pair this device first");
       return this.respondPaired(device, path, request, response);
     }
@@ -138,6 +151,16 @@ export class WebServer {
     send(response, 404, "text/plain", "Not found");
   }
 
+  private routePair(request: IncomingMessage, response: ServerResponse) {
+    const paired = action(request, "pair")
+      ? this.pair(request, response)
+      : action(request, "pair-app")
+        ? this.pairApp(request, response)
+        : null;
+    if (!paired) return send(response, 405, "text/plain", "Method not allowed");
+    void paired.catch(() => send(response, 500, "text/plain", "Could not pair"));
+  }
+
   /** A matching code pairs the browser that sent it, which keeps the token as a cookie its scripts cannot read. */
   private async pair(request: IncomingMessage, response: ServerResponse) {
     const code = field(await jsonBody(request).catch(() => null), "code");
@@ -148,6 +171,23 @@ export class WebServer {
       "set-cookie": `${this.cookie}=${token}; Path=/; Max-Age=${COOKIE_SECONDS}; HttpOnly; SameSite=Strict`,
     });
     response.end();
+  }
+
+  /** Another Tantalus pairs under its own name and keeps the token itself. */
+  private async pairApp(request: IncomingMessage, response: ServerResponse) {
+    const body = await jsonBody(request).catch(() => null);
+    const code = field(body, "code");
+    const name = field(body, "name");
+    if (typeof code !== "string" || typeof name !== "string" || !name.trim()) {
+      return send(response, 400, "text/plain", "Bad request");
+    }
+    const token = this.options.pairing.pair(code, name.trim().slice(0, DEVICE_NAME_LENGTH));
+    if (!token) return send(response, 403, "text/plain", "That code is wrong or has expired.");
+    this.sendJson(response, { token });
+  }
+
+  private sendJson(response: ServerResponse, body: HostHello | { token: string }) {
+    send(response, 200, "application/json", JSON.stringify(body));
   }
 
   private sendCurrent(response: ServerResponse, path: string) {
@@ -196,6 +236,10 @@ export function trustedHost(header: string | undefined): boolean {
 /** A POST carrying the action header, which a page on another site cannot send without the host's consent. */
 const action = (request: IncomingMessage, name: string) =>
   request.method === "POST" && request.headers["x-tantalus-action"] === name;
+
+function bearer(header: string | undefined): string | null {
+  return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+}
 
 function cookie(header: string | undefined, name: string): string | null {
   for (const part of header?.split(";") ?? []) {
