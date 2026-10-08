@@ -325,7 +325,13 @@ function usageSource(link: HostLinkClient, state: UsageState) {
   return {
     usage,
     tray: () => usage() ?? noUsage(),
-    refresh: () => (link.active ? link.refresh() : state.refresh()),
+    /** A reply from the side that stopped reading while it ran is refused, so it cannot replace the other's usage. */
+    refresh: async () => {
+      const following = link.active;
+      const snapshot = await (following ? link.refresh() : state.refresh());
+      if (link.active !== following) throw new Error("Usage now comes from elsewhere.");
+      return snapshot;
+    },
   };
 }
 

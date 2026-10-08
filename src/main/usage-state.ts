@@ -29,7 +29,8 @@ type RefreshScope = "all" | "unsettled";
 export class UsageState {
   snapshot: UsageSnapshot;
   private running: Promise<UsageSnapshot> | null = null;
-  /** While this machine follows another Tantalus, no read starts, and a running one reads no further. */
+  /** While this machine follows another Tantalus, no read starts, and a running one reads no further
+   * and keeps nothing it reads. */
   paused = false;
   private again: RefreshScope | null = null;
   private hubConfigs: ProxyHubConfig[];
@@ -106,7 +107,7 @@ export class UsageState {
     const reading = await this.readProvider(id).catch((error: unknown) =>
       error instanceof Error ? error : new Error(String(error)),
     );
-    if (!this.snapshot.enabled[id]) return;
+    if (this.paused || !this.snapshot.enabled[id]) return;
     this.snapshot = this.pace.annotate({ ...this.snapshot, [id]: applyReading(this.snapshot[id], reading) });
     this.publish(this.snapshot);
   }
@@ -116,7 +117,8 @@ export class UsageState {
     const reading = await this.readHub(config).catch((error: unknown) =>
       error instanceof Error ? error : new Error(String(error)),
     );
-    if (!this.snapshot.proxy_hubs.includes(hub)) return;
+    // A read that lands while paused is dropped, so following a host never changes local settings.
+    if (this.paused || !this.snapshot.proxy_hubs.includes(hub)) return;
     const snapshots = this.snapshot.proxy_hubs.map((current) =>
       current === hub ? applyHubReading(hub, redact(config), reading) : current,
     );
