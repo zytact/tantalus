@@ -18,6 +18,7 @@ import { runCli, startCli } from "./cli";
 import { identities } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
+import { Pairing } from "./pairing";
 import { loadTrayUsageSettings, paceSettings, saveSettings, trayUsageSettings, windowStartSettings } from "./settings";
 import { ProxyHubApi } from "./proxy-hub-api";
 import { RemoteAccessRoutes } from "./remote-access";
@@ -63,12 +64,20 @@ if (!app.requestSingleInstanceLock()) {
 function start() {
   configureApplicationMenu();
 
-  const web = new WebServer(
-    page,
-    identity.ports.web,
-    () => state.snapshot,
-    () => state.refresh(),
+  const pairing = new Pairing(
+    join(app.getPath("userData"), "paired-devices.json"),
+    () => publish("remoteDevices", remoteDevices()),
+    (message) => notify(message),
   );
+  const web = new WebServer({
+    root: page,
+    port: identity.ports.web,
+    snapshot: () => state.snapshot,
+    refresh: () => state.refresh(),
+    pairing,
+    onConnections: () => publish("remoteDevices", remoteDevices()),
+  });
+  const remoteDevices = () => pairing.read(web.connected());
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const proxyHubs = new ProxyHubApi();
   // A window opened while a toast still shows picks it up; an expired one is not replayed.
@@ -151,6 +160,7 @@ function start() {
     updateAvailable: () => updater.available(),
     installProgress: () => updater.installProgress(),
     serverEpoch: nowEpoch,
+    remoteDevices,
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);
   registerUsageHandlers(state);
@@ -177,6 +187,25 @@ function start() {
       throw new Error("Unknown remote access setting.");
     }
     return remote.set(route, enabled);
+  });
+  handle("offerPairing", () => {
+    pairing.offer();
+    return remoteDevices();
+  });
+  handle("cancelPairing", () => {
+    pairing.cancel();
+    return remoteDevices();
+  });
+  handle("renameDevice", (id, name) => {
+    if (typeof id !== "string" || typeof name !== "string") throw new Error("Unknown device setting.");
+    pairing.rename(id, name);
+    return remoteDevices();
+  });
+  handle("removeDevice", (id) => {
+    if (typeof id !== "string") throw new Error("Unknown device setting.");
+    pairing.remove(id);
+    web.disconnect(id);
+    return remoteDevices();
   });
 
   // Clicking the dock icon on macOS reopens the window.

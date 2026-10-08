@@ -50,6 +50,7 @@ import {
   usageValueText,
   windowEntries,
 } from "./presentation";
+import { PairPage } from "./pair-page";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
@@ -660,4 +661,6 @@ function App() {
 // The first frame waits for the bundled faces, since drawing it in a fallback face reflows the page a
 // frame later.
 await Promise.all(["1em 'Inter Tight Variable'", "500 1em Newsreader"].map((font) => document.fonts.load(font)));
-createRoot(document.getElementById("root")!).render(<App />);
+/** A browser that is not paired, or whose device was removed, gets a 401 and pairs first. */
+const paired = !remote || (await fetch("/api/current/serverEpoch")).status !== 401;
+createRoot(document.getElementById("root")!).render(paired ? <App /> : <PairPage />);

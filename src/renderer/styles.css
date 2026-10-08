@@ -554,6 +554,20 @@ button.danger:hover:not(:disabled) {
   display: block;
   margin-top: 10px;
 }
+.setting-copy .pairing-code {
+  margin-top: 10px;
+  color: var(--ink);
+  font-family: ui-monospace, monospace;
+  font-size: 1.6rem;
+  letter-spacing: 0.3em;
+  user-select: text;
+}
+.pair-intro {
+  margin: 18px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
 .setting-state {
   flex: none;
   color: var(--text-faint);

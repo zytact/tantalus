@@ -1,7 +1,7 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { RemoteSettings } from "../shared/ipc";
+import type { PairedDevice, RemoteSettings } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
 import { noTrayUsage } from "../shared/tray-usage";
@@ -35,6 +35,33 @@ export function loadRemoteSettings(path: string): RemoteSettings {
     const tailscale = field(value, "tailscale");
     return typeof localNetwork === "boolean" && typeof tailscale === "boolean" ? { localNetwork, tailscale } : null;
   });
+}
+
+/** A paired device as the host saves it. Only a hash of the token is kept. */
+export type StoredDevice = Omit<PairedDevice, "connected"> & { tokenHash: string };
+
+/** An unreadable file pairs nothing, so every device has to pair again rather than a stranger getting in. */
+export function loadDevices(path: string): StoredDevice[] {
+  return load(path, [], [], (value) => {
+    if (!Array.isArray(value)) return null;
+    const devices = value.map(storedDevice);
+    return devices.every((device) => device !== null) ? devices : null;
+  });
+}
+
+function storedDevice(value: unknown): StoredDevice | null {
+  const id = field(value, "id");
+  const name = field(value, "name");
+  const tokenHash = field(value, "tokenHash");
+  const pairedAt = field(value, "pairedAt");
+  const lastSeenAt = field(value, "lastSeenAt");
+  return typeof id === "string" &&
+    typeof name === "string" &&
+    typeof tokenHash === "string" &&
+    typeof pairedAt === "number" &&
+    (lastSeenAt === null || typeof lastSeenAt === "number")
+    ? { id, name, tokenHash, pairedAt, lastSeenAt }
+    : null;
 }
 
 export function loadPaceSettings(path: string): PaceSettings {

@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import { emptyProviderUsage } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
-import { trustedHost, WebServer } from "./web-server";
+import { Pairing } from "./pairing";
+import { deviceName, trustedHost, WebServer } from "./web-server";
 
 const PORT = 47_470;
 const origin = `http://127.0.0.1:${PORT}`;
@@ -23,6 +24,27 @@ let root: string;
 let server: WebServer;
 let current: UsageSnapshot;
 let refreshes: number;
+let pairing: Pairing;
+let cookie: string;
+
+/** Pairs a browser through the server and returns its cookie. */
+async function pair(): Promise<string> {
+  pairing.offer();
+  const { code } = pairing.read(new Set()).pairing!;
+  const response = await fetch(`${origin}/api/pair`, {
+    method: "POST",
+    headers: { "x-tantalus-action": "pair", "user-agent": "Mozilla/5.0 (iPhone) Safari/604.1" },
+    body: JSON.stringify({ code }),
+  });
+  expect(response.status).toBe(204);
+  const header = response.headers.get("set-cookie")!;
+  expect(header).toContain("HttpOnly");
+  expect(header).toContain("SameSite=Strict");
+  return header.split(";")[0]!;
+}
+
+const paired = (path: string, init: { method?: string; headers?: Record<string, string> } = {}) =>
+  fetch(`${origin}${path}`, { ...init, headers: { ...init.headers, cookie } });
 
 beforeAll(async () => {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-web-"));
@@ -32,18 +54,26 @@ beforeAll(async () => {
   writeFileSync(join(directory, "secret.txt"), "outside the page");
   current = snapshot(true);
   refreshes = 0;
-  server = new WebServer(
+  pairing = new Pairing(
+    join(directory, "paired-devices.json"),
+    () => {},
+    () => {},
+  );
+  server = new WebServer({
     root,
-    PORT,
-    () => current,
-    async () => {
+    port: PORT,
+    snapshot: () => current,
+    refresh: async () => {
       refreshes += 1;
       current = snapshot(false);
       return current;
     },
-    () => 1_234_567,
-  );
+    pairing,
+    onConnections: () => {},
+    now: () => 1_234_567,
+  });
   await server.listen("127.0.0.1");
+  cookie = await pair();
 });
 
 afterAll(async () => {
@@ -60,16 +90,40 @@ describe("web server", () => {
     expect((await fetch(`${origin}/`, { method: "POST" })).status).toBe(405);
   });
 
+  it("serves usage only to a paired device", async () => {
+    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events"]) {
+      expect((await fetch(`${origin}${path}`)).status).toBe(401);
+      expect((await fetch(`${origin}${path}`, { headers: { cookie: "tantalus-47470=forged" } })).status).toBe(401);
+    }
+    expect(
+      (await fetch(`${origin}/api/refresh`, { method: "POST", headers: { "x-tantalus-action": "refresh" } })).status,
+    ).toBe(401);
+  });
+
+  it("names a browser after what it runs on and refuses a wrong code", async () => {
+    expect(pairing.read(new Set()).devices[0]!.name).toBe("Safari on iPhone");
+    pairing.offer();
+    const response = await fetch(`${origin}/api/pair`, {
+      method: "POST",
+      headers: { "x-tantalus-action": "pair" },
+      body: JSON.stringify({ code: "WRONG1" }),
+    });
+    expect(response.status).toBe(403);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect((await fetch(`${origin}/api/pair`, { method: "POST" })).status).toBe(405);
+    pairing.cancel();
+  });
+
   it("serves the current snapshot and nothing else the window can read", async () => {
-    expect(await (await fetch(`${origin}/api/current/usageSnapshot`)).json()).toEqual(current);
-    expect(await (await fetch(`${origin}/api/current/serverEpoch`)).json()).toBe(1_234_567);
-    expect(await (await fetch(`${origin}/api/current/updateAvailable`)).json()).toBeNull();
+    expect(await (await paired("/api/current/usageSnapshot")).json()).toEqual(current);
+    expect(await (await paired("/api/current/serverEpoch")).json()).toBe(1_234_567);
+    expect(await (await paired("/api/current/updateAvailable")).json()).toBeNull();
   });
 
   it("refreshes usage only through POST", async () => {
-    expect((await fetch(`${origin}/api/refresh`)).status).toBe(405);
-    expect((await fetch(`${origin}/api/refresh`, { method: "POST" })).status).toBe(405);
-    const response = await fetch(`${origin}/api/refresh`, {
+    expect((await paired("/api/refresh")).status).toBe(405);
+    expect((await paired("/api/refresh", { method: "POST" })).status).toBe(405);
+    const response = await paired("/api/refresh", {
       method: "POST",
       headers: { "x-tantalus-action": "refresh" },
     });
@@ -78,15 +132,30 @@ describe("web server", () => {
     expect(refreshes).toBe(1);
   });
 
-  it("streams the current snapshot, then each one published", async () => {
-    const controller = new AbortController();
-    const response = await fetch(`${origin}/api/events`, { signal: controller.signal });
+  it("streams the current snapshot, then each one published, until the device is removed", async () => {
+    const response = await paired("/api/events");
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     const next = async () => JSON.parse((await reader.read()).value!.split("data: ")[1]!) as UsageSnapshot;
     expect(await next()).toEqual(current);
     server.publish(snapshot(false));
     expect((await next()).enabled.claude).toBe(false);
-    controller.abort();
+
+    const [device] = [...server.connected()];
+    pairing.remove(device!);
+    server.disconnect(device!);
+    expect((await reader.read()).done).toBe(true);
+    expect(server.connected().size).toBe(0);
+    expect((await paired("/api/current/usageSnapshot")).status).toBe(401);
+  });
+});
+
+describe("device names", () => {
+  it("names the browser and the system it runs on", () => {
+    const chromeOnAndroid =
+      "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
+    expect(deviceName(chromeOnAndroid)).toBe("Chrome on Android");
+    expect(deviceName("Mozilla/5.0 (Windows NT 10.0) Chrome/130.0 Safari/537.36 Edg/130.0")).toBe("Edge on Windows");
+    expect(deviceName(undefined)).toBe("Browser");
   });
 });
 
