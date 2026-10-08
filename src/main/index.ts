@@ -78,6 +78,8 @@ function start() {
     onConnections: () => publish("remoteDevices", remoteDevices()),
   });
   const remoteDevices = () => pairing.read(web.connected());
+  // Ends every stream first, so each device's last visit is recorded.
+  app.on("before-quit", () => void web.listen(null));
   const api = new UsageApi((preview && process.env.TANTALUS_USAGE_BASE_URL) || null);
   const proxyHubs = new ProxyHubApi();
   // A window opened while a toast still shows picks it up; an expired one is not replayed.

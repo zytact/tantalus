@@ -174,6 +174,9 @@ describe("device names", () => {
       "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
     expect(deviceName(chromeOnAndroid)).toBe("Chrome on Android");
     expect(deviceName("Mozilla/5.0 (Windows NT 10.0) Chrome/130.0 Safari/537.36 Edg/130.0")).toBe("Edge on Windows");
+    const chromeOnIphone =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0 Mobile/15E148 Safari/604.1";
+    expect(deviceName(chromeOnIphone)).toBe("Chrome on iPhone");
     expect(deviceName(undefined)).toBe("Browser");
   });
 });

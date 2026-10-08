@@ -215,9 +215,9 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 const browsers: [string, RegExp][] = [
-  ["Edge", /Edg\//],
-  ["Firefox", /Firefox\//],
-  ["Chrome", /Chrome\//],
+  ["Edge", /Edg(iOS)?\//],
+  ["Firefox", /(Firefox|FxiOS)\//],
+  ["Chrome", /(Chrome|CriOS)\//],
   ["Safari", /Safari\//],
 ];
 const systems: [string, RegExp][] = [

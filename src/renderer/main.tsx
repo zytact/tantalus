@@ -662,6 +662,12 @@ function App() {
 await Promise.all(["1em 'Inter Tight Variable'", "500 1em Newsreader"].map((font) => document.fonts.load(font)));
 /** A browser that is not paired, or whose device was removed, gets a 401 and pairs first. The bridge
  * waits for that answer, since its stream reloads the page when the host refuses it. */
-const paired = !remote || (await fetch("/api/current/serverEpoch")).status !== 401;
+const answer = remote
+  ? await fetch("/api/current/serverEpoch").then(
+      ({ status }) => status,
+      () => null,
+    )
+  : null;
+const paired = answer !== 401;
 if (remote && paired) window.tantalus = webBridge();
 createRoot(document.getElementById("root")!).render(paired ? <App /> : <PairPage />);
