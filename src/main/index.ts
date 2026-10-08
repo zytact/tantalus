@@ -87,10 +87,7 @@ function start() {
     id: loadHostId(join(app.getPath("userData"), "host-id.json")),
     snapshot: () => state.snapshot,
     refresh: () => state.refresh(),
-    routes: async () => {
-      const access = await remote.read();
-      return [...access.tailscale.urls, ...access.localNetwork.urls];
-    },
+    routes: () => remote.served(),
     pairing,
     onConnections: () => publish("remoteDevices", remoteDevices()),
   });

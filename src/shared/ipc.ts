@@ -47,6 +47,9 @@ export const PROTOCOL = 2;
  * the host, so a client can tell it from another Tantalus at the same address. A host from before
  * routes has none. */
 export type HostHello = { protocol: number; name: string; id: string | null };
+/** Every address a host serves on. `complete` is false while Tailscale is on but did not say its
+ * address, so a client keeps the Tailscale route it already knows. */
+export type HostRoutes = { urls: string[]; complete: boolean };
 
 /** Where a client stands with the host it follows. */
 export type HostLinkState = "connecting" | "connected" | "unreachable" | "removed" | "update-host" | "update-client";

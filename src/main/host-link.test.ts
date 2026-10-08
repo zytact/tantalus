@@ -38,8 +38,10 @@ let pairing: Pairing;
 let server: WebServer;
 let current: UsageSnapshot;
 let clients: HostLinkClient[];
-/** The addresses the host reports. */
-let reported: string[];
+/** The addresses the host reports, or null while reading them fails. */
+let reported: string[] | null;
+/** How many times a client asked the host for its routes. */
+let routeReads: number;
 
 /** A client that records what it shows, with retries a few milliseconds apart. */
 function client() {
@@ -107,6 +109,7 @@ beforeEach(async () => {
   current = snapshot(true);
   clients = [];
   reported = [];
+  routeReads = 0;
   pairing = new Pairing(
     join(directory, "paired-devices.json"),
     () => {},
@@ -118,7 +121,11 @@ beforeEach(async () => {
     id: "host-id",
     snapshot: () => current,
     refresh: async () => (current = snapshot(false)),
-    routes: async () => reported,
+    routes: async () => {
+      routeReads += 1;
+      if (!reported) throw new Error("Tailscale did not answer.");
+      return { urls: reported, complete: true };
+    },
     pairing,
     onConnections: () => {},
   });
@@ -301,19 +308,45 @@ describe("routes", () => {
     });
   });
 
-  it("drops a found route the host stopped reporting, unless it is in use or its kind went unreported", () => {
+  it("drops a found route a complete report leaves out, unless it is in use", () => {
     const routes = [
       { url: "http://192.168.1.5:4747", found: false },
       { url: "http://192.168.1.6:4747", found: true },
       { url: "http://192.168.1.7:4747", found: true },
-      { url: "https://fedora.tail1.ts.net:8443", found: true },
     ];
-    expect(mergedRoutes(routes, ["http://192.168.1.8:4747"], "http://192.168.1.7:4747")).toEqual([
+    const report = { urls: ["http://192.168.1.8:4747"], complete: true };
+    expect(mergedRoutes(routes, report, "http://192.168.1.7:4747")).toEqual([
       { url: "http://192.168.1.5:4747", found: false },
       { url: "http://192.168.1.7:4747", found: true },
-      { url: "https://fedora.tail1.ts.net:8443", found: true },
       { url: "http://192.168.1.8:4747", found: true },
     ]);
+    expect(mergedRoutes(routes, { ...report, complete: false }, "http://192.168.1.7:4747")).toEqual([
+      ...routes,
+      { url: "http://192.168.1.8:4747", found: true },
+    ]);
+  });
+
+  it("keeps the routes it knows when the host cannot report them", async () => {
+    reported = [forwarded];
+    const first = client();
+    await first.link.connect(origin, offered());
+    await until(() => first.link.read()?.routes.length === 2);
+    const saved = readFileSync(join(directory, "host-link.json"), "utf8");
+
+    reported = null;
+    const restarted = client();
+    restarted.link.start();
+    await until(() => routeReads === 2 && restarted.link.read()?.state === "connected");
+    expect(readFileSync(join(directory, "host-link.json"), "utf8")).toBe(saved);
+    expect(restarted.link.read()?.routes).toHaveLength(2);
+  });
+
+  it("refreshes through a route it reaches when no stream is open", async () => {
+    const first = client();
+    await first.link.connect(origin, offered());
+    const restarted = client();
+    restarted.link.start();
+    expect((await restarted.link.refresh()).enabled.claude).toBe(false);
   });
 
   it("tells a Tailscale address from a local network one", () => {

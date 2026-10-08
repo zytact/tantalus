@@ -5,7 +5,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
 import { PROTOCOL } from "../shared/ipc";
-import type { HostHello } from "../shared/ipc";
+import type { HostHello, HostRoutes } from "../shared/ipc";
 import type { UsageSnapshot } from "../shared/usage";
 import { nowEpoch } from "../shared/usage";
 import { field } from "./parse";
@@ -37,7 +37,7 @@ export type WebServerOptions = {
   snapshot: () => UsageSnapshot;
   refresh: () => Promise<UsageSnapshot>;
   /** Every address the page is served on, which a paired Tantalus falls back between. */
-  routes: () => Promise<string[]>;
+  routes: () => Promise<HostRoutes>;
   pairing: Pairing;
   /** Called when a device starts or stops following usage. */
   onConnections: () => void;
@@ -197,7 +197,7 @@ export class WebServer {
     this.sendJson(response, { token });
   }
 
-  private sendJson(response: ServerResponse, body: HostHello | { token: string } | string[]) {
+  private sendJson(response: ServerResponse, body: HostHello | HostRoutes | { token: string }) {
     send(response, 200, "application/json", JSON.stringify(body));
   }
 

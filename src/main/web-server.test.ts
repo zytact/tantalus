@@ -70,7 +70,7 @@ beforeAll(async () => {
       current = snapshot(false);
       return current;
     },
-    routes: async () => ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"],
+    routes: async () => ({ urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"], complete: true }),
     pairing,
     onConnections: () => {},
     now: () => 1_234_567,
@@ -125,10 +125,10 @@ describe("web server", () => {
 
   it("reports its ID to anyone, and its routes only to a paired device", async () => {
     expect(await (await fetch(`${origin}/api/version`)).json()).toMatchObject({ protocol: 1, id: "host-id" });
-    expect(await (await paired("/api/routes")).json()).toEqual([
-      "https://fedora.tail1.ts.net:8443",
-      "http://192.168.1.5:4747",
-    ]);
+    expect(await (await paired("/api/routes")).json()).toEqual({
+      urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"],
+      complete: true,
+    });
   });
 
   it("refreshes usage only through POST", async () => {

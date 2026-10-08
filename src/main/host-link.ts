@@ -4,7 +4,7 @@ import { hostname } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { hostLinkProblem } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
-import type { HostHello, HostLink, HostLinkState, HostRoute, RemoteRoute } from "../shared/ipc";
+import type { HostHello, HostLink, HostLinkState, HostRoute, HostRoutes, RemoteRoute } from "../shared/ipc";
 import { nowEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { field } from "./parse";
@@ -253,16 +253,10 @@ export class HostLinkClient {
     const response = await request(`${url}/api/routes`, { headers: this.authorization(session.saved) }).catch(
       () => null,
     );
-    const body: unknown = response?.ok ? await response.json().catch(() => null) : null;
+    const reported = routeReport(response?.ok ? await response.json().catch(() => null) : null);
     if (session !== this.session || session.stop.signal.aborted) return;
     // A route list that did not arrive says nothing about which routes are gone.
-    const routes = Array.isArray(body)
-      ? mergedRoutes(
-          session.saved.routes,
-          body.filter((route): route is string => typeof route === "string" && httpUrl(route)),
-          url,
-        )
-      : session.saved.routes;
+    const routes = reported ? mergedRoutes(session.saved.routes, reported, url) : session.saved.routes;
     const saved = { ...session.saved, id, routes };
     if (JSON.stringify(saved) !== JSON.stringify(session.saved)) this.save(session, saved);
   }
@@ -396,17 +390,19 @@ export function routeKind(url: string): RemoteRoute {
   return tailnet || hostname.endsWith(".ts.net") ? "tailscale" : "localNetwork";
 }
 
-/** The saved routes, then the ones the host newly reports. A found route the host stopped reporting is
- * dropped, so an address DHCP gave away does not linger. It stays while in use, or while the host
- * reports no route of its kind, since a host whose Tailscale did not answer reports none for it. */
-export function mergedRoutes(routes: SavedRoute[], reported: string[], inUse: string): SavedRoute[] {
+function routeReport(body: unknown): HostRoutes | null {
+  const urls = field(body, "urls");
+  const complete = field(body, "complete");
+  if (!Array.isArray(urls) || typeof complete !== "boolean") return null;
+  return { urls: urls.filter((url): url is string => typeof url === "string" && httpUrl(url)), complete };
+}
+
+/** The saved routes, then the ones the host newly reports. A found route a complete report leaves out
+ * is dropped, unless it is in use, so an address DHCP gave away does not linger. */
+export function mergedRoutes(routes: SavedRoute[], { urls, complete }: HostRoutes, inUse: string): SavedRoute[] {
   const known = new Set(routes.map((route) => route.url));
-  const reportedKinds = new Set(reported.map(routeKind));
-  const kept = routes.filter(
-    (route) =>
-      !route.found || route.url === inUse || reported.includes(route.url) || !reportedKinds.has(routeKind(route.url)),
-  );
-  const added = [...new Set(reported)].filter((url) => !known.has(url)).map((url) => ({ url, found: true }));
+  const kept = routes.filter((route) => !complete || !route.found || route.url === inUse || urls.includes(route.url));
+  const added = [...new Set(urls)].filter((url) => !known.has(url)).map((url) => ({ url, found: true }));
   return [...kept, ...added];
 }
 
