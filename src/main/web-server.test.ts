@@ -24,6 +24,8 @@ let root: string;
 let server: WebServer;
 let current: UsageSnapshot;
 let refreshes: number;
+/** Holds a refresh open until resolved, when set. */
+let gate: Promise<void> | null = null;
 let pairing: Pairing;
 let cookie: string;
 
@@ -64,6 +66,7 @@ beforeAll(async () => {
     port: PORT,
     snapshot: () => current,
     refresh: async () => {
+      await gate;
       refreshes += 1;
       current = snapshot(false);
       return current;
@@ -130,6 +133,22 @@ describe("web server", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(snapshot(false));
     expect(refreshes).toBe(1);
+  });
+
+  it("refuses a refresh whose device was removed while it ran", async () => {
+    let open = () => {};
+    gate = new Promise((resolve) => (open = resolve));
+    const other = await pair();
+    const pending = fetch(`${origin}/api/refresh`, {
+      method: "POST",
+      headers: { cookie: other, "x-tantalus-action": "refresh" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const device = pairing.read(new Set()).devices.at(-1)!;
+    pairing.remove(device.id);
+    open();
+    gate = null;
+    expect((await pending).status).toBe(401);
   });
 
   it("streams the current snapshot, then each one published, until the device is removed", async () => {

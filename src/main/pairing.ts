@@ -77,11 +77,21 @@ export class Pairing {
     return device.id;
   }
 
+  /** Whether `id` is still paired, for a request that outlived a removal. */
+  holds(id: string): boolean {
+    return this.devices.some((device) => device.id === id);
+  }
+
+  /** A visit only feeds the Last seen label, so a failed save is logged rather than failing the request. */
   seen(id: string) {
     const now = this.now();
     const device = this.devices.find((device) => device.id === id);
     if (!device || (device.lastSeenAt !== null && now - device.lastSeenAt < SEEN_SAVE_SECONDS)) return;
-    this.save(this.devices.map((each) => (each === device ? { ...each, lastSeenAt: now } : each)));
+    try {
+      this.save(this.devices.map((each) => (each === device ? { ...each, lastSeenAt: now } : each)));
+    } catch (error) {
+      console.error("Could not save a paired device's visit:", error);
+    }
     this.onChange();
   }
 

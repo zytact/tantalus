@@ -99,9 +99,7 @@ export class WebServer {
     this.server = null;
     this.host = null;
     if (!server) return;
-    const connected = this.listeners.size > 0;
-    this.listeners.clear();
-    if (connected) this.options.onConnections();
+    for (const listener of [...this.listeners.keys()]) this.drop(listener);
     const closed = new Promise((resolve) => server.close(resolve));
     server.closeAllConnections();
     await closed;
@@ -112,7 +110,7 @@ export class WebServer {
     const path = pathname(request.url);
     if (path === "/api/pair") {
       if (!action(request, "pair")) return send(response, 405, "text/plain", "Method not allowed");
-      return void this.pair(request, response);
+      return void this.pair(request, response).catch(() => send(response, 500, "text/plain", "Could not pair"));
     }
     if (path?.startsWith("/api/")) {
       const device = this.options.pairing.authorize(cookie(request.headers.cookie, this.cookie));
@@ -127,7 +125,10 @@ export class WebServer {
     if (path === "/api/refresh") {
       if (!action(request, "refresh")) return send(response, 405, "text/plain", "Method not allowed");
       return void this.options.refresh().then(
-        (snapshot) => send(response, 200, "application/json", JSON.stringify(snapshot)),
+        (snapshot) =>
+          this.options.pairing.holds(device)
+            ? send(response, 200, "application/json", JSON.stringify(snapshot))
+            : send(response, 401, "text/plain", "Pair this device first"),
         () => send(response, 500, "text/plain", "Could not refresh"),
       );
     }
