@@ -99,7 +99,7 @@ export class WebServer {
     this.server = null;
     this.host = null;
     if (!server) return;
-    for (const listener of [...this.listeners.keys()]) this.drop(listener);
+    for (const listener of this.listeners.keys()) this.drop(listener);
     const closed = new Promise((resolve) => server.close(resolve));
     server.closeAllConnections();
     await closed;
