@@ -50,6 +50,8 @@ export function HostRows({ link }: { link: HostLink }) {
 /** Settings while reading this machine's own usage: the way to follow another Tantalus instead. */
 export function ConnectRows() {
   const [open, setOpen] = useState(false);
+  // A pairing in flight cannot be called back, so the form stays until it answers.
+  const [connecting, setConnecting] = useState(false);
   return (
     <>
       <section className="setting-row">
@@ -57,26 +59,32 @@ export function ConnectRows() {
           <h2>Follow another Tantalus</h2>
           <p>Show the usage another computer reads, instead of signing in here. This one stops polling.</p>
         </div>
-        <button onClick={() => setOpen((shown) => !shown)}>{open ? "Cancel" : "Connect"}</button>
+        <button disabled={connecting} onClick={() => setOpen((shown) => !shown)}>
+          {open ? "Cancel" : "Connect"}
+        </button>
       </section>
-      {open && <ConnectForm address="" />}
+      {open && <ConnectForm address="" onConnecting={setConnecting} />}
     </>
   );
 }
 
-function ConnectForm({ address }: { address: string }) {
+function ConnectForm({ address, onConnecting }: { address: string; onConnecting?: (connecting: boolean) => void }) {
   const [url, setUrl] = useState(address);
   const [code, setCode] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const busy = (value: boolean) => {
+    setConnecting(value);
+    onConnecting?.(value);
+  };
   const connect = async () => {
-    setConnecting(true);
+    busy(true);
     setError(null);
     await window.tantalus
       .invoke("connectHost", url, code)
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not connect."));
-    setConnecting(false);
+    busy(false);
   };
 
   return (

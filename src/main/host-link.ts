@@ -137,7 +137,7 @@ export class HostLinkClient {
     if (response?.status === 401) this.removed(session);
     if (!response?.ok) throw new Error(`Could not refresh usage on ${saved.host}.`);
     const snapshot: UsageSnapshot = await response.json();
-    if (session !== this.session) throw new Error(`Stopped following ${saved.host}.`);
+    if (session !== this.session || session.stop.signal.aborted) throw new Error(`Stopped following ${saved.host}.`);
     this.publish(session, snapshot);
     return snapshot;
   }

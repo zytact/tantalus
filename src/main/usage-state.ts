@@ -285,6 +285,8 @@ export class UsageState {
     const accounts = await this.readHub(config).catch((error: unknown): never => {
       throw new Error(hubErrorMessage(error));
     });
+    // A hub read before this machine started following a host is not saved, like any paused read.
+    if (this.paused) throw new Error("This machine now follows another Tantalus, so the hub was not saved.");
     return applyHubReading(emptyProxyHubSnapshot(redact(config)), redact(config), accounts);
   }
 
