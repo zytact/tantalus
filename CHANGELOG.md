@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.37](https://github.com/zytact/tantalus/compare/v0.0.36...v0.0.37) (2026-10-08)
+
+
+### Bug Fixes
+
+* **pace:** face the dragon and tortoise toward 0% remaining ([#118](https://github.com/zytact/tantalus/issues/118)) ([f14be46](https://github.com/zytact/tantalus/commit/f14be469d8b0c94318d09c19c929fe827d85f6be))
+
 ## [0.0.36](https://github.com/zytact/tantalus/compare/v0.0.35...v0.0.36) (2026-10-07)
 
 
