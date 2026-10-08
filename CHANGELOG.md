@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.0](https://github.com/zytact/tantalus/compare/v0.0.37...v0.1.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **remote:** browsers that opened the remote page before this release must pair with a one-time code from Settings.
+
+### Features
+
+* **remote:** follow another Tantalus instead of signing in on every machine ([#122](https://github.com/zytact/tantalus/issues/122)) ([0cd54e1](https://github.com/zytact/tantalus/commit/0cd54e1e72bf1b7edfb663c7af12975d8816cd95))
+* **remote:** require pairing before another device reads usage ([#121](https://github.com/zytact/tantalus/issues/121)) ([6e7ebd4](https://github.com/zytact/tantalus/commit/6e7ebd45d5a8be5a114946c5f7d4ad17e460fc97))
+
 ## [0.0.37](https://github.com/zytact/tantalus/compare/v0.0.36...v0.0.37) (2026-10-08)
 
 
