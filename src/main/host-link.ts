@@ -153,9 +153,10 @@ export class HostLinkClient {
   async refresh(): Promise<UsageSnapshot> {
     const session = this.session;
     if (!session) throw new Error("Not following a host.");
-    const { saved, url } = session;
+    const { saved } = session;
     const failed = new Error(`Could not refresh usage on ${saved.host}.`);
-    if (url === null) throw failed;
+    const url = await this.routeFor(session);
+    if (!url) throw failed;
     const response = await request(`${url}/api/refresh`, {
       method: "POST",
       headers: { ...this.authorization(saved), "x-tantalus-action": "refresh" },
@@ -166,6 +167,13 @@ export class HostLinkClient {
     if (session !== this.session || session.stop.signal.aborted) throw new Error(`Stopped following ${saved.host}.`);
     this.publish(session, url, snapshot);
     return snapshot;
+  }
+
+  /** The route the open stream runs over, or between streams the one a stream would take. */
+  private async routeFor(session: Session): Promise<string | null> {
+    if (session.url) return session.url;
+    const reached = await this.reach(session, preferred(session.saved.routes)).catch(() => null);
+    return reached?.url ?? null;
   }
 
   private follow(saved: SavedHostLink) {
@@ -211,22 +219,30 @@ export class HostLinkClient {
     return outcome;
   }
 
-  /** The first of `routes` that answers as the followed host. One that answers as another machine is
-   * passed over, so the token never reaches it. A link from before host IDs trusts its one address. */
+  /** The first of `routes` that answers as the followed host. Every route is asked at once, and one is
+   * taken as soon as the routes ahead of it have failed, so a hung route below it costs nothing. One
+   * that answers with another host ID is passed over, so the token does not reach another Tantalus
+   * that happens to sit at a saved address. The ID is public, so this does not stop one forging it. A
+   * link from before host IDs trusts its one address. */
   private async reach(session: Session, routes: SavedRoute[]): Promise<Reached> {
-    const answers = await Promise.allSettled(
-      routes.map(async ({ url }) => {
-        const { id } = await this.hello(url);
-        if (session.saved.id !== null && id !== session.saved.id) {
-          throw new LinkError(`Another Tantalus answers at ${url}.`);
-        }
-        return { url, id };
-      }),
-    );
-    const reached = answers.find((answer) => answer.status === "fulfilled");
-    if (reached) return reached.value;
+    const answers = routes.map(async ({ url }) => {
+      const { id } = await this.hello(url);
+      if (session.saved.id !== null && id !== session.saved.id) {
+        throw new LinkError(`Another Tantalus answers at ${url}.`);
+      }
+      return { url, id };
+    });
+    // The answers after the one taken are never awaited.
+    for (const answer of answers) answer.catch(() => {});
+    const reasons: unknown[] = [];
+    for (const answer of answers) {
+      try {
+        return await answer;
+      } catch (reason) {
+        reasons.push(reason);
+      }
+    }
     // A host that needs an update says more than a route that did not answer.
-    const reasons = answers.map((answer) => (answer.status === "rejected" ? answer.reason : null));
     throw reasons.find((reason) => reason instanceof LinkError && reason.state !== "unreachable") ?? reasons[0];
   }
 
@@ -239,10 +255,15 @@ export class HostLinkClient {
     );
     const body: unknown = response?.ok ? await response.json().catch(() => null) : null;
     if (session !== this.session || session.stop.signal.aborted) return;
-    const reported = Array.isArray(body)
-      ? body.filter((route): route is string => typeof route === "string" && httpUrl(route))
-      : [];
-    const saved = { ...session.saved, id, routes: mergedRoutes(session.saved.routes, reported, url) };
+    // A route list that did not arrive says nothing about which routes are gone.
+    const routes = Array.isArray(body)
+      ? mergedRoutes(
+          session.saved.routes,
+          body.filter((route): route is string => typeof route === "string" && httpUrl(route)),
+          url,
+        )
+      : session.saved.routes;
+    const saved = { ...session.saved, id, routes };
     if (JSON.stringify(saved) !== JSON.stringify(session.saved)) this.save(session, saved);
   }
 
@@ -376,10 +397,15 @@ export function routeKind(url: string): RemoteRoute {
 }
 
 /** The saved routes, then the ones the host newly reports. A found route the host stopped reporting is
- * dropped, unless it is the one in use, so an address DHCP gave away does not linger. */
+ * dropped, so an address DHCP gave away does not linger. It stays while in use, or while the host
+ * reports no route of its kind, since a host whose Tailscale did not answer reports none for it. */
 export function mergedRoutes(routes: SavedRoute[], reported: string[], inUse: string): SavedRoute[] {
   const known = new Set(routes.map((route) => route.url));
-  const kept = routes.filter((route) => !route.found || route.url === inUse || reported.includes(route.url));
+  const reportedKinds = new Set(reported.map(routeKind));
+  const kept = routes.filter(
+    (route) =>
+      !route.found || route.url === inUse || reported.includes(route.url) || !reportedKinds.has(routeKind(route.url)),
+  );
   const added = [...new Set(reported)].filter((url) => !known.has(url)).map((url) => ({ url, found: true }));
   return [...kept, ...added];
 }

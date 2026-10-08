@@ -234,6 +234,29 @@ describe("routes", () => {
     await cut();
   });
 
+  it("takes a route without waiting on a hung one below it", async () => {
+    const hung = createTcpServer(() => {});
+    await new Promise<void>((resolve) => hung.listen(47_483, "127.0.0.1", resolve));
+    const token = pairing.pair(offered(), "laptop");
+    writeFileSync(
+      join(directory, "host-link.json"),
+      JSON.stringify({
+        host: "fedora",
+        id: "host-id",
+        routes: [
+          { url: origin, found: false },
+          { url: "http://127.0.0.1:47483", found: true },
+        ],
+        token: { plain: token },
+      }),
+    );
+    const { link } = client();
+    link.start();
+    // `until` gives up after about 2 seconds, well inside the 10 second request timeout.
+    await until(() => link.read()?.active === origin);
+    hung.close();
+  });
+
   it("never sends the token to an address where another Tantalus answers", async () => {
     const other = await impostor(47_481);
     reported = ["http://127.0.0.1:47481"];
@@ -278,15 +301,17 @@ describe("routes", () => {
     });
   });
 
-  it("drops a found route the host stopped reporting, unless it is in use", () => {
+  it("drops a found route the host stopped reporting, unless it is in use or its kind went unreported", () => {
     const routes = [
       { url: "http://192.168.1.5:4747", found: false },
       { url: "http://192.168.1.6:4747", found: true },
       { url: "http://192.168.1.7:4747", found: true },
+      { url: "https://fedora.tail1.ts.net:8443", found: true },
     ];
     expect(mergedRoutes(routes, ["http://192.168.1.8:4747"], "http://192.168.1.7:4747")).toEqual([
       { url: "http://192.168.1.5:4747", found: false },
       { url: "http://192.168.1.7:4747", found: true },
+      { url: "https://fedora.tail1.ts.net:8443", found: true },
       { url: "http://192.168.1.8:4747", found: true },
     ]);
   });

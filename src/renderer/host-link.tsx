@@ -56,11 +56,7 @@ export function HostRows({ link }: { link: HostLink }) {
         </div>
         <button onClick={disconnect}>Disconnect</button>
       </section>
-      {error && (
-        <p className="notice settings-notice" role="alert">
-          {error}
-        </p>
-      )}
+      <Failure message={error} />
       {link.state === "removed" && <ConnectForm address={link.routes[0]?.url} />}
       <Routes link={link} />
     </>
@@ -145,16 +141,7 @@ function AddRouteForm({ onDone }: { onDone: () => void }) {
           void add();
         }}
       >
-        <label className="hub-form-wide">
-          Address
-          <input
-            required
-            placeholder="http://192.168.1.5:4747"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            autoFocus
-          />
-        </label>
+        <AddressField className="hub-form-wide" value={url} onChange={setUrl} autoFocus />
         <div className="setting-actions">
           <button disabled={adding} type="submit">
             {adding ? "Checking" : "Add"}
@@ -164,11 +151,7 @@ function AddRouteForm({ onDone }: { onDone: () => void }) {
           </button>
         </div>
       </form>
-      {error && (
-        <p className="notice settings-notice" role="alert">
-          {error}
-        </p>
-      )}
+      <Failure message={error} />
     </>
   );
 }
@@ -228,16 +211,7 @@ function ConnectForm({
           void connect();
         }}
       >
-        <label>
-          Address
-          <input
-            required
-            placeholder="http://192.168.1.5:4747"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            autoFocus={!address}
-          />
-        </label>
+        <AddressField value={url} onChange={setUrl} autoFocus={!address} />
         <label>
           Pairing code
           <input
@@ -253,11 +227,43 @@ function ConnectForm({
           {connecting ? "Connecting" : "Connect"}
         </button>
       </form>
-      {error && (
-        <p className="notice settings-notice" role="alert">
-          {error}
-        </p>
-      )}
+      <Failure message={error} />
     </>
+  );
+}
+
+/** The host address field the connect and Add route forms share. */
+function AddressField({
+  value,
+  onChange,
+  autoFocus,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  autoFocus: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={className}>
+      Address
+      <input
+        required
+        placeholder="http://192.168.1.5:4747"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoFocus={autoFocus}
+      />
+    </label>
+  );
+}
+
+function Failure({ message }: { message: string | null }) {
+  return (
+    message && (
+      <p className="notice settings-notice" role="alert">
+        {message}
+      </p>
+    )
   );
 }
