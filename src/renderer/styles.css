@@ -590,7 +590,8 @@ button.danger:hover:not(:disabled) {
 .hub-heading {
   border-top: 1px solid var(--hairline);
 }
-.hub-heading > button {
+.hub-heading > button,
+.paired-heading > button {
   white-space: nowrap;
 }
 .setting-actions {

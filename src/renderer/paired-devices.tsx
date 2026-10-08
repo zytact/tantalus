@@ -11,7 +11,7 @@ export function PairedDevicesRows() {
 
   return (
     <>
-      <section className="setting-row">
+      <section className="setting-row paired-heading">
         <div className="setting-copy">
           <h2>Paired devices</h2>
           <p>Another device can read your usage only after it pairs with a one-time code.</p>
