@@ -944,7 +944,7 @@ button.danger:hover:not(:disabled) {
 }
 @keyframes creature-plod {
   50% {
-    transform: translate(-50%, -58%) rotate(-3deg);
+    transform: translate(-50%, -58%) rotate(3deg);
   }
 }
 .creature:hover,
