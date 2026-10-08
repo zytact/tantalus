@@ -242,20 +242,7 @@ function VersionRow() {
   );
 }
 
-/** While following a host, only this machine's own settings show. The rest belong to the host. */
-export function SettingsPage({
-  providers,
-  snapshot,
-  hostLink,
-  onSnapshot,
-  onBack,
-}: {
-  providers: ProviderChoice;
-  snapshot: UsageSnapshot | null;
-  hostLink: HostLink | null;
-  onSnapshot: (snapshot: UsageSnapshot) => void;
-  onBack: () => void;
-}) {
+function OpenAtLoginRow() {
   const [startupEnabled, setStartupEnabled] = useState<boolean | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [savingStartup, setSavingStartup] = useState(false);
@@ -294,6 +281,47 @@ export function SettingsPage({
 
   return (
     <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>Open at login</h2>
+          <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
+        </div>
+        {startupEnabled === null ? (
+          <SettingPending failed={startupError !== null} />
+        ) : (
+          <Toggle
+            label="Open at login"
+            checked={startupEnabled}
+            busy={savingStartup}
+            onToggle={() => void toggleStartup()}
+          />
+        )}
+      </section>
+      {startupError && (
+        <p className="notice settings-notice" role="alert">
+          {startupError}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** While following a host, only this machine's own settings show. The rest belong to the host. */
+export function SettingsPage({
+  providers,
+  snapshot,
+  hostLink,
+  onSnapshot,
+  onBack,
+}: {
+  providers: ProviderChoice;
+  snapshot: UsageSnapshot | null;
+  hostLink: HostLink | null;
+  onSnapshot: (snapshot: UsageSnapshot) => void;
+  onBack: () => void;
+}) {
+  return (
+    <>
       <header>
         <h1>Settings</h1>
         <button onClick={onBack}>Back</button>
@@ -318,27 +346,7 @@ export function SettingsPage({
 
         <TrayUsageRows snapshot={snapshot} />
 
-        <section className="setting-row">
-          <div className="setting-copy">
-            <h2>Open at login</h2>
-            <p>Tantalus starts in the tray when you sign in, without opening its window.</p>
-          </div>
-          {startupEnabled === null ? (
-            <SettingPending failed={startupError !== null} />
-          ) : (
-            <Toggle
-              label="Open at login"
-              checked={startupEnabled}
-              busy={savingStartup}
-              onToggle={() => void toggleStartup()}
-            />
-          )}
-        </section>
-        {startupError && (
-          <p className="notice settings-notice" role="alert">
-            {startupError}
-          </p>
-        )}
+        <OpenAtLoginRow />
 
         {!hostLink && (
           <>

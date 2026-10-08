@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import { hostname } from "node:os";
+import { hostLinkProblem } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
 import type { HostHello, HostLink, HostLinkState } from "../shared/ipc";
 import { nowEpoch } from "../shared/usage";
@@ -31,6 +32,8 @@ export type HostLinkOptions = {
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   now?: () => number;
 };
+
+type Outcome = "removed" | "delivered" | "failed";
 
 /** Thrown for a failure the user can act on, with the message Settings shows and the state it leaves
  * a followed link in. */
@@ -70,6 +73,11 @@ export class HostLinkClient {
 
   read(): HostLink | null {
     return this.link;
+  }
+
+  /** Why the host's usage is not live, or null while it is or no host is followed. */
+  problem(): string | null {
+    return this.link && hostLinkProblem(this.link);
   }
 
   /** Follows the saved host, if there is one. */
@@ -143,16 +151,23 @@ export class HostLinkClient {
     }
   }
 
-  /** Follows one stream until it ends. `delivered` means it carried at least one snapshot. */
-  private async listen(saved: SavedHostLink, signal: AbortSignal): Promise<"removed" | "delivered" | "failed"> {
+  /** Follows the host for one stream, and marks the link lost unless it was stopped or removed. */
+  private async listen(saved: SavedHostLink, signal: AbortSignal): Promise<Outcome> {
     try {
       await this.hello(saved.url);
     } catch (error) {
       this.lost(error instanceof LinkError ? error.state : "unreachable");
       return "failed";
     }
-    const silence = new AbortController();
-    let timer = setTimeout(() => silence.abort(), SILENCE_MILLISECONDS);
+    const outcome = await this.stream(saved, signal);
+    if (outcome !== "removed" && !signal.aborted) this.lost("unreachable");
+    return outcome;
+  }
+
+  /** Follows one stream until it ends. `delivered` means it carried at least one snapshot. A stream
+   * silent for longer than the host's pings is given up. */
+  private async stream(saved: SavedHostLink, signal: AbortSignal): Promise<Outcome> {
+    const silence = watchdog(SILENCE_MILLISECONDS);
     let delivered = false;
     try {
       const response = await fetch(`${saved.url}/api/events`, {
@@ -163,21 +178,16 @@ export class HostLinkClient {
         this.removed(saved);
         return "removed";
       }
-      if (!response.ok || !response.body) throw new Error("No stream.");
-      for await (const snapshot of events(response.body, () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => silence.abort(), SILENCE_MILLISECONDS);
-      })) {
+      for await (const snapshot of events(response, () => silence.reset())) {
         delivered = true;
         this.publish(snapshot);
-        if (this.link?.state !== "connected") this.update({ state: "connected", since: null });
+        this.update({ state: "connected", since: null });
       }
     } catch {
-      // A dropped, refused or silent stream is retried below.
+      // A dropped, refused or silent stream is retried.
     } finally {
-      clearTimeout(timer);
+      silence.clear();
     }
-    if (!signal.aborted) this.lost("unreachable");
     return delivered ? "delivered" : "failed";
   }
 
@@ -224,7 +234,8 @@ export class HostLinkClient {
   }
 
   private update(change: Pick<HostLink, "state" | "since">) {
-    if (this.link) this.set({ ...this.link, ...change });
+    if (!this.link || (this.link.state === change.state && this.link.since === change.since)) return;
+    this.set({ ...this.link, ...change });
   }
 
   private set(link: HostLink | null) {
@@ -236,7 +247,7 @@ export class HostLinkClient {
 /** An address as typed, such as `192.168.1.5:4747`, as the origin the host serves from. */
 export function hostUrl(address: string): string {
   const trimmed = address.trim();
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
   try {
     const url = new URL(withScheme);
     if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
@@ -245,12 +256,10 @@ export function hostUrl(address: string): string {
 }
 
 /** The snapshots in a server-sent event stream. `onData` is called on every chunk, pings included. */
-export async function* events(
-  body: ReadableStream<Uint8Array<ArrayBuffer>>,
-  onData: () => void,
-): AsyncGenerator<UsageSnapshot> {
+async function* events(response: Response, onData: () => void): AsyncGenerator<UsageSnapshot> {
+  if (!response.ok || !response.body) throw new Error("The host sent no stream.");
   let buffer = "";
-  for await (const chunk of body.pipeThrough(new TextDecoderStream())) {
+  for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
     onData();
     buffer += chunk;
     let end: number;
@@ -263,6 +272,22 @@ export async function* events(
       if (data) yield JSON.parse(data.slice("data: ".length));
     }
   }
+}
+
+/** Aborts its signal unless reset within `milliseconds` each time. */
+function watchdog(milliseconds: number) {
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), milliseconds);
+  return {
+    signal: controller.signal,
+    reset() {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), milliseconds);
+    },
+    clear() {
+      clearTimeout(timer);
+    },
+  };
 }
 
 function request(url: string, init: RequestInit = {}) {

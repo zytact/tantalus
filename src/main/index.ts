@@ -8,7 +8,6 @@ import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
 import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
-import { hostLinkProblem } from "../shared/host-link";
 import { defaultPaceSettings } from "../shared/pace";
 import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
 import { emptyProviderUsage, nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
@@ -150,9 +149,7 @@ function start() {
       publish("hostLink", hostLink);
     },
   });
-  /** What the tray and window show: the followed host's usage, or this machine's own. */
-  const usage = () => (link.active ? link.snapshot : state.snapshot);
-  const refresh = () => (link.active ? link.refresh() : state.refresh());
+  const { usage, tray: trayUsage, refresh } = usageSource(link, state);
   const polling = localPolling(state);
   const updater = new Updater(
     (update) => {
@@ -167,11 +164,7 @@ function start() {
 
   const tray = new Tray(trayImage());
   bindTrayClick(tray);
-  const linkProblem = () => {
-    const hostLink = link.read();
-    return hostLink && hostLinkProblem(hostLink);
-  };
-  const renderTrayIcon = trayUsageIcon(tray, () => usage() ?? noUsage(), linkProblem);
+  const renderTrayIcon = trayUsageIcon(tray, trayUsage, () => link.problem());
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
     refresh: () => void refresh().catch(() => {}),
@@ -180,7 +173,7 @@ function start() {
   let shownTray = "";
   function renderTray() {
     renderTrayIcon();
-    const items = trayItems(usage() ?? noUsage(), updater.available(), nowEpoch());
+    const items = trayItems(trayUsage(), updater.available(), nowEpoch());
     const shown = JSON.stringify(items);
     if (shown === shownTray) return;
     shownTray = shown;
@@ -244,6 +237,23 @@ function start() {
     return remoteDevices();
   });
 
+  registerHostLinkHandlers(link, polling, remote, () => {
+    publish("usageSnapshot", state.snapshot);
+    renderTray();
+  });
+
+  // Clicking the dock icon on macOS reopens the window.
+  app.on("activate", showWindow);
+  startBackgroundServices(link, polling, remote, updater, updatesEnabled);
+}
+
+/** `onLocal` shows this machine's own usage again once the host is forgotten. */
+function registerHostLinkHandlers(
+  link: HostLinkClient,
+  polling: ReturnType<typeof localPolling>,
+  remote: RemoteAccessRoutes,
+  onLocal: () => void,
+) {
   handle("connectHost", async (url, code) => {
     if (typeof url !== "string" || typeof code !== "string") throw new Error("Unknown host setting.");
     const hostLink = await link.connect(url, code);
@@ -253,17 +263,22 @@ function start() {
   });
   handle("disconnectHost", () => {
     link.disconnect();
-    publish("usageSnapshot", state.snapshot);
-    renderTray();
+    onLocal();
     polling.start();
     void remote.start();
   });
+}
 
-  // Clicking the dock icon on macOS reopens the window.
-  app.on("activate", showWindow);
+/** A machine following a host reads nothing itself and serves nothing to other devices. */
+function startBackgroundServices(
+  link: HostLinkClient,
+  polling: ReturnType<typeof localPolling>,
+  remote: RemoteAccessRoutes,
+  updater: Updater,
+  updatesEnabled: boolean,
+) {
   if (!launchedHidden()) showWindow();
   if (updatesEnabled) void updater.watch();
-  // A machine following a host reads nothing itself and serves nothing to other devices.
   if (link.active) return link.start();
   polling.start();
   void remote.start();
@@ -296,7 +311,17 @@ function tokenVault(): TokenVault {
   };
 }
 
-/** What the tray shows while a followed host has published nothing yet. */
+/** What the tray and window show: the followed host's usage, or this machine's own. `usage` is null
+ * until a followed host publishes, and `tray` stands in an empty reading for the tray. */
+function usageSource(link: HostLinkClient, state: UsageState) {
+  const usage = () => (link.active ? link.snapshot : state.snapshot);
+  return {
+    usage,
+    tray: () => usage() ?? noUsage(),
+    refresh: () => (link.active ? link.refresh() : state.refresh()),
+  };
+}
+
 const noUsage = (): UsageSnapshot => ({
   codex: emptyProviderUsage(),
   claude: emptyProviderUsage(),
