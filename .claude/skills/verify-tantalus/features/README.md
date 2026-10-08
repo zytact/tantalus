@@ -15,6 +15,7 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [provider-switch](provider-switch.md) - provider enablement and persistence
 - [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - read-only page over the local network and Tailscale, and device pairing
+- [host-link](host-link.md) - following another Tantalus's usage instead of reading this machine's
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
 - [updates](updates.md) - release update checks and installation
 
