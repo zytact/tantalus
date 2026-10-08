@@ -94,9 +94,7 @@ function PairingCodeRow({ pairing }: { pairing: PairingCode }) {
     <section className="setting-row pairing">
       <div className="setting-copy">
         <p>Open one of the addresses above on the other device and enter this code. It expires in {countdown}.</p>
-        <p className="pairing-code" aria-label={`Pairing code ${pairing.code.split("").join(" ")}`}>
-          {pairing.code}
-        </p>
+        <p className="pairing-code">{pairing.code}</p>
       </div>
     </section>
   );
