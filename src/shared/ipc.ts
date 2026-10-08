@@ -28,6 +28,17 @@ export type RemoteSettings = Record<RemoteRoute, boolean>;
 /** Each route with the addresses it answers on. A route that is off, or whose address cannot be read,
  * has none. `error` says why the switched-on routes are not being served. */
 export type RemoteAccess = Record<RemoteRoute, { enabled: boolean; urls: string[] }> & { error: string | null };
+/** A device paired to read usage. `connected` says whether it is following usage right now. */
+export type PairedDevice = {
+  id: string;
+  name: string;
+  pairedAt: number;
+  lastSeenAt: number | null;
+  connected: boolean;
+};
+/** The one-time code a new device enters, while one is offered. */
+export type PairingCode = { code: string; expiresAt: number };
+export type RemoteDevices = { devices: PairedDevice[]; pairing: PairingCode | null };
 export type ProxyHubInput = { label: string; url: string; managementKey: string };
 
 /** Every request the window can make of the main process, keyed by channel. */
@@ -56,6 +67,12 @@ export type Commands = {
   setTrayUsage: (settings: TrayUsageSettings) => TrayUsageSettings;
   remoteAccess: () => RemoteAccess;
   setRemoteAccess: (route: RemoteRoute, enabled: boolean) => RemoteAccess;
+  /** Offers a new pairing code, replacing any code already offered. */
+  offerPairing: () => RemoteDevices;
+  cancelPairing: () => RemoteDevices;
+  renameDevice: (id: string, name: string) => RemoteDevices;
+  /** Cuts the device off at once, including a stream it has open. */
+  removeDevice: (id: string) => RemoteDevices;
 };
 
 /** What the main process publishes to the window, keyed by channel. The window can also read the
@@ -67,6 +84,7 @@ export type Events = {
   /** Null once an install ends without relaunching. */
   installProgress: InstallProgress | null;
   serverEpoch: number;
+  remoteDevices: RemoteDevices;
 };
 
 /** The channel that serves the latest value of an event. */

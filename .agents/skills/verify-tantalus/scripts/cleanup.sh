@@ -2,7 +2,7 @@
 # Stop only the preview, fixture server, and virtual display started by launch.sh.
 set -u
 source "$(dirname "$0")/run-dir.sh"
-SCAFFOLDING=("$RUN_DIR/coverage-home" "$RUN_DIR/mock-home")
+SCAFFOLDING=("$RUN_DIR/coverage-home" "$RUN_DIR/mock-home" "$RUN_DIR/web-profile")
 
 stop_owned() {
   local label="$1" pid_file="$2" expected_exe="$3"

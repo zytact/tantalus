@@ -7,6 +7,7 @@ import type { ProviderId, UsageSnapshot } from "../shared/usage";
 import { BusyButton } from "./busy";
 import type { Loadable } from "./busy";
 import { PaceSettingsRows } from "./pace-settings";
+import { PairedDevicesRows } from "./paired-devices";
 import { ProviderIcon } from "./provider-icon";
 import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
@@ -68,11 +69,12 @@ function ProviderRow({
 const remoteRouteCopy = {
   localNetwork: {
     name: "Local network",
-    description: "Open this page from any device on the same network. Anyone on it can read your usage.",
+    description:
+      "Open this page from a paired device on the same network. The connection is not encrypted, so use it only on a network you trust.",
   },
   tailscale: {
     name: "Tailscale",
-    description: "Serve this page over HTTPS to devices on your tailnet.",
+    description: "Serve this page over HTTPS to paired devices on your tailnet.",
   },
 } satisfies Record<RemoteRoute, { name: string; description: string }>;
 
@@ -329,6 +331,8 @@ export function SettingsPage({
         )}
 
         <RemoteAccessRows />
+
+        <PairedDevicesRows />
 
         <VersionRow />
       </div>

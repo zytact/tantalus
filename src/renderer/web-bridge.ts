@@ -4,6 +4,11 @@ import type { Bridge, Commands, Events } from "../shared/ipc";
  * HTTP and exposes the one remote action, refreshing usage. */
 export function webBridge(): Bridge {
   const source = new EventSource("/api/events");
+  // The browser retries a dropped stream itself, and gives up only when the host refuses it, which
+  // means the device was removed. Reloading shows the pairing page.
+  source.addEventListener("error", () => {
+    if (source.readyState === EventSource.CLOSED) location.reload();
+  });
   return {
     invoke<C extends keyof Commands>(command: C, ..._args: Parameters<Commands[C]>): Promise<ReturnType<Commands[C]>> {
       if (command === "refreshUsage") {

@@ -5,7 +5,7 @@ description: Build and drive the isolated Tantalus Preview Electron app against 
 
 # Verify Tantalus
 
-Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`. With remote access on, it also serves a read-only copy of that page over HTTP to other devices.
+Tantalus is an Electron tray app. The main process in `src/main/` reads Codex, Claude, and Opencode credentials, polls their usage APIs, owns provider settings and the tray, then publishes token-free snapshots through the preload bridge to the React page in `src/renderer/`. With remote access on, it also serves a read-only copy of that page over HTTP to paired devices.
 
 Verification uses the built preview app. Electron ships its own Chromium, so the page renders the same on Linux, macOS, and Windows, and driving it over the Chrome DevTools Protocol exercises the runtime users get. Drive the preview's own window. Do not open `dist/index.html` or the Vite dev server in a separate browser, and do not stub `window.tantalus`: a plain tab has no preload bridge and no main process. The one exception is the remote access page, which is built for a plain browser. Load it from the running preview's own server.
 
@@ -115,7 +115,7 @@ node .agents/skills/verify-tantalus/scripts/drive.ts --scheme dark screenshot "$
 
 Chromium draws native popups, such as a `<select>` list, outside the page in its own colors, so `screenshot` misses them and they can ignore the theme. Capture the whole display to see one: `import -display "$(cat "$(.agents/skills/verify-tantalus/scripts/run-dir.sh)/run.display")" -window root "$EVIDENCE/display.png"`.
 
-For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a fresh headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot to arrive, runs the command, and closes that Chrome. The preview is untouched:
+For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot or the pairing form, runs the command, and closes that Chrome. Its profile lives in `web-profile/` in the run directory, so a device paired in one `--web` command stays paired for the next until cleanup. The preview is untouched:
 
 ```sh
 node .agents/skills/verify-tantalus/scripts/drive.ts --web http://127.0.0.1:4748/ snapshot
@@ -169,7 +169,7 @@ A screenshot proves the rendered page. Pair it with the relevant interaction and
 .agents/skills/verify-tantalus/scripts/cleanup.sh
 ```
 
-The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home` and `mock-home` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
+The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home`, `mock-home` and `web-profile` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
 
 ## Helpers
 
@@ -177,7 +177,7 @@ All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it, and refuses while a harness preview runs
 - `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
-- `drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
+- `drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)

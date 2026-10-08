@@ -2,11 +2,13 @@
 //   drive.ts snapshot                       print the page's accessibility tree
 //   drive.ts click <role> <name>            click an element by ARIA role and accessible name
 //   drive.ts fill <role> <name> <text>      replace a field's text, e.g. fill textbox "Hub URL" http://...
+//   drive.ts submit <role> <name> <text>    fill a field, then press Enter to submit its form
 //   drive.ts scroll|hover|focus <role> <name> scroll to, hover, or focus an element
 //   drive.ts press <key>                    press a key or chord, e.g. Control+R
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
-// Prefix any command with `--web <url>` to run it against the remote access page instead, in a fresh
-// headless Chrome at phone size. TANTALUS_CHROME overrides the Chrome executable.
+// Prefix any command with `--web <url>` to run it against the remote access page instead, in a
+// headless Chrome at phone size. Its profile lives in the run directory, so a pairing carries over
+// from one --web command to the next until cleanup. TANTALUS_CHROME overrides the Chrome executable.
 // Prefix any command with `--scheme light` or `--scheme dark` to render the page in that color scheme
 // while the command runs. Without it the page follows the display's scheme. --nth INDEX selects a zero-based match.
 import { createHash } from "node:crypto";
@@ -29,18 +31,22 @@ const matchIndex = nth === null ? null : Number(nth);
 if (matchIndex !== null && !Number.isSafeInteger(matchIndex)) throw new Error("--nth index is too large.");
 const [command, ...args] = argv;
 const browser = webUrl
-  ? await chromium.launch({ executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome" })
+  ? await chromium.launchPersistentContext(join(RUN_DIR, "web-profile"), {
+      executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome",
+      viewport: { width: 390, height: 844 },
+    })
   : await chromium.connectOverCDP(`http://127.0.0.1:${readFileSync(join(RUN_DIR, "run.cdp"), "utf8").trim()}`);
 try {
   const page = webUrl
-    ? await browser.newPage({ viewport: { width: 390, height: 844 } })
+    ? await browser.newPage()
     : browser.contexts().flatMap((context) => context.pages())[0];
   if (!page) throw new Error("The preview has no open window. Open it from the tray or relaunch.");
   if (webUrl) {
     const response = await page.goto(webUrl);
     if (!response?.ok()) throw new Error(`The remote page answered ${response?.status() ?? "nothing"}.`);
-    // The snapshot arrives over server-sent events after the page loads.
-    await page.locator("h2").first().waitFor({ timeout: 10_000 });
+    // The snapshot arrives over server-sent events after the page loads. An unpaired browser gets
+    // the pairing form instead.
+    await page.locator("h2, form").first().waitFor({ timeout: 10_000 });
   }
   await page.waitForLoadState("load");
   if (scheme) await page.emulateMedia({ colorScheme: scheme });
@@ -62,6 +68,14 @@ try {
       const [role, name, text] = args;
       await target(role, name).fill(text);
       console.log(`FILLED ${role} "${name}"`);
+      break;
+    }
+    case "submit": {
+      const [role, name, text] = args;
+      await target(role, name).fill(text);
+      await target(role, name).press("Enter");
+      await page.waitForLoadState("load");
+      console.log(`SUBMITTED ${role} "${name}"`);
       break;
     }
     case "scroll": {
@@ -95,7 +109,7 @@ try {
     }
     default:
       throw new Error(
-        "usage: drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>",
+        "usage: drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>",
       );
   }
 } finally {

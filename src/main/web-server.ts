@@ -5,6 +5,8 @@ import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
 import type { UsageSnapshot } from "../shared/usage";
 import { nowEpoch } from "../shared/usage";
+import { field } from "./parse";
+import type { Pairing } from "./pairing";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -14,20 +16,37 @@ const contentTypes: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+/** The largest pairing request body read. */
+const PAIR_BODY_BYTES = 1024;
+/** A browser keeps its pairing until the host removes the device. */
+const COOKIE_SECONDS = 10 * 365 * 24 * 60 * 60;
+
+export type WebServerOptions = {
+  root: string;
+  port: number;
+  snapshot: () => UsageSnapshot;
+  refresh: () => Promise<UsageSnapshot>;
+  pairing: Pairing;
+  /** Called when a device starts or stops following usage. */
+  onConnections: () => void;
+  now?: () => number;
+};
+
 /** Serves the built page to browsers on other devices: snapshots over HTTP and server-sent events,
- * plus a guarded refresh action. */
+ * plus a guarded refresh action. The page itself is public, but usage goes only to paired devices. */
 export class WebServer {
   private server: Server | null = null;
   private host: string | null = null;
-  private readonly listeners = new Set<ServerResponse>();
+  /** Each open stream and the device it belongs to. */
+  private readonly listeners = new Map<ServerResponse, string>();
+  /** Browsers send cookies to every port on a host, so the name keeps a preview's apart from the release's. */
+  private readonly cookie: string;
+  private readonly now: () => number;
 
-  constructor(
-    private readonly root: string,
-    private readonly port: number,
-    private readonly snapshot: () => UsageSnapshot,
-    private readonly refresh: () => Promise<UsageSnapshot>,
-    private readonly now: () => number = nowEpoch,
-  ) {}
+  constructor(private readonly options: WebServerOptions) {
+    this.cookie = `tantalus-${options.port}`;
+    this.now = options.now ?? nowEpoch;
+  }
 
   /** Listens on `host`, or stops when it is null. Moving to another host closes every open connection. */
   async listen(host: string | null) {
@@ -38,17 +57,41 @@ export class WebServer {
     await new Promise<void>((resolve, reject) => {
       server.once("error", (error) => {
         reject(
-          "code" in error && error.code === "EADDRINUSE" ? new Error(`Port ${this.port} is already in use.`) : error,
+          "code" in error && error.code === "EADDRINUSE"
+            ? new Error(`Port ${this.options.port} is already in use.`)
+            : error,
         );
       });
-      server.listen(this.port, host, resolve);
+      server.listen(this.options.port, host, resolve);
     });
     this.server = server;
     this.host = host;
   }
 
   publish(snapshot: UsageSnapshot) {
-    for (const listener of this.listeners) listener.write(event(snapshot));
+    for (const listener of this.listeners.keys()) listener.write(event(snapshot));
+  }
+
+  /** The devices with a stream open. */
+  connected(): ReadonlySet<string> {
+    return new Set(this.listeners.values());
+  }
+
+  /** Ends every stream `device` has open. */
+  disconnect(device: string) {
+    for (const [listener, owner] of this.listeners) {
+      if (owner !== device) continue;
+      this.drop(listener);
+      listener.end();
+    }
+  }
+
+  private drop(listener: ServerResponse) {
+    const device = this.listeners.get(listener);
+    if (device === undefined) return;
+    this.listeners.delete(listener);
+    this.options.pairing.seen(device);
+    this.options.onConnections();
   }
 
   private async close() {
@@ -56,7 +99,7 @@ export class WebServer {
     this.server = null;
     this.host = null;
     if (!server) return;
-    this.listeners.clear();
+    for (const listener of this.listeners.keys()) this.drop(listener);
     const closed = new Promise((resolve) => server.close(resolve));
     server.closeAllConnections();
     await closed;
@@ -65,41 +108,70 @@ export class WebServer {
   private respond(request: IncomingMessage, response: ServerResponse) {
     if (!trustedHost(request.headers.host)) return send(response, 403, "text/plain", "Forbidden");
     const path = pathname(request.url);
+    if (path === "/api/pair") {
+      if (!action(request, "pair")) return send(response, 405, "text/plain", "Method not allowed");
+      return void this.pair(request, response).catch(() => send(response, 500, "text/plain", "Could not pair"));
+    }
+    if (path?.startsWith("/api/")) {
+      const device = this.options.pairing.authorize(cookie(request.headers.cookie, this.cookie));
+      if (!device) return send(response, 401, "text/plain", "Pair this device first");
+      return this.respondPaired(device, path, request, response);
+    }
+    if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
+    void this.sendFile(response, path);
+  }
+
+  private respondPaired(device: string, path: string, request: IncomingMessage, response: ServerResponse) {
     if (path === "/api/refresh") {
-      if (request.method !== "POST" || request.headers["x-tantalus-action"] !== "refresh") {
-        return send(response, 405, "text/plain", "Method not allowed");
-      }
-      return void this.refresh().then(
-        (snapshot) => send(response, 200, "application/json", JSON.stringify(snapshot)),
+      if (!action(request, "refresh")) return send(response, 405, "text/plain", "Method not allowed");
+      return void this.options.refresh().then(
+        (snapshot) =>
+          this.options.pairing.holds(device)
+            ? send(response, 200, "application/json", JSON.stringify(snapshot))
+            : send(response, 401, "text/plain", "Pair this device first"),
         () => send(response, 500, "text/plain", "Could not refresh"),
       );
     }
     if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
-    if (path === "/api/events") return this.stream(request, response);
-    if (path?.startsWith("/api/current/")) return this.sendCurrent(response, path);
-    void this.sendFile(response, path);
+    if (path === "/api/events") return this.stream(device, request, response);
+    if (path.startsWith("/api/current/")) return this.sendCurrent(response, path);
+    send(response, 404, "text/plain", "Not found");
+  }
+
+  /** A matching code pairs the browser that sent it, which keeps the token as a cookie its scripts cannot read. */
+  private async pair(request: IncomingMessage, response: ServerResponse) {
+    const code = field(await jsonBody(request).catch(() => null), "code");
+    const token =
+      typeof code === "string" && this.options.pairing.pair(code, deviceName(request.headers["user-agent"]));
+    if (!token) return send(response, 403, "text/plain", "That code is wrong or has expired.");
+    response.writeHead(204, {
+      "set-cookie": `${this.cookie}=${token}; Path=/; Max-Age=${COOKIE_SECONDS}; HttpOnly; SameSite=Strict`,
+    });
+    response.end();
   }
 
   private sendCurrent(response: ServerResponse, path: string) {
     const current: Record<string, () => unknown> = {
-      "/api/current/usageSnapshot": this.snapshot,
+      "/api/current/usageSnapshot": this.options.snapshot,
       "/api/current/serverEpoch": this.now,
     };
     send(response, 200, "application/json", JSON.stringify(current[path]?.() ?? null));
   }
 
   /** The first event is the current snapshot, so a browser that reconnects misses nothing. */
-  private stream(request: IncomingMessage, response: ServerResponse) {
+  private stream(device: string, request: IncomingMessage, response: ServerResponse) {
     response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-    response.write(event(this.snapshot()));
-    this.listeners.add(response);
-    request.on("close", () => this.listeners.delete(response));
+    response.write(event(this.options.snapshot()));
+    this.listeners.set(response, device);
+    this.options.onConnections();
+    request.on("close", () => this.drop(response));
   }
 
   private async sendFile(response: ServerResponse, path: string | null) {
-    const file = join(this.root, path === "/" ? "index.html" : (path ?? ""));
+    const { root } = this.options;
+    const file = join(root, path === "/" ? "index.html" : (path ?? ""));
     try {
-      if (!file.startsWith(this.root + sep)) throw new Error("Outside the page.");
+      if (!file.startsWith(root + sep)) throw new Error("Outside the page.");
       send(response, 200, contentTypes[extname(file)] ?? "application/octet-stream", await readFile(file));
     } catch {
       send(response, 404, "text/plain", "Not found");
@@ -119,6 +191,51 @@ export function trustedHost(header: string | undefined): boolean {
     return false;
   }
   return isIP(host) !== 0 || !host.includes(".") || host.endsWith(".local") || host.endsWith(".ts.net");
+}
+
+/** A POST carrying the action header, which a page on another site cannot send without the host's consent. */
+const action = (request: IncomingMessage, name: string) =>
+  request.method === "POST" && request.headers["x-tantalus-action"] === name;
+
+function cookie(header: string | undefined, name: string): string | null {
+  for (const part of header?.split(";") ?? []) {
+    const [key, ...value] = part.trim().split("=");
+    if (key === name) return value.join("=");
+  }
+  return null;
+}
+
+async function jsonBody(request: IncomingMessage): Promise<unknown> {
+  let body = "";
+  for await (const chunk of request) {
+    body += String(chunk);
+    if (body.length > PAIR_BODY_BYTES) throw new Error("Body too large.");
+  }
+  return JSON.parse(body);
+}
+
+const browsers: [string, RegExp][] = [
+  ["Edge", /Edg(iOS)?\//],
+  ["Firefox", /(Firefox|FxiOS)\//],
+  ["Chrome", /(Chrome|CriOS)\//],
+  ["Safari", /Safari\//],
+];
+const systems: [string, RegExp][] = [
+  ["iPhone", /iPhone/],
+  ["iPad", /iPad/],
+  ["Android", /Android/],
+  ["Windows", /Windows/],
+  ["Mac", /Macintosh/],
+  ["Linux", /Linux/],
+];
+
+/** Names a paired browser after what it runs on, such as "Safari on iPhone", until the host renames it.
+ * Lists run most specific first, since Chrome also claims Safari and Android also claims Linux. */
+export function deviceName(userAgent = ""): string {
+  const first = (list: [string, RegExp][]) => list.find(([, pattern]) => pattern.test(userAgent))?.[0];
+  const browser = first(browsers) ?? "Browser";
+  const system = first(systems);
+  return system ? `${browser} on ${system}` : browser;
 }
 
 /** The decoded path, or null when the request's is malformed. */

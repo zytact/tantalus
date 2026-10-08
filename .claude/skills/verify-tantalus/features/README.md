@@ -14,7 +14,7 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [tray-usage](tray-usage.md) - one account or pool's remaining allowance beside the tray icon, and its account picker
 - [provider-switch](provider-switch.md) - provider enablement and persistence
 - [settings](settings.md) - every Settings row, version, and updates
-- [remote-access](remote-access.md) - read-only page over the local network and Tailscale
+- [remote-access](remote-access.md) - read-only page over the local network and Tailscale, and device pairing
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
 - [updates](updates.md) - release update checks and installation
 

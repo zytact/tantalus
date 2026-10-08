@@ -50,6 +50,7 @@ import {
   usageValueText,
   windowEntries,
 } from "./presentation";
+import { PairPage } from "./pair-page";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
@@ -548,7 +549,6 @@ function useNow(useServerClock: boolean) {
 
 /** A browser on another device has no preload, so it reads snapshots and refreshes over HTTP. */
 const remote = !("tantalus" in window);
-if (remote) window.tantalus = webBridge();
 
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
@@ -660,4 +660,14 @@ function App() {
 // The first frame waits for the bundled faces, since drawing it in a fallback face reflows the page a
 // frame later.
 await Promise.all(["1em 'Inter Tight Variable'", "500 1em Newsreader"].map((font) => document.fonts.load(font)));
-createRoot(document.getElementById("root")!).render(<App />);
+/** A browser that is not paired, or whose device was removed, gets a 401 and pairs first. The bridge
+ * waits for that answer, since its stream reloads the page when the host refuses it. */
+const answer = remote
+  ? await fetch("/api/current/serverEpoch").then(
+      ({ status }) => status,
+      () => null,
+    )
+  : null;
+const paired = answer !== 401;
+if (remote && paired) window.tantalus = webBridge();
+createRoot(document.getElementById("root")!).render(paired ? <App /> : <PairPage />);

@@ -227,18 +227,21 @@ export function refreshedEpoch(snapshot: UsageSnapshot): number | null {
   return epochs.length > 0 ? Math.max(...epochs) : null;
 }
 
-/** Whole units, floored, so the label only moves forward. */
 export function refreshedAgo(epoch: number | null, now: number): string {
-  if (epoch === null) return "Not refreshed yet";
+  return epoch === null ? "Not refreshed yet" : `Refreshed ${elapsed(epoch, now)}`;
+}
+
+/** How long ago `epoch` was, in whole units, floored, so the label only moves forward. */
+export function elapsed(epoch: number, now: number): string {
   const minutes = Math.floor(Math.max(0, now - epoch) / 60);
-  if (minutes < 1) return "Refreshed just now";
+  if (minutes < 1) return "just now";
   if (minutes < 60) return ago(minutes, "minute");
   if (minutes < 1440) return ago(Math.floor(minutes / 60), "hour");
   return ago(Math.floor(minutes / 1440), "day");
 }
 
 function ago(count: number, unit: "minute" | "hour" | "day"): string {
-  return `Refreshed ${count} ${unit}${count === 1 ? "" : "s"} ago`;
+  return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
 }
 
 export function proxyHubManagementUrl(url: string): string {
