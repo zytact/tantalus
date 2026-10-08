@@ -150,7 +150,7 @@ function start() {
     },
   });
   const { usage, tray: trayUsage, refresh, sameSource } = usageSource(link, state);
-  const polling = localPolling(state);
+  const polling = localPolling(state, starter);
   const updater = new Updater(
     (update) => {
       renderTray();
@@ -289,18 +289,20 @@ function startBackgroundServices(
 }
 
 /** Polls this machine's own usage until stopped, and again once started. Stopping also pauses reads
- * already running, so none continues while this machine follows a host. */
-function localPolling(state: UsageState) {
+ * and window starts already under way, so none continues while this machine follows a host. */
+function localPolling(state: UsageState, starter: WindowStarter) {
   let running: AbortController | null = null;
   return {
     start() {
       if (running) return;
       state.paused = false;
+      starter.paused = false;
       const { signal } = (running = new AbortController());
       void pollUsage(state, (milliseconds) => sleep(milliseconds, undefined, { signal })).catch(() => {});
     },
     stop() {
       state.paused = true;
+      starter.paused = true;
       running?.abort();
       running = null;
     },

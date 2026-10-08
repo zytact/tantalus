@@ -43,6 +43,9 @@ export class WindowStarter {
   private hubClaude = false;
   private polled: ProviderSettings = { claude: false, codex: false, opencode: false };
 
+  /** While this machine follows another Tantalus, a queued or pending start runs nothing. */
+  paused = false;
+
   constructor(
     private readonly path: string,
     private readonly locate: (provider: StartProviderId, configured: string | null) => Promise<Cli | null>,
@@ -189,10 +192,11 @@ export class WindowStarter {
     this.running.add(key);
     const epoch = nowEpoch();
     try {
+      if (this.paused) throw new Error("This machine now follows another Tantalus.");
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
         await this.runHub(hub.id, hub.accountId, provider, () => {
-          if (!this.settings.enabled || !this.hubKeys.has(key))
+          if (this.paused || !this.settings.enabled || !this.hubKeys.has(key))
             throw new Error("Automation is no longer enabled for this account.");
         });
       } else await this.runDirect(provider, wake);
@@ -207,7 +211,7 @@ export class WindowStarter {
     const cli = await this.locate(provider, this.settings.providers[provider].path);
     if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
     if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
-    if (!this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
+    if (this.paused || !this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
       throw new Error("Automation was switched off.");
     await this.run(cli);
   }

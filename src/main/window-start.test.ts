@@ -143,6 +143,15 @@ describe("window starter", () => {
     expect(runs).toHaveLength(0);
   });
 
+  it("runs nothing that comes due while paused", async () => {
+    const { instance, runs } = starter(startOn);
+    instance.observe(snapshot(idle(1000)));
+    instance.paused = true;
+    instance.observe(snapshot(idle(1300)));
+    await settle();
+    expect(runs).toHaveLength(0);
+  });
+
   it("runs nothing for a provider that is not polled", async () => {
     const { instance, runs } = starter(startOn);
     instance.observe(snapshot(idle(1000), false));
