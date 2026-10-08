@@ -237,27 +237,31 @@ function start() {
     return remoteDevices();
   });
 
-  registerHostLinkHandlers(link, polling, remote, () => {
-    publish("usageSnapshot", state.snapshot);
+  // Each side's usage replaces the other's at once, so neither shows under the other's name.
+  const showUsage = () => {
+    publish("usageSnapshot", usage());
     renderTray();
-  });
+  };
+  registerHostLinkHandlers(link, polling, remote, showUsage, showUsage);
 
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
   startBackgroundServices(link, polling, remote, updater, updatesEnabled);
 }
 
-/** `onLocal` shows this machine's own usage again once the host is forgotten. */
+/** `onFollow` and `onLocal` show the usage of whichever side now reads it. */
 function registerHostLinkHandlers(
   link: HostLinkClient,
   polling: ReturnType<typeof localPolling>,
   remote: RemoteAccessRoutes,
+  onFollow: () => void,
   onLocal: () => void,
 ) {
   handle("connectHost", async (url, code) => {
     if (typeof url !== "string" || typeof code !== "string") throw new Error("Unknown host setting.");
     const hostLink = await link.connect(url, code);
     polling.stop();
+    onFollow();
     await remote.stop();
     return hostLink;
   });
@@ -284,16 +288,19 @@ function startBackgroundServices(
   void remote.start();
 }
 
-/** Polls this machine's own usage until stopped, and again once started. */
+/** Polls this machine's own usage until stopped, and again once started. Stopping also pauses reads
+ * already running, so none continues while this machine follows a host. */
 function localPolling(state: UsageState) {
   let running: AbortController | null = null;
   return {
     start() {
       if (running) return;
+      state.paused = false;
       const { signal } = (running = new AbortController());
       void pollUsage(state, (milliseconds) => sleep(milliseconds, undefined, { signal })).catch(() => {});
     },
     stop() {
+      state.paused = true;
       running?.abort();
       running = null;
     },
@@ -358,11 +365,11 @@ function bindTrayClick(tray: Tray) {
   if (process.platform !== "darwin") tray.on("click", showWindow);
 }
 
-/** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
- * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
 /** A followed host that is not delivering usage leaves the number gray, and says why in the tooltip. */
 const STALE_TRAY_COLOR = "#8e8e93";
 
+/** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
+ * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
 function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot, problem: () => string | null): () => void {
   const path = join(app.getPath("userData"), "tray-usage.json");
   let settings = loadTrayUsageSettings(path);

@@ -29,6 +29,8 @@ type RefreshScope = "all" | "unsettled";
 export class UsageState {
   snapshot: UsageSnapshot;
   private running: Promise<UsageSnapshot> | null = null;
+  /** While this machine follows another Tantalus, no read starts, and a running one reads no further. */
+  paused = false;
   private again: RefreshScope | null = null;
   private hubConfigs: ProxyHubConfig[];
 
@@ -60,6 +62,7 @@ export class UsageState {
    * asked for while one runs does not overlap it: the running one reads again once it finishes, as
    * widely as any caller asked, and every caller gets that result. */
   refresh(scope: RefreshScope = "all"): Promise<UsageSnapshot> {
+    if (this.paused) return Promise.resolve(this.snapshot);
     if (this.running) {
       this.again = this.again === "all" ? "all" : scope;
       return this.running;
@@ -85,12 +88,12 @@ export class UsageState {
       const discovering = hubs.flatMap(({ config, read }) => (config.providers ? [] : [read]));
       if (discovering.length > 0) await Promise.all(discovering);
       const providers = providerIds.filter(
-        (id) => this.snapshot.enabled[id] && (scope === "all" || !providerSettled(this.snapshot, id)),
+        (id) => !this.paused && this.snapshot.enabled[id] && (scope === "all" || !providerSettled(this.snapshot, id)),
       );
       await Promise.all([...hubs.map(({ read }) => read), ...providers.map((id) => this.refreshProvider(id))]);
       const worked = await activity;
       this.snapshot = this.pace.track(this.snapshot, worked);
-      if (!this.again) {
+      if (!this.again || this.paused) {
         this.running = null;
         this.publish(this.snapshot);
         return this.snapshot;

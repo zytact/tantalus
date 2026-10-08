@@ -94,7 +94,8 @@ export type Commands = {
 /** What the main process publishes to the window, keyed by channel. The window can also read the
  * latest value of each, which is null until there is one. */
 export type Events = {
-  usageSnapshot: UsageSnapshot;
+  /** Null while a followed host has published nothing yet. */
+  usageSnapshot: UsageSnapshot | null;
   toast: string;
   updateAvailable: AvailableUpdate;
   /** Null once an install ends without relaunching. */

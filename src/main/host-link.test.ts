@@ -143,6 +143,21 @@ describe("host link", () => {
     expect(link.active).toBe(true);
   });
 
+  it("drops a pairing or refresh that finishes after a disconnect", async () => {
+    const { link, shown } = client();
+    const pairing = link.connect(origin, offered());
+    link.disconnect();
+    await expect(pairing).rejects.toThrow("Pairing was cancelled.");
+    expect(link.active).toBe(false);
+
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    const refresh = link.refresh();
+    link.disconnect();
+    await expect(refresh).rejects.toThrow("Stopped following");
+    expect(shown.at(-1)?.enabled.claude).toBe(true);
+  });
+
   it("follows the saved host after a restart, and forgets it on disconnect", async () => {
     const first = client();
     await first.link.connect(origin, offered());
@@ -172,6 +187,23 @@ describe("protocol", () => {
       await expect(link.connect("127.0.0.1:47481", "ABCDEF")).rejects.toThrow(message);
       await new Promise((resolve) => host.close(resolve));
     }
+  });
+
+  it("reads a proxy's server error as an unreachable host", async () => {
+    const proxy = createServer((_, response) => {
+      response.writeHead(502);
+      response.end();
+    });
+    await new Promise<void>((resolve) => proxy.listen(47_481, "127.0.0.1", resolve));
+    writeFileSync(
+      join(directory, "host-link.json"),
+      JSON.stringify({ url: "http://127.0.0.1:47481", host: "fedora", token: { plain: "token" } }),
+    );
+    const { link } = client();
+    link.start();
+    await until(() => link.read()?.state === "unreachable");
+    link.disconnect();
+    await new Promise((resolve) => proxy.close(resolve));
   });
 
   it("reads an address as typed", () => {
