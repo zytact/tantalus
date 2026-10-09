@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/zytact/tantalus/compare/v0.1.0...v0.2.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* the usage snapshot lists direct accounts instead of one reading per provider, and the host-link protocol moves to 2. A host and the machines following it must be updated together.
+
+### Features
+
+* read every Windows and WSL sign-in as its own account ([#127](https://github.com/zytact/tantalus/issues/127)) ([1ad20fa](https://github.com/zytact/tantalus/commit/1ad20fa89f8e356ba6d7ee8f6acd9c11f6760ba3))
+* **remote:** keep following a host when Tailscale or the LAN drops ([#129](https://github.com/zytact/tantalus/issues/129)) ([264fba1](https://github.com/zytact/tantalus/commit/264fba1682e447853c5a6eb050516a6449b69def))
+
 ## [0.1.0](https://github.com/zytact/tantalus/compare/v0.0.37...v0.1.0) (2026-10-08)
 
 
