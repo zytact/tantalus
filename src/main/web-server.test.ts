@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
-import { emptyProviderUsage } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { Pairing } from "./pairing";
 import { deviceName, trustedHost, WebServer } from "./web-server";
@@ -12,10 +11,9 @@ const PORT = 47_470;
 const origin = `http://127.0.0.1:${PORT}`;
 
 const snapshot = (claude: boolean): UsageSnapshot => ({
-  codex: emptyProviderUsage(),
-  claude: emptyProviderUsage(),
-  opencode: emptyProviderUsage(),
   enabled: { codex: true, claude, opencode: false },
+  sign_ins: null,
+  accounts: [],
   proxy_hubs: [],
   pace: { settings: defaultPaceSettings, windows: {} },
 });

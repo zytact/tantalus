@@ -1,8 +1,8 @@
 import type { AvailableUpdate } from "../shared/ipc";
 import {
+  namedDirectAccounts,
   namedHubAccounts,
   percent,
-  providerIds,
   providerNames,
   refreshedAgo,
   refreshedEpoch,
@@ -14,16 +14,16 @@ import type { ProviderUsage, ProxyHubSnapshot, UsageSnapshot, WindowUsage } from
 export type TrayAction = "show" | "refresh" | "quit";
 export type TrayItem = { label: string; action: TrayAction | null } | "separator";
 
-/** A heading and one row per window for every enabled provider, then a block per proxy hub listing
- * its accounts the same way, a dimmed row saying when they were refreshed, then a separator and the
- * actions, led by the pending update when there is one. Separators split the direct providers and
+/** A heading and one row per window for every direct sign-in, then a block per proxy hub listing its
+ * accounts the same way, a dimmed row saying when they were refreshed, then a separator and the
+ * actions, led by the pending update when there is one. Separators split the direct sign-ins and
  * each hub. The readings stay enabled so the menu renders them at full contrast rather than dimming
  * the numbers the app exists to show; clicking one opens the window, like Open Tantalus. The window
  * carries the install button, so the update item opens it too. */
 export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | null, now: number): TrayItem[] {
-  const direct = providerIds
-    .filter((id) => snapshot.enabled[id])
-    .flatMap((id) => readingItems(accountHeading(providerNames[id], snapshot[id].plan), snapshot[id], now));
+  const direct = namedDirectAccounts(snapshot.accounts).flatMap(({ name, usage }) =>
+    readingItems(accountHeading(name.label, usage.plan), usage, now),
+  );
   const readings = [direct, ...snapshot.proxy_hubs.map((hub) => hubItems(hub, now))]
     .filter((block) => block.length > 0)
     .flatMap((block, index): TrayItem[] => (index === 0 ? block : ["separator", ...block]));
@@ -39,8 +39,8 @@ export function trayItems(snapshot: UsageSnapshot, update: AvailableUpdate | nul
   ];
 }
 
-/** The menu cannot blur emails, so a hub's accounts are numbered within their provider instead, as in
- * the tray tooltip. */
+/** The menu cannot blur emails, so accounts are numbered within their provider instead, as in the tray
+ * tooltip. */
 function hubItems(hub: ProxyHubSnapshot, now: number): TrayItem[] {
   const accounts = namedHubAccounts(hub).flatMap(({ provider, number, plan, usage }) =>
     readingItems(accountHeading(`${providerNames[provider]} ${number}`, plan), usage, now),

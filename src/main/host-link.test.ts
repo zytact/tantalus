@@ -3,9 +3,9 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { PROTOCOL } from "../shared/ipc";
 import type { HostLink } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
-import { emptyProviderUsage } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { HostLinkClient, hostUrl } from "./host-link";
 import type { TokenVault } from "./host-link";
@@ -16,10 +16,9 @@ const PORT = 47_480;
 const origin = `http://127.0.0.1:${PORT}`;
 
 const snapshot = (claude: boolean): UsageSnapshot => ({
-  codex: emptyProviderUsage(),
-  claude: emptyProviderUsage(),
-  opencode: emptyProviderUsage(),
   enabled: { codex: true, claude, opencode: false },
+  sign_ins: null,
+  accounts: [],
   proxy_hubs: [],
   pace: { settings: defaultPaceSettings, windows: {} },
 });
@@ -177,8 +176,8 @@ describe("host link", () => {
 describe("protocol", () => {
   it("names the side to update when the host speaks another protocol", async () => {
     for (const [body, message] of [
-      [{ protocol: 2, name: "fedora" }, "Update Tantalus on this device to connect to fedora."],
-      [{ protocol: 0, name: "fedora" }, "Update Tantalus on fedora."],
+      [{ protocol: PROTOCOL + 1, name: "fedora" }, "Update Tantalus on this device to connect to fedora."],
+      [{ protocol: PROTOCOL - 1, name: "fedora" }, "Update Tantalus on fedora."],
       [null, "Update Tantalus on the host at http://127.0.0.1:47481."],
     ] as const) {
       const host = createServer((_, response) => response.end(JSON.stringify(body)));

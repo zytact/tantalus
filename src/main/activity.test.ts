@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { readActivity } from "./activity";
+import { defaultSignIns } from "./settings";
 
 let root: string;
 afterEach(() => {
@@ -27,6 +28,10 @@ describe("local activity", () => {
     session(join(root, "codex", "sessions", "2026", "09", "25", "rollout.jsonl"), 5, now);
     session(join(root, "claude", "projects", "tantalus", "session.jsonl"), 60, now);
     session(join(root, "data", "opencode", "opencode.db-wal"), 1, now);
-    expect(await readActivity(now)).toEqual({ codex: now / 1000 - 300, claude: null, opencode: now / 1000 - 60 });
+    expect(await readActivity(defaultSignIns, now)).toEqual({
+      codex: now / 1000 - 300,
+      claude: null,
+      opencode: now / 1000 - 60,
+    });
   });
 });

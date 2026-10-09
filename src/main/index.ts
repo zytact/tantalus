@@ -10,11 +10,11 @@ import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
 import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
-import { emptyProviderUsage, nowEpoch, percent, providerIds, proxyHubManagementUrl } from "../shared/usage";
+import { nowEpoch, percent, providerIds, proxyHubManagementUrl, signInSources } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
-import { readCredentials } from "./auth";
+import { findSignIns, readCredentials } from "./auth";
 import { runCli, startCli } from "./cli";
 import { HostLinkClient } from "./host-link";
 import type { TokenVault } from "./host-link";
@@ -104,7 +104,18 @@ function start() {
   const state = new UsageState(
     join(app.getPath("userData"), "providers.json"),
     join(app.getPath("userData"), "proxy-hubs.json"),
-    async (provider) => api.fetch(provider, await readCredentials(provider)),
+    signInSettingsPath(),
+    async (provider, sources) =>
+      Promise.all(
+        (await findSignIns(provider, sources)).map(async ({ id, distribution, path }) => ({
+          id,
+          distribution,
+          usage: await readCredentials(provider, path).then(
+            (credentials) => api.fetch(provider, credentials),
+            (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+          ),
+        })),
+      ),
     (config) => proxyHubs.read(config),
     (snapshot) => {
       // A read that was running when this machine started following a host is not shown.
@@ -118,7 +129,7 @@ function start() {
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),
       join(app.getPath("userData"), "pace-creatures.json"),
-      () => readActivity(),
+      (sources) => readActivity(sources),
     ),
     notify,
   );
@@ -309,6 +320,11 @@ function localPolling(state: UsageState, starter: WindowStarter) {
   };
 }
 
+/** Only Windows has WSL sign-ins to choose. */
+function signInSettingsPath(): string | null {
+  return process.platform === "win32" ? join(app.getPath("userData"), "sign-ins.json") : null;
+}
+
 /** Seals a host's token with the operating system's keychain, where there is one. */
 function tokenVault(): TokenVault {
   return {
@@ -341,10 +357,9 @@ function usageSource(link: HostLinkClient, state: UsageState) {
 }
 
 const noUsage = (): UsageSnapshot => ({
-  codex: emptyProviderUsage(),
-  claude: emptyProviderUsage(),
-  opencode: emptyProviderUsage(),
   enabled: noProviders,
+  sign_ins: null,
+  accounts: [],
   proxy_hubs: [],
   pace: { settings: defaultPaceSettings, windows: {} },
 });
@@ -433,6 +448,18 @@ function registerUsageHandlers(
         return state.setProviderEnabled(provider, enabled);
       } catch (error) {
         throw new Error(`Could not save provider setting: ${message(error)}`);
+      }
+    }),
+  );
+  handle("setSignInSource", (source, enabled) =>
+    sameSource(() => {
+      if (!signInSources.includes(source) || typeof enabled !== "boolean") {
+        throw new Error("Unknown sign-in setting.");
+      }
+      try {
+        return state.setSignInSource(source, enabled);
+      } catch (error) {
+        throw new Error(`Could not save sign-in setting: ${message(error)}`);
       }
     }),
   );

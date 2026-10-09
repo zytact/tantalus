@@ -33,13 +33,22 @@ describe("CLI lookup", () => {
     expect(cli?.args.every((arg) => arg.startsWith('"') && arg.endsWith('"'))).toBe(true);
   });
 
-  it("runs the CLI in the WSL distribution that holds the login", () => {
-    const windows = host("win32", { PATH: "" }, [], "C:\\Users\\a");
-    const cli = resolveCli("claude", null, "\\\\wsl.localhost\\Ubuntu\\home\\a\\.claude\\.credentials.json", windows);
+  it("runs the CLI natively for the Windows sign-in and in its distribution for a WSL one", () => {
+    const native = "C:\\Users\\a\\.local\\bin\\claude.exe";
+    const windows = host("win32", { PATH: "" }, [native], "C:\\Users\\a");
+    expect(resolveCli("claude", null, null, windows)?.file).toBe(native);
+    const cli = resolveCli("claude", null, "Ubuntu", windows);
     expect(cli?.file).toBe("wsl.exe");
     expect(cli?.args.slice(0, 7)).toEqual(["-d", "Ubuntu", "--cd", "/tmp", "--exec", "sh", "-lc"]);
     expect(cli?.args[8]).toBe("claude");
     expect(cli?.label).toBe("claude in WSL (Ubuntu)");
+  });
+
+  it("applies a configured Windows path to the Windows sign-in only", () => {
+    const configured = "D:\\tools\\codex.exe";
+    const windows = host("win32", { PATH: "" }, [], "C:\\Users\\a");
+    expect(resolveCli("codex", configured, null, windows)?.file).toBe(configured);
+    expect(resolveCli("codex", configured, "Debian", windows)?.label).toBe("codex in WSL (Debian)");
   });
 
   it("runs a configured POSIX path inside WSL on Windows", () => {

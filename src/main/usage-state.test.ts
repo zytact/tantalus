@@ -3,13 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultPaceSettings } from "../shared/pace";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { emptyProviderUsage, emptyProxyHubSnapshot } from "../shared/usage";
+import { emptyProviderUsage, emptyProxyHubSnapshot, homeSignIn } from "../shared/usage";
 import type {
+  DirectAccount,
   ProviderId,
   ProviderUsage,
   ProxyHubAccount,
   ProxyHubConfig,
   ProxyHubSnapshot,
+  SignInSettings,
   UsageSnapshot,
 } from "../shared/usage";
 import { ReadFailure } from "./failure";
@@ -17,6 +19,7 @@ import { noActivity, PaceTracker } from "./pace-tracker";
 import { ProxyHubRejected } from "./proxy-hub-api";
 import { saveSettings } from "./settings";
 import { applyHubReading, applyReading, nextBackoff, pollUsage, settled, UsageState } from "./usage-state";
+import type { DirectReading } from "./usage-state";
 
 const directories: string[] = [];
 const trackers: PaceTracker[] = [];
@@ -36,6 +39,7 @@ function paceTracker(directory = join(settingsPath(), "..")) {
   return pace;
 }
 
+/** Every provider signed in once, in its home folder. */
 function createState(
   readProvider: (id: ProviderId) => Promise<ProviderUsage>,
   publish: (snapshot: UsageSnapshot) => void = () => {},
@@ -43,8 +47,29 @@ function createState(
 ) {
   const providers = settingsPath();
   const pace = paceTracker(join(providers, ".."));
-  return new UsageState(providers, join(providers, "..", "proxy-hubs.json"), readProvider, readHub, publish, pace);
+  return new UsageState(
+    providers,
+    join(providers, "..", "proxy-hubs.json"),
+    null,
+    async (id) => homeReading(await readProvider(id).catch((error: Error) => error)),
+    readHub,
+    publish,
+    pace,
+  );
 }
+
+const homeReading = (usage: ProviderUsage | Error): DirectReading[] => [{ id: homeSignIn, distribution: null, usage }];
+
+const account = (provider: ProviderId, usage: ProviderUsage, id = homeSignIn): DirectAccount => ({
+  id,
+  provider,
+  distribution: null,
+  usage,
+});
+
+/** The reading of a provider's home sign-in. */
+const home = (snapshot: UsageSnapshot | undefined, provider: ProviderId) =>
+  snapshot?.accounts.find((account) => account.provider === provider && account.id === homeSignIn)?.usage;
 
 const ready = (used: number): ProviderUsage => ({
   ...emptyProviderUsage(),
@@ -93,11 +118,11 @@ describe("usage state", () => {
     const refreshed = state.refresh();
     await state.setProviderEnabled("codex", false);
     for (const { release } of reads) release(ready(42));
-    expect((await refreshed).codex.status).toBe("loading");
-    expect((await refreshed).claude.status).toBe("ready");
+    expect(home(await refreshed, "codex")).toBeUndefined();
+    expect(home(await refreshed, "claude")?.status).toBe("ready");
   });
 
-  it("retains the last reading while a provider is disabled or moved to a hub", async () => {
+  it("drops a provider's accounts when it is switched off or moved to a hub", async () => {
     const state = createState(
       async () => ready(42),
       () => {},
@@ -105,11 +130,12 @@ describe("usage state", () => {
     );
     await state.refresh();
     await state.setProviderEnabled("codex", false);
-    expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+    expect(home(state.snapshot, "codex")).toBeUndefined();
     await state.setProviderEnabled("codex", true);
+    expect(home(state.snapshot, "codex")?.seven_day.used_percent).toBe(42);
     await state.addProxyHub({ label: hubConfig.label, url: hubConfig.url, managementKey: hubConfig.managementKey });
     expect(state.snapshot.enabled.codex).toBe(false);
-    expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+    expect(home(state.snapshot, "codex")).toBeUndefined();
     expect(state.snapshot.proxy_hubs[0].accounts[0].usage.seven_day.used_percent).toBe(17);
   });
 
@@ -125,7 +151,7 @@ describe("usage state", () => {
     await new Promise((resolve) => setTimeout(resolve));
     expect(reads).toHaveLength(2);
     for (const { release } of reads) release(ready(2));
-    expect((await first).codex.seven_day.used_percent).toBe(2);
+    expect(home(await first, "codex")?.seven_day.used_percent).toBe(2);
     expect(published.at(-1)).toBe(await first);
   });
 
@@ -136,7 +162,7 @@ describe("usage state", () => {
     const refreshed = state.refresh();
     state.paused = true;
     for (const { release } of reads) release(ready(42));
-    expect((await refreshed).codex.status).toBe("loading");
+    expect(home(await refreshed, "codex")?.status).toBe("loading");
     await state.refresh();
     expect(reads).toHaveLength(2);
   });
@@ -150,7 +176,7 @@ describe("usage state", () => {
     await new Promise((resolve) => setTimeout(resolve));
     expect(reads.map(({ id }) => id)).toEqual(["codex", "claude", "opencode"]);
     for (const { release } of reads) release(ready(3));
-    expect((await enabled).opencode.status).toBe("ready");
+    expect(home(await enabled, "opencode")?.status).toBe("ready");
     expect(await refreshed).toBe(await enabled);
   });
 
@@ -159,7 +185,8 @@ describe("usage state", () => {
     const state = new UsageState(
       path,
       join(path, "..", "proxy-hubs.json"),
-      async () => ready(42),
+      null,
+      async () => homeReading(ready(42)),
       async () => [],
       () => {},
       paceTracker(),
@@ -170,7 +197,7 @@ describe("usage state", () => {
     writeFileSync(directory, "not a directory");
     await expect(state.setProviderEnabled("codex", false)).rejects.toThrow();
     expect(state.snapshot.enabled.codex).toBe(true);
-    expect(state.snapshot.codex.seven_day.used_percent).toBe(42);
+    expect(home(state.snapshot, "codex")?.seven_day.used_percent).toBe(42);
   });
 
   it("reads a hub before saving it and returns only redacted settings", async () => {
@@ -180,7 +207,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async () => {
         reads += 1;
         return [hubAccount(42)];
@@ -205,7 +233,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async () => {
         throw new ProxyHubRejected("The hub rejected the management key.");
       },
@@ -228,7 +257,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async (config) => {
         keys.push(config.managementKey);
         if (config.managementKey === "wrong") throw new ProxyHubRejected("The hub rejected the management key.");
@@ -269,7 +299,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async () => [hubAccount(42)],
       () => {},
       paceTracker(),
@@ -295,7 +326,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async () => {
         reads += 1;
         throw new ProxyHubRejected("The hub rejected the management key.");
@@ -323,7 +355,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       async () => {
         reads += 1;
         return [hubAccount(42)];
@@ -349,7 +382,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       (config) =>
         config.id === "hub"
           ? new Promise<ProxyHubAccount[]>((_resolve, reject) => {
@@ -377,7 +411,8 @@ describe("usage state", () => {
     const state = new UsageState(
       providers,
       hubs,
-      async () => ready(1),
+      null,
+      async () => homeReading(ready(1)),
       () => new Promise<ProxyHubAccount[]>((resolve) => (release = resolve)),
       () => {},
       paceTracker(),
@@ -386,6 +421,77 @@ describe("usage state", () => {
     state.removeProxyHub("hub");
     release([hubAccount(42)]);
     expect((await refresh).proxy_hubs).toEqual([]);
+  });
+});
+
+describe("sign-in sources", () => {
+  const wsl = (usage: ProviderUsage | Error): DirectReading => ({
+    id: "wsl:Ubuntu:/home/a",
+    distribution: "Ubuntu",
+    usage,
+  });
+
+  /** A Windows host whose reads finish only when the test releases them. */
+  function windowsState() {
+    const reads: { sources: SignInSettings; release: (readings: DirectReading[]) => void }[] = [];
+    const providers = settingsPath();
+    const signIns = join(providers, "..", "sign-ins.json");
+    const state = new UsageState(
+      providers,
+      join(providers, "..", "proxy-hubs.json"),
+      signIns,
+      (_provider, sources) => new Promise((release) => reads.push({ sources, release })),
+      async () => [],
+      () => {},
+      paceTracker(join(providers, "..")),
+    );
+    return { state, reads, signIns };
+  }
+
+  it("shows every sign-in found as its own account, and a provider with none as signed out", async () => {
+    const { state, reads } = windowsState();
+    const refreshed = state.refresh();
+    expect(state.snapshot.sign_ins).toEqual({ windows: true, wsl: true });
+    reads[0]?.release([...homeReading(ready(10)), wsl(ready(20))]);
+    reads[1]?.release([]);
+    const snapshot = await refreshed;
+    expect(
+      snapshot.accounts.map(({ provider, distribution, usage }) => [provider, distribution, usage.status]),
+    ).toEqual([
+      ["codex", null, "ready"],
+      ["codex", "Ubuntu", "ready"],
+      ["claude", null, "auth_missing"],
+    ]);
+  });
+
+  it("drops a source's accounts at once and reads again with the new choice", async () => {
+    const { state, reads, signIns } = windowsState();
+    const first = state.refresh();
+    for (const { release } of reads.splice(0)) release([...homeReading(ready(10)), wsl(ready(20))]);
+    await first;
+    const switched = state.setSignInSource("wsl", false);
+    expect(state.snapshot.accounts.every(({ distribution }) => distribution === null)).toBe(true);
+    expect(JSON.parse(readFileSync(signIns, "utf8"))).toEqual({ windows: true, wsl: false });
+    expect(reads.map(({ sources }) => sources)).toEqual([
+      { windows: true, wsl: false },
+      { windows: true, wsl: false },
+    ]);
+    for (const { release } of reads.splice(0)) release(homeReading(ready(11)));
+    expect((await switched).accounts).toHaveLength(2);
+  });
+
+  it("drops a read that started before a source was switched", async () => {
+    const { state, reads } = windowsState();
+    const refreshed = state.refresh();
+    const stale = reads.splice(0);
+    const switched = state.setSignInSource("windows", false);
+    for (const { release } of stale) release([...homeReading(ready(10)), wsl(ready(20))]);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(state.snapshot.accounts).toEqual([]);
+    expect(reads.map(({ sources }) => sources.windows)).toEqual([false, false]);
+    for (const { release } of reads.splice(0)) release([wsl(ready(30))]);
+    expect(await switched).toBe(await refreshed);
+    expect(state.snapshot.accounts.map(({ distribution }) => distribution)).toEqual(["Ubuntu", "Ubuntu"]);
   });
 });
 
@@ -470,25 +576,23 @@ describe("polling", () => {
     ]);
   });
 
-  it("does not hold back for a disabled provider", () => {
+  it("holds back while any direct sign-in has no current reading", () => {
     const snapshot: UsageSnapshot = {
-      codex: ready(1),
-      claude: { ...emptyProviderUsage(), status: "error" },
-      opencode: emptyProviderUsage(),
       enabled: { codex: true, claude: true, opencode: false },
+      sign_ins: null,
+      accounts: [account("codex", ready(1)), account("claude", { ...emptyProviderUsage(), status: "error" })],
       proxy_hubs: [],
       pace: { settings: defaultPaceSettings, windows: {} },
     };
     expect(settled(snapshot)).toBe(false);
-    expect(settled({ ...snapshot, enabled: { codex: true, claude: false, opencode: false } })).toBe(true);
+    expect(settled({ ...snapshot, accounts: snapshot.accounts.slice(0, 1) })).toBe(true);
   });
 
   it("retries failed hub accounts but accepts a successful empty hub", () => {
     const snapshot: UsageSnapshot = {
-      codex: ready(1),
-      claude: ready(1),
-      opencode: emptyProviderUsage(),
       enabled: { codex: true, claude: true, opencode: false },
+      sign_ins: null,
+      accounts: [account("codex", ready(1)), account("claude", ready(1))],
       proxy_hubs: [
         {
           ...emptyProxyHubSnapshot(hubConfig),
@@ -519,7 +623,8 @@ it("uses hub providers exclusively and explains automatic and blocked switches",
   const state = new UsageState(
     providers,
     hubs,
-    async () => ready(1),
+    null,
+    async () => homeReading(ready(1)),
     async () => accounts,
     () => {},
     paceTracker(),
@@ -553,9 +658,10 @@ it("discovers hub providers before polling direct and releases a removed provide
   const state = new UsageState(
     providers,
     hubs,
+    null,
     async (id) => {
       read.push(id);
-      return ready(1);
+      return homeReading(ready(1));
     },
     async () => accounts,
     () => {},
@@ -580,14 +686,15 @@ it("publishes direct readings without waiting for a hub whose roster is known", 
   const state = new UsageState(
     providers,
     hubs,
-    async () => ready(7),
+    null,
+    async () => homeReading(ready(7)),
     () => new Promise((release) => (releaseHub = release)),
     (snapshot) => published.push(snapshot),
     paceTracker(),
   );
   const refreshed = state.refresh();
   await new Promise((resolve) => setTimeout(resolve));
-  expect(published.at(-1)?.claude.status).toBe("ready");
+  expect(home(published.at(-1), "claude")?.status).toBe("ready");
   expect(published.at(-1)?.proxy_hubs[0]?.status).toBe("loading");
   releaseHub([hubAccount(42)]);
   expect((await refreshed).proxy_hubs[0]?.status).toBe("ready");
@@ -602,7 +709,8 @@ it("corrects a conflicting choice on the enabling read when the hub roster is un
   const state = new UsageState(
     providers,
     hubs,
-    async () => ready(1),
+    null,
+    async () => homeReading(ready(1)),
     async () => {
       const accounts = [hubAccount(42)];
       hubReads.push(accounts);
@@ -625,7 +733,8 @@ it("keeps known hub ownership across rejection and restart", async () => {
   const state = new UsageState(
     providers,
     hubs,
-    async () => ready(1),
+    null,
+    async () => homeReading(ready(1)),
     async () => {
       throw new ProxyHubRejected("Refused");
     },

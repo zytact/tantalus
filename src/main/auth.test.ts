@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { distributionNames, parseCredentials } from "./auth";
+import { dataDirectories, distributionNames, findSignIns, parseCredentials } from "./auth";
+import type { SignInHost } from "./auth";
 import { ReadFailure } from "./failure";
 
 describe("credentials", () => {
@@ -103,5 +104,84 @@ describe("credentials", () => {
     expect(distributionNames(Buffer.from("Ubuntu\r\nDebian\r\n", "utf16le"))).toEqual(["Ubuntu", "Debian"]);
     expect(distributionNames(Buffer.from("Ubuntu\nDebian\n"))).toEqual(["Ubuntu", "Debian"]);
     expect(distributionNames(Buffer.alloc(0))).toEqual([]);
+  });
+});
+
+describe("sign-in discovery", () => {
+  /** A Windows host with a Codex login in the Windows home and in two WSL homes. Every path it is asked
+   * about is recorded, so a test can prove a source was never touched. */
+  function windowsHost(env: NodeJS.ProcessEnv = {}) {
+    const files = new Set([
+      "C:\\Users\\a\\.codex\\auth.json",
+      "\\\\wsl.localhost\\Ubuntu\\home\\a\\.codex\\auth.json",
+      "\\\\wsl.localhost\\Ubuntu\\root\\.codex\\auth.json",
+    ]);
+    const touched: string[] = [];
+    let listed = 0;
+    const host: SignInHost = {
+      platform: "win32",
+      env,
+      home: "C:\\Users\\a",
+      exists: async (path) => {
+        touched.push(path);
+        return files.has(path);
+      },
+      list: async (path) => {
+        touched.push(path);
+        return path === "\\\\wsl.localhost\\Ubuntu\\home" ? ["a", "b"] : null;
+      },
+      distributions: async () => {
+        listed += 1;
+        return ["Ubuntu"];
+      },
+    };
+    return { host, touched, listed: () => listed };
+  }
+
+  const ids = (signIns: { id: string; distribution: string | null }[]) =>
+    signIns.map(({ id, distribution }) => [id, distribution]);
+
+  it("finds every login across the Windows home and each WSL home", async () => {
+    const { host } = windowsHost();
+    expect(ids(await findSignIns("codex", { windows: true, wsl: true }, host))).toEqual([
+      ["home", null],
+      ["wsl:Ubuntu:/home/a", "Ubuntu"],
+      ["wsl:Ubuntu:/root", "Ubuntu"],
+    ]);
+  });
+
+  it("never touches WSL with WSL off", async () => {
+    const { host, touched, listed } = windowsHost();
+    expect(ids(await findSignIns("codex", { windows: true, wsl: false }, host))).toEqual([["home", null]]);
+    expect(await dataDirectories("codex", { windows: true, wsl: false }, host)).toEqual(["C:\\Users\\a\\.codex"]);
+    expect(listed()).toBe(0);
+    expect(touched.some((path) => path.startsWith("\\\\wsl"))).toBe(false);
+  });
+
+  it("reads only WSL logins with Windows off", async () => {
+    const { host, touched } = windowsHost();
+    expect(ids(await findSignIns("codex", { windows: false, wsl: true }, host))).toEqual([
+      ["wsl:Ubuntu:/home/a", "Ubuntu"],
+      ["wsl:Ubuntu:/root", "Ubuntu"],
+    ]);
+    expect(touched.some((path) => path.startsWith("C:"))).toBe(false);
+  });
+
+  it("relocates only the Windows login with the provider's variable", async () => {
+    const { host } = windowsHost({ CODEX_HOME: "D:\\codex" });
+    const signIns = await findSignIns("codex", { windows: true, wsl: true }, { ...host, exists: async () => true });
+    expect(signIns.map(({ path }) => path)).toEqual([
+      "D:\\codex\\auth.json",
+      "\\\\wsl.localhost\\Ubuntu\\home\\a\\.codex\\auth.json",
+      "\\\\wsl.localhost\\Ubuntu\\home\\b\\.codex\\auth.json",
+      "\\\\wsl.localhost\\Ubuntu\\root\\.codex\\auth.json",
+    ]);
+  });
+
+  it("reads the home folder alone, whatever the toggles, off Windows", async () => {
+    const { host, listed } = windowsHost();
+    const linux: SignInHost = { ...host, platform: "linux", home: "/home/a", exists: async () => true };
+    expect(ids(await findSignIns("claude", { windows: false, wsl: true }, linux))).toEqual([["home", null]]);
+    expect(listed()).toBe(0);
   });
 });

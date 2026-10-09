@@ -9,7 +9,7 @@ import {
 } from "../shared/pace";
 import type { Activity, PaceLog, PaceSettings, PaceWindow, WindowPace } from "../shared/pace";
 import { nowEpoch } from "../shared/usage";
-import type { UsageSnapshot } from "../shared/usage";
+import type { SignInSettings, UsageSnapshot } from "../shared/usage";
 import { loadPaceLogs, loadPaceSettings, saveSettings, saveSettingsInBackground } from "./settings";
 
 export const noActivity: Activity = { codex: null, claude: null, opencode: null };
@@ -32,7 +32,7 @@ export class PaceTracker {
   constructor(
     private readonly logPath: string,
     private readonly settingsPath: string,
-    readonly readActivity: () => Promise<Activity>,
+    readonly readActivity: (sources: SignInSettings) => Promise<Activity>,
   ) {
     this.settings = loadPaceSettings(settingsPath);
     this.logs = new Map(Object.entries(loadPaceLogs(logPath)));

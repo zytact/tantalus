@@ -2,13 +2,15 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, providerIds } from "../shared/usage";
+import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, homeSignIn, providerIds } from "../shared/usage";
 import type { ProviderId, ProxyHubProviderId, UsageSnapshot } from "../shared/usage";
-import { defaultPaceSettings, paceKey } from "../shared/pace";
+import { defaultPaceSettings, directPaceKey, paceKey } from "../shared/pace";
 import { UsageApi } from "./api";
 import { parseCredentials } from "./auth";
 import { noActivity, PaceTracker } from "./pace-tracker";
 import { loadPaceLogs, saveSettings } from "./settings";
+
+const homeKey = (duration: number, provider: ProviderId) => directPaceKey(duration, { provider, id: homeSignIn });
 
 const directories: string[] = [];
 const trackers: PaceTracker[] = [];
@@ -32,15 +34,22 @@ it("forgets what every window learned and starts each again from the current rea
   const pace = new PaceTracker(log, join(directory, "pace.json"), async () => noActivity);
   trackers.push(pace);
   const snapshot: UsageSnapshot = {
-    codex: {
-      ...emptyProviderUsage(),
-      seven_day: { used_percent: 5, limit_window_seconds: 604_800, reset_at_epoch: null },
-      last_successful_update_epoch: now - 60,
-      status: "ready",
-    },
-    claude: emptyProviderUsage(),
-    opencode: emptyProviderUsage(),
     enabled: { codex: true, claude: true, opencode: false },
+    sign_ins: null,
+    accounts: [
+      {
+        id: homeSignIn,
+        provider: "codex",
+        distribution: null,
+        usage: {
+          ...emptyProviderUsage(),
+          seven_day: { used_percent: 5, limit_window_seconds: 604_800, reset_at_epoch: null },
+          last_successful_update_epoch: now - 60,
+          status: "ready",
+        },
+      },
+      { id: homeSignIn, provider: "claude", distribution: null, usage: emptyProviderUsage() },
+    ],
     proxy_hubs: [],
     pace: { settings: defaultPaceSettings, windows: {} },
   };
@@ -75,7 +84,7 @@ it("keeps what it learned on disk and in memory when the reset cannot be saved",
   const saved = tracker();
   seed(saved.path, "codex");
   const pace = saved.create();
-  const key = paceKey(fiveHourSeconds, "codex");
+  const key = homeKey(fiveHourSeconds, "codex");
   chmodSync(dirname(saved.path), 0o500);
   try {
     const reset = pace.reset();
@@ -116,11 +125,9 @@ function usage(plan: string | null, used: number, at = epoch) {
 }
 function snapshotFor(provider: ProviderId, plan: string | null): UsageSnapshot {
   return {
-    codex: emptyProviderUsage(),
-    claude: emptyProviderUsage(),
-    opencode: emptyProviderUsage(),
-    [provider]: usage(plan, 10),
     enabled: { codex: false, claude: false, opencode: false, [provider]: true },
+    sign_ins: null,
+    accounts: [{ id: homeSignIn, provider, distribution: null, usage: usage(plan, 10) }],
     proxy_hubs: [],
     pace: { settings: defaultPaceSettings, windows: {} },
   };
@@ -135,6 +142,7 @@ function withHub(
   return {
     ...snapshot,
     enabled: { ...snapshot.enabled, [provider]: false },
+    accounts: snapshot.accounts.filter((account) => account.provider !== provider),
     proxy_hubs: [
       {
         ...emptyProxyHubSnapshot({ id: "hub", label: "Hub", url: "http://hub.test", enabled: true }),
@@ -152,7 +160,7 @@ function withHub(
 }
 function seed(path: string, provider: ProviderId) {
   saveSettings(path, {
-    [paceKey(fiveHourSeconds, provider)]: {
+    [homeKey(fiveHourSeconds, provider)]: {
       firstSeen: epoch - 30 * 86_400,
       last: { epoch: epoch - 300, used: 10, resetAt: null },
       stretch: null,
@@ -217,7 +225,7 @@ it.each(providerIds)("keeps %s tiers separate and recovers a previous tier's usu
   seed(saved.path, provider);
   const pace = saved.create();
   const first = snapshotFor(provider, "First tier");
-  const key = paceKey(fiveHourSeconds, provider);
+  const key = homeKey(fiveHourSeconds, provider);
   expect(pace.track(first, noActivity, epoch).pace.windows[key]).toMatchObject({ status: "learned", usual_rate: 3 });
   expect(pace.track(snapshotFor(provider, "Second tier"), noActivity, epoch).pace.windows[key]?.status).toBe(
     "learning",
@@ -231,10 +239,10 @@ it("keeps providers, window lengths, and unknown tiers separate", () => {
   const pace = saved.create();
   pace.track(snapshotFor("codex", "Pro"), noActivity, epoch);
   const claude = pace.track(snapshotFor("claude", "Pro"), noActivity, epoch);
-  expect(claude.pace.windows[paceKey(fiveHourSeconds, "claude")]?.status).toBe("learning");
+  expect(claude.pace.windows[homeKey(fiveHourSeconds, "claude")]?.status).toBe("learning");
   const codex = snapshotFor("codex", "Pro");
-  codex.codex.seven_day = { used_percent: 50, limit_window_seconds: 604800, reset_at_epoch: null };
-  expect(pace.track(codex, noActivity, epoch).pace.windows[paceKey(604800, "codex")]?.status).toBe("learning");
+  codex.accounts[0]!.usage.seven_day = { used_percent: 50, limit_window_seconds: 604800, reset_at_epoch: null };
+  expect(pace.track(codex, noActivity, epoch).pace.windows[homeKey(604800, "codex")]?.status).toBe("learning");
   const unknown = tracker();
   seed(unknown.path, "codex");
   const unknownPace = unknown.create();
@@ -245,7 +253,7 @@ it("keeps providers, window lengths, and unknown tiers separate", () => {
     "learning",
   );
   expect(
-    unknownPace.track(snapshotFor("codex", "Pro"), noActivity, epoch).pace.windows[paceKey(fiveHourSeconds, "codex")]
+    unknownPace.track(snapshotFor("codex", "Pro"), noActivity, epoch).pace.windows[homeKey(fiveHourSeconds, "codex")]
       ?.status,
   ).toBe("learning");
 });
@@ -255,17 +263,20 @@ it("shares the usual baseline when direct sign-ins change without reusing their 
   seed(saved.path, "codex");
   const pace = saved.create();
   const first = snapshotFor("codex", "Pro");
-  first.codex.email = "first@example.test";
+  first.accounts[0]!.usage.email = "first@example.test";
   pace.track(first, noActivity, epoch);
   for (let tick = 1; tick <= 4; tick++) {
-    first.codex = { ...usage("Pro", 10 + tick, epoch + tick * 300), email: first.codex.email };
+    first.accounts[0]!.usage = {
+      ...usage("Pro", 10 + tick, epoch + tick * 300),
+      email: first.accounts[0]!.usage.email,
+    };
     pace.track(first, noActivity, epoch + tick * 300);
   }
   const second = snapshotFor("codex", "Pro");
-  second.codex = { ...usage("Pro", 80, epoch + 1500), email: "second@example.test" };
+  second.accounts[0]!.usage = { ...usage("Pro", 80, epoch + 1500), email: "second@example.test" };
   const current = pace.track(second, noActivity, epoch + 1500);
-  expect(current.codex.five_hour.used_percent).toBe(80);
-  expect(current.pace.windows[paceKey(fiveHourSeconds, "codex")]).toMatchObject({
+  expect(current.accounts[0]!.usage.five_hour.used_percent).toBe(80);
+  expect(current.pace.windows[homeKey(fiveHourSeconds, "codex")]).toMatchObject({
     status: "learned",
     usual_rate: 4,
     current: { kind: "idle" },
@@ -297,17 +308,17 @@ it.each(providerIds)("retains %s learning while absent and reuses it after resta
   seed(saved.path, provider);
   const pace = saved.create();
   const direct = snapshotFor(provider, "Pro");
-  const key = paceKey(fiveHourSeconds, provider);
+  const key = homeKey(fiveHourSeconds, provider);
   pace.track(direct, noActivity, epoch);
   const later = epoch + 365 * 86_400;
   pace.track({ ...direct, enabled: { codex: false, claude: false, opencode: false } }, noActivity, later);
   await pace.saved();
   expect(Object.keys(loadPaceLogs(saved.path)).some((key) => key.startsWith('["current",'))).toBe(false);
   const returning = snapshotFor(provider, "Pro");
-  returning[provider] = usage("Pro", 80, later);
+  returning.accounts[0]!.usage = usage("Pro", 80, later);
   const resumed = saved.create().track(returning, noActivity, later);
   expect(resumed.pace.windows[key]).toMatchObject({ status: "learned", usual_rate: 3, current: { kind: "idle" } });
-  expect(resumed[provider].five_hour.used_percent).toBe(80);
+  expect(resumed.accounts[0]!.usage.five_hour.used_percent).toBe(80);
 });
 
 it.each(providerIds)(
@@ -317,17 +328,17 @@ it.each(providerIds)(
     seed(saved.path, provider);
     const pace = saved.create();
     const absent = snapshotFor(provider, "Pro");
-    absent[provider] = emptyProviderUsage();
+    absent.accounts[0]!.usage = emptyProviderUsage();
     pace.track(absent, noActivity, epoch);
     await pace.saved();
-    expect(Object.keys(loadPaceLogs(saved.path))).toEqual([paceKey(fiveHourSeconds, provider)]);
+    expect(Object.keys(loadPaceLogs(saved.path))).toEqual([homeKey(fiveHourSeconds, provider)]);
     const seen = pace.track(snapshotFor(provider, "Pro"), noActivity, epoch);
-    expect(seen.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
+    expect(seen.pace.windows[homeKey(fiveHourSeconds, provider)]).toMatchObject({
       status: "learned",
       usual_rate: 3,
     });
     await pace.saved();
-    expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(paceKey(fiveHourSeconds, provider));
+    expect(Object.keys(loadPaceLogs(saved.path))).not.toContain(homeKey(fiveHourSeconds, provider));
   },
 );
 
@@ -367,18 +378,18 @@ it.each(providerIds)("isolates %s sign-ins even without a unique email", async (
   for (let tick = 0; tick <= 4; tick++) {
     vi.setSystemTime((epoch + tick * 300) * 1000);
     used = 10 + tick;
-    snapshot[provider] = await api.fetch(provider, credentialsFor("first"));
+    snapshot.accounts[0]!.usage = await api.fetch(provider, credentialsFor("first"));
     pace.track(snapshot, noActivity, epoch + tick * 300);
   }
-  const firstKey = snapshot[provider].account_key;
+  const firstKey = snapshot.accounts[0]!.usage.account_key;
   vi.setSystemTime((epoch + 1500) * 1000);
   used = 80;
-  snapshot[provider] = await api.fetch(provider, credentialsFor("second"));
+  snapshot.accounts[0]!.usage = await api.fetch(provider, credentialsFor("second"));
   const current = pace.track(snapshot, noActivity, epoch + 1500);
-  expect(snapshot[provider].account_key).not.toBe(firstKey);
+  expect(snapshot.accounts[0]!.usage.account_key).not.toBe(firstKey);
   expect(JSON.stringify(current)).not.toContain(JSON.stringify(credentialsFor("second").accessToken));
-  expect(current[provider].five_hour.used_percent).toBe(80);
-  expect(current.pace.windows[paceKey(fiveHourSeconds, provider)]).toMatchObject({
+  expect(current.accounts[0]!.usage.five_hour.used_percent).toBe(80);
+  expect(current.pace.windows[homeKey(fiveHourSeconds, provider)]).toMatchObject({
     status: "learned",
     usual_rate: 4,
     current: { kind: "idle" },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
-import { clockEpoch, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
+import { clockEpoch, homeSignIn, refreshedAgo, refreshedEpoch, usagePace } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { windowStartKey } from "../shared/window-start";
 import {
@@ -99,10 +99,17 @@ describe("display contract", () => {
   it("says how long ago the newest enabled reading landed", () => {
     const now = 1_000_000;
     const snapshot: UsageSnapshot = {
-      codex: provider({ last_successful_update_epoch: now - 600 }),
-      claude: provider({ last_successful_update_epoch: now - 60 }),
-      opencode: provider(),
       enabled: { codex: true, claude: false, opencode: true },
+      sign_ins: null,
+      accounts: [
+        {
+          id: homeSignIn,
+          provider: "codex",
+          distribution: null,
+          usage: provider({ last_successful_update_epoch: now - 600 }),
+        },
+        { id: homeSignIn, provider: "opencode", distribution: null, usage: provider() },
+      ],
       proxy_hubs: [],
       pace: { settings: defaultPaceSettings, windows: {} },
     };
@@ -123,7 +130,7 @@ describe("display contract", () => {
         ],
       }),
     ).toBe(now - 30);
-    expect(refreshedEpoch({ ...snapshot, enabled: { codex: false, claude: false, opencode: true } })).toBeNull();
+    expect(refreshedEpoch({ ...snapshot, accounts: snapshot.accounts.slice(1) })).toBeNull();
 
     expect(refreshedAgo(null, now)).toBe("Not refreshed yet");
     expect(refreshedAgo(now + 5, now)).toBe("Refreshed just now");
@@ -188,10 +195,9 @@ describe("window start accounts", () => {
       usage: provider(),
     });
     const snapshot: UsageSnapshot = {
-      codex: provider(),
-      claude: provider(),
-      opencode: provider(),
       enabled: { codex: true, claude: false, opencode: false },
+      sign_ins: null,
+      accounts: [{ id: homeSignIn, provider: "codex", distribution: null, usage: provider() }],
       proxy_hubs: [
         {
           id: "hub",

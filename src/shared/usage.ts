@@ -69,8 +69,27 @@ export type ProxyHubSnapshot = {
   error_message: string | null;
 };
 export type ProviderSettings = Record<ProviderId, boolean>;
-export type UsageSnapshot = Record<ProviderId, ProviderUsage> & {
+/** Where a Windows host reads sign-ins from: its own home folder, and the home folders inside every WSL
+ * distribution. Other hosts have only their home folder. */
+export const signInSources = ["windows", "wsl"] as const;
+export type SignInSource = (typeof signInSources)[number];
+export type SignInSettings = Record<SignInSource, boolean>;
+/** The id of the sign-in in this machine's own home folder. */
+export const homeSignIn = "home";
+/** A sign-in read directly from a credential file. `distribution` names the WSL distribution it lives
+ * in, or is null for this machine's own home folder. */
+export type DirectAccount = {
+  id: string;
+  provider: ProviderId;
+  distribution: string | null;
+  usage: ProviderUsage;
+};
+/** `accounts` holds the direct sign-ins of every provider switched on, in provider order. `sign_ins` is
+ * null where there is no WSL to choose. */
+export type UsageSnapshot = {
   enabled: ProviderSettings;
+  sign_ins: SignInSettings | null;
+  accounts: DirectAccount[];
   proxy_hubs: ProxyHubSnapshot[];
   pace: PaceSnapshot;
   window_starts?: Partial<Record<string, StartAttempt>>;
@@ -97,12 +116,28 @@ export function namedHubAccounts({ label, accounts }: Pick<ProxyHubSnapshot, "la
   });
 }
 
-/** A direct sign-in, named after its provider alone. */
-export const directAccountName = (provider: ProviderId): AccountName => ({
-  title: providerNames[provider],
-  email: null,
-  label: providerNames[provider],
-});
+/** Names direct sign-ins by provider alone, or by provider and email once a provider has more than one.
+ * Those are numbered within their provider like a hub's, and the number names an account without an email. */
+export function namedDirectAccounts(accounts: DirectAccount[]) {
+  const counts = new Map<ProviderId, number>();
+  return accounts.map((account) => {
+    const number = (counts.get(account.provider) ?? 0) + 1;
+    counts.set(account.provider, number);
+    const title = providerNames[account.provider];
+    const numbered = `${title} ${number}`;
+    const name: AccountName = !accounts.some((other) => other !== account && other.provider === account.provider)
+      ? { title, email: null, label: title }
+      : account.usage.email
+        ? { title, email: account.usage.email, label: numbered }
+        : { title: numbered, email: null, label: numbered };
+    return { ...account, number, name };
+  });
+}
+
+/** Keeps a home sign-in's key the bare provider id, as it was before WSL sign-ins became accounts of
+ * their own, so its learned pace carries over. */
+export const directAccountKey = ({ provider, id }: Pick<DirectAccount, "provider" | "id">): string =>
+  id === homeSignIn ? provider : `${provider}:${id}`;
 
 export const providerIds = ["codex", "claude", "opencode"] as const satisfies readonly ProviderId[];
 export const providerNames: Record<ProviderId, string> = {
@@ -214,11 +249,9 @@ function paceStatus(used: number, expectedPercent: number): UsagePace["status"] 
   return used < expectedPercent ? "under" : "ahead";
 }
 
-/** The newest successful reading among the enabled providers. */
+/** The newest successful reading among the direct sign-ins and hubs. */
 export function refreshedEpoch(snapshot: UsageSnapshot): number | null {
-  const direct = providerIds
-    .filter((id) => snapshot.enabled[id])
-    .map((id) => snapshot[id].last_successful_update_epoch);
+  const direct = snapshot.accounts.map(({ usage }) => usage.last_successful_update_epoch);
   const hubs = snapshot.proxy_hubs.flatMap((hub) => [
     hub.last_successful_update_epoch,
     ...hub.accounts.map((account) => account.usage.last_successful_update_epoch),
