@@ -1,6 +1,6 @@
 import type { PaceSettings } from "./pace";
 import type { TrayUsageSettings } from "./tray-usage";
-import type { ProviderId, ProxyHubSettings, UsageSnapshot } from "./usage";
+import type { ProviderId, ProxyHubSettings, SignInSource, UsageSnapshot } from "./usage";
 import type { WindowStart, WindowStartSettings } from "./window-start";
 
 export type ReleaseNotice = {
@@ -41,7 +41,7 @@ export type PairingCode = { code: string; expiresAt: number };
 export type RemoteDevices = { devices: PairedDevice[]; pairing: PairingCode | null };
 /** The wire format a host serves to another Tantalus. It changes only when that format breaks, and a
  * client refuses a host on any other. */
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 /** What a host says about itself before a client pairs or follows it. */
 export type HostHello = { protocol: number; name: string };
 
@@ -57,6 +57,8 @@ export type ProxyHubInput = { label: string; url: string; managementKey: string 
 export type Commands = {
   refreshUsage: () => UsageSnapshot;
   setProviderEnabled: (provider: ProviderId, enabled: boolean) => UsageSnapshot;
+  /** Only a Windows host has sign-in sources to choose. */
+  setSignInSource: (source: SignInSource, enabled: boolean) => UsageSnapshot;
   setPaceSettings: (settings: PaceSettings) => UsageSnapshot;
   /** Forgets what every window has learned, so each one learns again from now. */
   resetPace: () => UsageSnapshot;

@@ -10,6 +10,7 @@ import {
   loadProxyHubSettings,
   loadRemoteSettings,
   loadSettings,
+  loadSignInSettings,
   loadWindowStartSettings,
   noProviders,
   noRemoteAccess,
@@ -22,6 +23,17 @@ function path() {
   directory = mkdtempSync(join(tmpdir(), "tantalus-settings-"));
   return join(directory, "providers.json");
 }
+
+describe("sign-in settings", () => {
+  it("reads both sources on an existing install, and keeps a saved choice", () => {
+    const file = path();
+    expect(loadSignInSettings(file)).toEqual({ windows: true, wsl: true });
+    writeFileSync(file, "not json");
+    expect(loadSignInSettings(file)).toEqual({ windows: true, wsl: true });
+    saveSettings(file, { windows: false, wsl: true });
+    expect(loadSignInSettings(file)).toEqual({ windows: false, wsl: true });
+  });
+});
 
 describe("provider settings", () => {
   it("starts from the defaults when nothing is saved", () => {

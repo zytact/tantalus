@@ -6,7 +6,7 @@ import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
 import { noTrayUsage } from "../shared/tray-usage";
 import type { TrayUsageSettings } from "../shared/tray-usage";
-import type { ProviderSettings, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
+import type { ProviderSettings, ProxyHubConfig, ProxyHubProviderId, SignInSettings } from "../shared/usage";
 import type { StartProviderSettings, WindowStartSettings } from "../shared/window-start";
 import { field } from "./parse";
 
@@ -26,6 +26,18 @@ export function loadSettings(path: string): ProviderSettings {
     return typeof codex === "boolean" && typeof claude === "boolean" && typeof opencode === "boolean"
       ? { codex, claude, opencode }
       : null;
+  });
+}
+
+/** Every sign-in source starts on, and a file that cannot be read falls back to that too, so no
+ * sign-in goes unread. */
+export const defaultSignIns: SignInSettings = { windows: true, wsl: true };
+
+export function loadSignInSettings(path: string): SignInSettings {
+  return load(path, defaultSignIns, defaultSignIns, (value) => {
+    const windows = field(value, "windows");
+    const wsl = field(value, "wsl");
+    return typeof windows === "boolean" && typeof wsl === "boolean" ? { windows, wsl } : null;
   });
 }
 

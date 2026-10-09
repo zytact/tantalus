@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
-import { emptyProviderUsage, fiveHourSeconds } from "../shared/usage";
+import { emptyProviderUsage, fiveHourSeconds, homeSignIn } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import type { WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
@@ -36,10 +36,9 @@ const running = (epoch: number) => reading(epoch, 4, epoch + 3600);
 
 function snapshot(claude: ProviderUsage, polled = true): UsageSnapshot {
   return {
-    codex: emptyProviderUsage(),
-    claude,
-    opencode: emptyProviderUsage(),
     enabled: { codex: false, claude: polled, opencode: false },
+    sign_ins: null,
+    accounts: polled ? [{ id: homeSignIn, provider: "claude", distribution: null, usage: claude }] : [],
     proxy_hubs: [],
     pace: { settings: defaultPaceSettings, windows: {} },
   };
@@ -55,7 +54,7 @@ function starter(
   settings: WindowStartSettings,
   run: (cli: Cli) => Promise<void> = async () => {},
   runHub?: ConstructorParameters<typeof WindowStarter>[4],
-  locate?: () => Promise<Cli | null>,
+  locate?: ConstructorParameters<typeof WindowStarter>[1],
   notify?: ConstructorParameters<typeof WindowStarter>[5],
 ) {
   const directory = mkdtempSync(join(tmpdir(), "tantalus-start-"));
@@ -67,7 +66,7 @@ function starter(
   let started = 0;
   const instance = new WindowStarter(
     path,
-    locate ?? (async () => cli),
+    locate ?? (() => cli),
     (command) => {
       runs.push(command);
       return run(command);
@@ -108,7 +107,7 @@ describe("window starter", () => {
     await settle();
     expect(runs).toHaveLength(1);
     expect(started()).toBe(1);
-    expect((await instance.read()).providers.claude.last).toMatchObject({ error: null });
+    expect(instance.read().providers.claude.last).toMatchObject({ error: null });
     for (const epoch of [1600, 1900, 2200]) {
       instance.observe(snapshot(idle(epoch)));
       await settle();
@@ -160,12 +159,12 @@ describe("window starter", () => {
     expect(runs).toHaveLength(0);
   });
 
-  it("waits a full grace after a provider is switched back on, not from the reading kept while off", async () => {
+  it("waits a full grace after a provider is switched back on, not from the idle spell before", async () => {
     const { instance, runs } = starter(startOn);
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1000), false));
-    // Switching the provider on publishes its kept reading before the fresh one lands.
-    instance.observe(snapshot(idle(1000)));
+    // Switching the provider on publishes an unread sign-in before the fresh reading lands.
+    instance.observe(snapshot(emptyProviderUsage()));
     instance.observe(snapshot(idle(1600)));
     await settle();
     expect(runs).toHaveLength(0);
@@ -179,9 +178,9 @@ describe("window starter", () => {
     instance.observe(snapshot(idle(1000)));
     instance.observe(snapshot(idle(1300)));
     await settle();
-    await instance.set({ ...startOn, enabled: false });
+    instance.set({ ...startOn, enabled: false });
     instance.observe(snapshot(idle(1600)));
-    await instance.set(startOn);
+    instance.set(startOn);
     instance.observe(snapshot(idle(1900)));
     instance.observe(snapshot(idle(2200)));
     await settle();
@@ -196,7 +195,7 @@ describe("window starter", () => {
     instance.observe(snapshot(idle(1300)));
     await settle();
     expect(started()).toBe(1);
-    expect((await instance.read()).providers.claude.last?.error).toBe("claude exited with code 1: not logged in");
+    expect(instance.read().providers.claude.last?.error).toBe("claude exited with code 1: not logged in");
     instance.observe(snapshot(idle(1600)));
     instance.observe(snapshot(idle(1900)));
     await settle();
@@ -233,7 +232,7 @@ describe("sign-in wake", () => {
     instance.observe(snapshot(applyReading(emptyProviderUsage(), new ReadFailure("timeout"))));
     await settle();
     expect(runs).toHaveLength(0);
-    await instance.set({ ...wakeOnly, wake: false });
+    instance.set({ ...wakeOnly, wake: false });
     instance.observe(snapshot(rejected));
     await settle();
     expect(runs).toHaveLength(0);
@@ -405,8 +404,8 @@ describe("hub automation", () => {
     );
     instance.observe(hubSnapshot(1000, true));
     await settle();
-    expect((await instance.read()).wake).toBe(false);
-    expect((await instance.set({ ...startOn, enabled: false, wake: true })).wake).toBe(false);
+    expect(instance.read().wake).toBe(false);
+    expect(instance.set({ ...startOn, enabled: false, wake: true }).wake).toBe(false);
     expect(notices).toHaveLength(2);
     expect(notices.at(-1)).toContain("direct sign-ins");
     expect(runHub).not.toHaveBeenCalled();
@@ -422,25 +421,32 @@ it("rechecks the automation switch before queued hub work runs", async () => {
   instance.observe(hubSnapshot(1000));
   instance.observe(hubSnapshot(1300));
   await settle();
-  await instance.set({ ...startOn, enabled: false });
+  instance.set({ ...startOn, enabled: false });
   expect(checks[0]).toThrow("no longer enabled");
 });
 
-it("cancels a direct start when its provider is disabled during CLI lookup", async () => {
-  let release!: (cli: Cli) => void;
-  const { instance, runs } = starter(
-    startOn,
-    undefined,
-    undefined,
-    () =>
-      new Promise((resolve) => {
-        release = resolve;
-      }),
-  );
-  instance.observe(snapshot(idle(1000)));
-  instance.observe(snapshot(idle(1300)));
-  instance.observe(snapshot(idle(1600), false));
-  release({ file: "claude", args: [], shell: false, label: "claude" });
+it("starts a WSL sign-in's window through its own distribution", async () => {
+  const located: (string | null)[] = [];
+  const { instance, runs } = starter(startOn, undefined, undefined, (_provider, _configured, distribution) => {
+    located.push(distribution);
+    return { file: "wsl.exe", args: ["-d", distribution ?? ""], shell: false, label: "claude in WSL" };
+  });
+  const wsl = (claude: ProviderUsage): UsageSnapshot => ({
+    ...snapshot(idle(0)),
+    accounts: [
+      {
+        id: homeSignIn,
+        provider: "claude",
+        distribution: null,
+        usage: running(claude.last_successful_update_epoch ?? 0),
+      },
+      { id: "wsl:Ubuntu:/home/a", provider: "claude", distribution: "Ubuntu", usage: claude },
+    ],
+  });
+  instance.observe(wsl(idle(1000)));
+  instance.observe(wsl(idle(1300)));
   await settle();
-  expect(runs).toHaveLength(0);
+  expect(runs.map(({ args }) => args)).toEqual([["-d", "Ubuntu"]]);
+  expect(located).toEqual(["Ubuntu"]);
+  expect(instance.results()).toHaveProperty(["claude:wsl:Ubuntu:/home/a"]);
 });

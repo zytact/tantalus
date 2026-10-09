@@ -1,12 +1,12 @@
 import {
-  directAccountName,
+  directAccountKey,
   fiveHourSeconds,
   monthlySeconds,
+  namedDirectAccounts,
   namedHubAccounts,
-  providerIds,
   sevenDaySeconds,
 } from "./usage";
-import type { AccountName, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
+import type { AccountName, DirectAccount, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
 
 /** How far from the usual pace a window has to move before a creature shows. The same multiple sets
  * both thresholds: a dragon at `multiple` times the usual pace, a tortoise at one `multiple`th of it. */
@@ -75,11 +75,14 @@ const windowTuning = new Map([
   [monthlySeconds, { learnSeconds: 5 * 86_400, quietGap: 6 * 3600 }],
 ]);
 
-/** Which log a window belongs to. A proxy hub account is kept apart from the direct provider, even
- * when both are the same account. */
-export function paceKey(duration: number, provider: ProviderId, hub?: { hubId: string; accountId: string }): string {
-  return hub ? `${hub.hubId}:${provider}:${hub.accountId}:${duration}` : `${provider}:${duration}`;
+/** Which log a hub account's window belongs to. It is kept apart from a direct sign-in, even when both
+ * are the same account. */
+export function paceKey(duration: number, provider: ProviderId, hub: { hubId: string; accountId: string }): string {
+  return `${hub.hubId}:${provider}:${hub.accountId}:${duration}`;
 }
+
+export const directPaceKey = (duration: number, account: Pick<DirectAccount, "provider" | "id">): string =>
+  `${directAccountKey(account)}:${duration}`;
 
 /** A window the allowance view shows with a percentage and a pace. `owner` names its provider, or its
  * hub account, for Settings. */
@@ -94,7 +97,7 @@ export type PaceWindow = {
   epoch: number | null;
 };
 
-/** Every window with a pace, for the direct providers switched on and then every hub account. */
+/** Every window with a pace, for every direct sign-in and then every hub account. */
 export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   const windows = (
     usage: ProviderUsage,
@@ -111,9 +114,9 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
       return [{ key: keyOf(duration), provider, owner, plan, identity, duration, window, epoch }];
     });
   return [
-    ...providerIds
-      .filter((id) => snapshot.enabled[id])
-      .flatMap((id) => windows(snapshot[id], id, directAccountName(id), (duration) => paceKey(duration, id))),
+    ...namedDirectAccounts(snapshot.accounts).flatMap((account) =>
+      windows(account.usage, account.provider, account.name, (duration) => directPaceKey(duration, account)),
+    ),
     ...snapshot.proxy_hubs.flatMap((hub) =>
       namedHubAccounts(hub).flatMap(({ id, provider, usage, plan, email, name }) =>
         windows(

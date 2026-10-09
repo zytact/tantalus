@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
-import { emptyProviderUsage, fiveHourSeconds, monthlySeconds, sevenDaySeconds } from "../shared/usage";
+import { emptyProviderUsage, fiveHourSeconds, homeSignIn, monthlySeconds, sevenDaySeconds } from "../shared/usage";
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { bar, trayItems, trayRows } from "./tray-menu";
 
@@ -57,11 +57,11 @@ describe("tray bar", () => {
 });
 
 describe("tray menu", () => {
+  const codex = provider({ plan: "Plus", seven_day: window(sevenDaySeconds, 41), last_successful_update_epoch: 940 });
   const snapshot = (enabled: UsageSnapshot["enabled"]): UsageSnapshot => ({
-    codex: provider({ plan: "Plus", seven_day: window(sevenDaySeconds, 41), last_successful_update_epoch: 940 }),
-    claude: emptyProviderUsage(),
-    opencode: emptyProviderUsage(),
     enabled,
+    sign_ins: null,
+    accounts: enabled.codex ? [{ id: homeSignIn, provider: "codex", distribution: null, usage: codex }] : [],
     proxy_hubs: [],
     pace: { settings: defaultPaceSettings, windows: {} },
   });

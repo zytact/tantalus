@@ -3,12 +3,13 @@ import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { firstRider, paceKey, riderOf } from "../shared/pace";
+import { directPaceKey, firstRider, paceKey, riderOf } from "../shared/pace";
 import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
 import {
   clockEpoch,
+  directAccountKey,
+  namedDirectAccounts,
   namedHubAccounts,
-  providerIds,
   providerNames,
   proxyHubManagementUrl,
   refreshedAgo,
@@ -583,8 +584,6 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [canRefresh, refresh]);
 
-  const shown = snapshot ? providerIds.filter((id) => snapshot.enabled[id]) : [];
-
   return (
     <main>
       {!remote && <Toast />}
@@ -632,20 +631,20 @@ function App() {
             <Notices snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
           )}
 
-          {snapshot && shown.length === 0 && snapshot.proxy_hubs.length === 0 && (
+          {snapshot && snapshot.accounts.length === 0 && snapshot.proxy_hubs.length === 0 && (
             <p className="empty">No providers are on. Turn one on in Settings.</p>
           )}
 
           {snapshot &&
-            shown.map((id) => (
+            namedDirectAccounts(snapshot.accounts).map((account) => (
               <ProviderSection
-                key={id}
-                id={id}
-                provider={snapshot[id]}
-                lastStart={snapshot.window_starts?.[windowStartKey(id)]}
+                key={directAccountKey(account)}
+                id={account.provider}
+                provider={account.usage}
+                lastStart={snapshot.window_starts?.[directAccountKey(account)]}
                 now={now}
-                account={{ email: snapshot[id].email, plan: snapshot[id].plan }}
-                paceOf={(duration) => snapshot.pace.windows[paceKey(duration, id)]}
+                account={{ email: account.usage.email, plan: account.usage.plan, label: account.name.label }}
+                paceOf={(duration) => snapshot.pace.windows[directPaceKey(duration, account)]}
               />
             ))}
 

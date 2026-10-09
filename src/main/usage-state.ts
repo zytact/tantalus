@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { ProxyHubInput } from "../shared/ipc";
 import type { PaceSettings } from "../shared/pace";
-import { emptyProviderUsage, emptyProxyHubSnapshot, nowEpoch, providerIds, providerNames } from "../shared/usage";
+import {
+  emptyProviderUsage,
+  emptyProxyHubSnapshot,
+  homeSignIn,
+  nowEpoch,
+  providerIds,
+  providerNames,
+} from "../shared/usage";
 import type {
+  DirectAccount,
   ProviderId,
   ProviderSettings,
   ProviderUsage,
@@ -11,13 +19,25 @@ import type {
   ProxyHubProviderId,
   ProxyHubSettings,
   ProxyHubSnapshot,
+  SignInSettings,
+  SignInSource,
   UsageSnapshot,
 } from "../shared/usage";
-import { ReadFailure } from "./failure";
+import { asError, ReadFailure } from "./failure";
 import { noActivity } from "./pace-tracker";
 import type { PaceTracker } from "./pace-tracker";
 import { ProxyHubError, ProxyHubRejected } from "./proxy-hub-api";
-import { httpUrl, loadProxyHubSettings, loadSettings, saveSettings } from "./settings";
+import {
+  defaultSignIns,
+  httpUrl,
+  loadProxyHubSettings,
+  loadSettings,
+  loadSignInSettings,
+  saveSettings,
+} from "./settings";
+
+/** One sign-in's reading, or why it could not be read. */
+export type DirectReading = Pick<DirectAccount, "id" | "distribution"> & { usage: ProviderUsage | Error };
 
 export const REFRESH_INTERVAL = 300_000;
 const RETRY_BACKOFF_START = 5000;
@@ -25,7 +45,8 @@ const RETRY_BACKOFF_START = 5000;
 type RefreshScope = "all" | "unsettled";
 
 /** Owns the snapshot the tray and window show. Every change goes out through `publish`, and a read
- * runs only for a provider that is switched on when the read starts. */
+ * runs only for a provider that is switched on when the read starts. Without a sign-in settings path
+ * there is no WSL to choose, and every sign-in on this machine is read. */
 export class UsageState {
   snapshot: UsageSnapshot;
   private running: Promise<UsageSnapshot> | null = null;
@@ -38,18 +59,19 @@ export class UsageState {
   constructor(
     private readonly providerSettingsPath: string,
     private readonly proxyHubSettingsPath: string,
-    private readonly readProvider: (provider: ProviderId) => Promise<ProviderUsage>,
+    private readonly signInSettingsPath: string | null,
+    private readonly readProvider: (provider: ProviderId, sources: SignInSettings) => Promise<DirectReading[]>,
     private readonly readHub: (config: ProxyHubConfig) => Promise<ProxyHubAccount[]>,
     private readonly publish: (snapshot: UsageSnapshot) => void,
     private readonly pace: PaceTracker,
     private readonly notify: (message: string) => void = () => {},
   ) {
     this.hubConfigs = loadProxyHubSettings(proxyHubSettingsPath);
+    const enabled = loadSettings(providerSettingsPath);
     this.snapshot = {
-      codex: emptyProviderUsage(),
-      claude: emptyProviderUsage(),
-      opencode: emptyProviderUsage(),
-      enabled: loadSettings(providerSettingsPath),
+      enabled,
+      sign_ins: signInSettingsPath === null ? null : loadSignInSettings(signInSettingsPath),
+      accounts: providerIds.filter((id) => enabled[id]).map(unreadAccount),
       proxy_hubs: this.hubConfigs
         .filter(({ enabled }) => enabled)
         .map((config) => emptyProxyHubSnapshot(redact(config))),
@@ -78,7 +100,7 @@ export class UsageState {
   private async run(scope: RefreshScope): Promise<UsageSnapshot> {
     for (;;) {
       this.again = null;
-      const activity = this.pace.readActivity().catch(() => noActivity);
+      const activity = this.pace.readActivity(this.sources()).catch(() => noActivity);
       const hubs = this.snapshot.proxy_hubs.flatMap((hub) => {
         const config = this.hubConfigs.find(({ id }) => id === hub.id);
         return config && hub.status !== "rejected" && (scope === "all" || !hubSettled(hub))
@@ -103,20 +125,41 @@ export class UsageState {
     }
   }
 
+  private sources(): SignInSettings {
+    return this.snapshot.sign_ins ?? defaultSignIns;
+  }
+
+  /** Every sign-in found becomes an account, kept by id across reads. With none found the provider still
+   * shows, as not signed in. A read is dropped when its provider or a sign-in source was switched while
+   * it ran. */
   private async refreshProvider(id: ProviderId) {
-    const reading = await this.readProvider(id).catch((error: unknown) =>
-      error instanceof Error ? error : new Error(String(error)),
+    const sources = this.snapshot.sign_ins;
+    const readings = await this.readProvider(id, this.sources()).catch((error: unknown): DirectReading[] =>
+      this.snapshot.accounts
+        .filter(({ provider }) => provider === id)
+        .map((account) => ({ ...account, usage: asError(error) })),
     );
-    if (this.paused || !this.snapshot.enabled[id]) return;
-    this.snapshot = this.pace.annotate({ ...this.snapshot, [id]: applyReading(this.snapshot[id], reading) });
+    if (this.paused || !this.snapshot.enabled[id] || this.snapshot.sign_ins !== sources) return;
+    const previous = new Map(
+      this.snapshot.accounts.filter(({ provider }) => provider === id).map((account) => [account.id, account.usage]),
+    );
+    const found = readings.length > 0 ? readings : [{ ...unreadAccount(id), usage: new ReadFailure("missingFile") }];
+    const accounts = found.map(({ id: accountId, distribution, usage }) => ({
+      id: accountId,
+      provider: id,
+      distribution,
+      usage: applyReading(previous.get(accountId) ?? emptyProviderUsage(), usage),
+    }));
+    this.snapshot = this.pace.annotate({
+      ...this.snapshot,
+      accounts: withAccounts(this.snapshot.accounts, id, accounts),
+    });
     this.publish(this.snapshot);
   }
 
   /** Drops the reading when the hub was edited, switched off, or removed while it was read. */
   private async refreshHub(hub: ProxyHubSnapshot, config: ProxyHubConfig) {
-    const reading = await this.readHub(config).catch((error: unknown) =>
-      error instanceof Error ? error : new Error(String(error)),
-    );
+    const reading = await this.readHub(config).catch(asError);
     // A read that lands while paused is dropped, so following a host never changes local settings.
     if (this.paused || !this.snapshot.proxy_hubs.includes(hub)) return;
     const snapshots = this.snapshot.proxy_hubs.map((current) =>
@@ -147,10 +190,10 @@ export class UsageState {
     const conflicts = providerIds.filter((id) => snapshot.enabled[id] && this.providerHub(id));
     if (conflicts.length === 0) return snapshot;
     const enabled = { ...snapshot.enabled };
-    const next = { ...snapshot, enabled };
     for (const id of conflicts) {
       enabled[id] = false;
     }
+    const next = { ...snapshot, enabled, accounts: snapshot.accounts.filter(({ provider }) => enabled[provider]) };
     saveSettings(this.providerSettingsPath, enabled);
     const names = conflicts.map((id) => providerNames[id]).join(" and ");
     this.notify(
@@ -160,7 +203,7 @@ export class UsageState {
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. Switching a provider
-   * off keeps its last reading; switching one on reads it straight away. A hub whose roster is not
+   * off drops its accounts; switching one on reads it straight away. A hub whose roster is not
    * known yet corrects a conflicting choice on the read that enabling triggers. */
   async setProviderEnabled(provider: ProviderId, enabled: boolean): Promise<UsageSnapshot> {
     const hub = enabled ? this.providerHub(provider) : undefined;
@@ -172,10 +215,26 @@ export class UsageState {
     }
     const settings: ProviderSettings = { ...this.snapshot.enabled, [provider]: enabled };
     saveSettings(this.providerSettingsPath, settings);
-    const next = { ...this.snapshot, enabled: settings };
-    this.snapshot = this.pace.annotate(next);
+    const accounts = withAccounts(this.snapshot.accounts, provider, enabled ? [unreadAccount(provider)] : []);
+    this.snapshot = this.pace.annotate({ ...this.snapshot, enabled: settings, accounts });
     this.publish(this.snapshot);
     return enabled ? this.refresh() : Promise.resolve(this.snapshot);
+  }
+
+  /** Saves the choice before it takes effect, so a failed save changes nothing. The source's accounts
+   * go at once, and the read that follows finds what the sources now hold. */
+  setSignInSource(source: SignInSource, enabled: boolean): Promise<UsageSnapshot> {
+    if (this.signInSettingsPath === null || this.snapshot.sign_ins === null) {
+      throw new Error("Only Windows reads sign-ins from WSL.");
+    }
+    const settings: SignInSettings = { ...this.snapshot.sign_ins, [source]: enabled };
+    saveSettings(this.signInSettingsPath, settings);
+    const accounts = this.snapshot.accounts.filter(({ distribution }) =>
+      distribution === null ? settings.windows : settings.wsl,
+    );
+    this.snapshot = this.pace.annotate({ ...this.snapshot, sign_ins: settings, accounts });
+    this.publish(this.snapshot);
+    return this.refresh();
   }
 
   /** Saves the choice before it takes effect, and shows it straight away without a read. */
@@ -412,7 +471,20 @@ export function settled(snapshot: UsageSnapshot): boolean {
 }
 
 function providerSettled(snapshot: UsageSnapshot, id: ProviderId): boolean {
-  return !snapshot.enabled[id] || snapshot[id].status === "ready";
+  return snapshot.accounts.every(({ provider, usage }) => provider !== id || usage.status === "ready");
+}
+
+/** A provider's home sign-in before anything has been read, so a provider switched on shows as loading
+ * until its sign-ins are found. */
+function unreadAccount(provider: ProviderId): DirectAccount {
+  return { id: homeSignIn, provider, distribution: null, usage: emptyProviderUsage() };
+}
+
+/** Replaces `provider`'s accounts, keeping every provider's accounts in provider order. */
+function withAccounts(accounts: DirectAccount[], provider: ProviderId, replacement: DirectAccount[]): DirectAccount[] {
+  return providerIds.flatMap((id) =>
+    id === provider ? replacement : accounts.filter((account) => account.provider === id),
+  );
 }
 
 function hubSettled(hub: ProxyHubSnapshot): boolean {

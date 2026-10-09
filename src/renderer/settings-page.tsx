@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { version } from "../../package.json";
 import { remoteRoutes } from "../shared/ipc";
 import type { HostLink, RemoteAccess, RemoteRoute } from "../shared/ipc";
-import { providerIds, providerNames } from "../shared/usage";
-import type { ProviderId, UsageSnapshot } from "../shared/usage";
+import { providerIds, providerNames, signInSources } from "../shared/usage";
+import type { ProviderId, SignInSettings, SignInSource, UsageSnapshot } from "../shared/usage";
 import { BusyButton } from "./busy";
 import type { Loadable } from "./busy";
 import { ConnectRows, HostRows } from "./host-link";
@@ -65,6 +65,71 @@ function ProviderRow({
       )}
     </>
   );
+}
+
+const signInCopy = {
+  windows: {
+    name: "Windows",
+    description: "Read Codex, Claude and Opencode sign-ins from your Windows user folder.",
+  },
+  wsl: {
+    name: "WSL",
+    description:
+      "Read sign-ins from the home folders of every WSL distribution. Reading a distribution that is not running starts it.",
+  },
+} satisfies Record<SignInSource, { name: string; description: string }>;
+
+/** Where a Windows host reads sign-ins from. Every sign-in found shows as its own account. */
+function SignInRow({
+  source,
+  settings,
+  onChange,
+}: {
+  source: SignInSource;
+  settings: SignInSettings;
+  onChange: (snapshot: UsageSnapshot) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const { name, description } = signInCopy[source];
+
+  const toggle = (enabled: boolean) => {
+    setError(null);
+    void window.tantalus
+      .invoke("setSignInSource", source, enabled)
+      .then(onChange, () => setError(`Could not save the ${name} setting.`));
+  };
+
+  return (
+    <>
+      <section className="setting-row">
+        <div className="setting-copy">
+          <h2>{name}</h2>
+          <p>{description}</p>
+        </div>
+        <Toggle label={name} checked={settings[source]} onToggle={() => toggle(!settings[source])} />
+      </section>
+      {error && (
+        <p className="notice settings-notice" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Shown only where there is WSL to choose. */
+function SignInRows({
+  snapshot,
+  onChange,
+}: {
+  snapshot: UsageSnapshot | null;
+  onChange: (snapshot: UsageSnapshot) => void;
+}) {
+  const settings = snapshot?.sign_ins;
+  if (!settings) return null;
+  return signInSources.map((source) => (
+    <SignInRow key={source} source={source} settings={settings} onChange={onChange} />
+  ));
 }
 
 const remoteRouteCopy = {
@@ -335,6 +400,8 @@ export function SettingsPage({
             {providerIds.map((id) => (
               <ProviderRow key={id} id={id} choice={providers} onChange={onSnapshot} />
             ))}
+
+            <SignInRows snapshot={snapshot} onChange={onSnapshot} />
 
             <ProxyHubSettingsRows />
 

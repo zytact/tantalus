@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { trayUsageColors, trayUsageOptions } from "../shared/tray-usage";
+import { traySource, trayUsageColors, trayUsageOptions } from "../shared/tray-usage";
 import type { TrayUsageOption, TrayUsageSettings } from "../shared/tray-usage";
 import { nowEpoch, providerIds, providerNames } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
@@ -49,7 +49,7 @@ export function TrayUsageRows({ snapshot }: { snapshot: UsageSnapshot | null }) 
           <h2>Usage in tray</h2>
           <p>
             Shows one account&apos;s remaining 5-hour allowance beside the tray icon, in its provider&apos;s color.
-            Codex Go and free accounts show their monthly window instead. A hub&apos;s pooled option adds up its
+            Codex Go and free accounts show their monthly window instead. A pooled option adds up a provider&apos;s
             accounts, so three accounts start at 300% and count down to 0. On Windows the number replaces the icon.
           </p>
         </div>
@@ -115,8 +115,7 @@ function TrayUsagePicker({
   if (options.length === 0) {
     return <p className="tray-usage-empty">Switch on a provider or add a hub to pick an account.</p>;
   }
-  const selected = settings.source ?? options[0].key;
-  const missing = !options.some(({ key }) => key === selected);
+  const { selected, missing } = pickerValue(options, settings.source);
   return (
     <div className="hub-form">
       <div className="hub-form-wide">
@@ -137,6 +136,12 @@ function TrayUsagePicker({
       </div>
     </div>
   );
+}
+
+/** The saved source's option, or the saved source itself once its option is gone. */
+function pickerValue(options: TrayUsageOption[], source: string | null) {
+  const option = traySource(options, source);
+  return option ? { selected: option.key, missing: false } : { selected: source ?? "", missing: true };
 }
 
 /** The color of each provider on offer. */

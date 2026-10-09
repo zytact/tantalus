@@ -1,5 +1,5 @@
-import { nowEpoch, providerNames } from "../shared/usage";
-import type { ProviderSettings, ProviderUsage, UsageSnapshot } from "../shared/usage";
+import { directAccountKey, nowEpoch, providerNames } from "../shared/usage";
+import type { ProviderId, ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartAttempt, StartProviderId, WindowStart, WindowStartSettings } from "../shared/window-start";
 import type { Cli } from "./cli";
@@ -39,16 +39,20 @@ export class WindowStarter {
   private readonly running = new Set<string>();
   private readonly last = new Map<string, StartAttempt>();
   private readonly wakes = new Map<string, StartAttempt>();
-  private hubKeys = new Set<string>();
+  /** What the latest snapshot can start, so a start runs only while its account is still read. */
+  private targets: StartTarget[] = [];
   private hubClaude = false;
-  private polled: ProviderSettings = { claude: false, codex: false, opencode: false };
 
   /** While this machine follows another Tantalus, a queued or pending start runs nothing. */
   paused = false;
 
   constructor(
     private readonly path: string,
-    private readonly locate: (provider: StartProviderId, configured: string | null) => Promise<Cli | null>,
+    private readonly locate: (
+      provider: StartProviderId,
+      configured: string | null,
+      distribution: string | null,
+    ) => Cli | null,
     private readonly run: (cli: Cli) => Promise<void>,
     private readonly afterAttempt: () => void,
     private readonly runHub?: (
@@ -66,19 +70,17 @@ export class WindowStarter {
     return Object.fromEntries(this.last);
   }
 
-  async read(): Promise<WindowStart> {
-    const [claude, codex] = await Promise.all([this.provider("claude"), this.provider("codex")]);
+  read(): WindowStart {
     const { enabled, wake } = this.settings;
-    return {
-      enabled,
-      wake,
-      lastWake: this.wakes.get("claude") ?? null,
-      providers: { claude, codex },
-    };
+    const lastWake = [...this.wakes.values()].reduce<StartAttempt | null>(
+      (latest, attempt) => (latest === null || attempt.epoch > latest.epoch ? attempt : latest),
+      null,
+    );
+    return { enabled, wake, lastWake, providers: { claude: this.provider("claude"), codex: this.provider("codex") } };
   }
 
   /** Saves the choice before it takes effect, so a failed save changes nothing. */
-  set(settings: WindowStartSettings): Promise<WindowStart> {
+  set(settings: WindowStartSettings): WindowStart {
     if (settings.wake && this.hubClaude) {
       this.notify("Wake Claude only works with direct sign-ins. Claude is currently provided by a hub.");
       return this.read();
@@ -90,14 +92,11 @@ export class WindowStarter {
 
   observe(snapshot: UsageSnapshot) {
     this.observeWakeAvailability(snapshot);
-    this.polled = snapshot.enabled;
-    const targets: StartTarget[] = startProviderIds.map((provider) => ({
-      key: provider,
-      provider,
-      usage: snapshot[provider],
-      polled: snapshot.enabled[provider],
-      hub: null,
-    }));
+    const targets: StartTarget[] = snapshot.accounts.flatMap(({ id, provider, distribution, usage }) =>
+      isStartProvider(provider)
+        ? [{ key: directAccountKey({ provider, id }), provider, usage, polled: true, distribution, hub: null }]
+        : [],
+    );
     for (const hub of snapshot.proxy_hubs) {
       for (const account of hub.accounts)
         targets.push({
@@ -105,11 +104,12 @@ export class WindowStarter {
           provider: account.provider,
           usage: account.usage,
           polled: hub.status === "ready",
+          distribution: null,
           hub: { id: hub.id, accountId: account.id },
         });
     }
     const keys = new Set(targets.map(({ key }) => key));
-    this.hubKeys = new Set(targets.flatMap(({ key, hub }) => (hub ? [key] : [])));
+    this.targets = targets;
     for (const collection of [this.idleSince, this.unpolledEpochs, this.attempted, this.last, this.wakes]) {
       for (const key of collection.keys()) if (!keys.has(key)) collection.delete(key);
     }
@@ -138,8 +138,8 @@ export class WindowStarter {
     void this.wake(target);
   }
 
-  /** When the target's reading was taken, if it was taken while the target was polled. A provider switched
-   * off keeps its last reading, and on switching back on that reading says nothing about the time since. */
+  /** When the target's reading was taken, if it was taken while the target was polled. A hub that stops
+   * answering keeps its accounts' last readings, and once it answers again those say nothing about the time since. */
   private polledEpoch({ key, usage, polled }: StartTarget): number | null {
     const epoch = usage.last_successful_update_epoch;
     if (epoch === null) return null;
@@ -167,10 +167,12 @@ export class WindowStarter {
     if (epoch - since >= GRACE && !this.attempted.has(key) && !this.running.has(key)) void this.start(target);
   }
 
-  private async provider(id: StartProviderId): Promise<WindowStart["providers"][StartProviderId]> {
+  /** What runs for the provider's first direct sign-in, the home one when its source is on. */
+  private provider(id: StartProviderId): WindowStart["providers"][StartProviderId] {
     const settings = this.settings.providers[id];
-    const cli = await this.locate(id, settings.path);
-    return { ...settings, command: cli?.label ?? null, last: this.last.get(id) ?? null };
+    const first = this.targets.find(({ provider, hub }) => provider === id && hub === null);
+    const cli = this.locate(id, settings.path, first?.distribution ?? null);
+    return { ...settings, command: cli?.label ?? null, last: first ? (this.last.get(first.key) ?? null) : null };
   }
 
   private async start(target: StartTarget) {
@@ -196,10 +198,10 @@ export class WindowStarter {
       if (hub) {
         if (!this.runHub) throw new Error("Hub automation is unavailable.");
         await this.runHub(hub.id, hub.accountId, provider, () => {
-          if (this.paused || !this.settings.enabled || !this.hubKeys.has(key))
+          if (this.paused || !this.settings.enabled || !this.observed(key))
             throw new Error("Automation is no longer enabled for this account.");
         });
-      } else await this.runDirect(provider, wake);
+      } else await this.runDirect(target, wake);
       return { epoch, error: null };
     } catch (error) {
       return { epoch, error: error instanceof Error ? error.message : String(error) };
@@ -207,20 +209,31 @@ export class WindowStarter {
       this.running.delete(key);
     }
   }
-  private async runDirect(provider: StartProviderId, wake: boolean) {
-    const cli = await this.locate(provider, this.settings.providers[provider].path);
+
+  private observed(key: string): boolean {
+    return this.targets.some((target) => target.key === key);
+  }
+
+  private async runDirect({ key, provider, distribution }: StartTarget, wake: boolean) {
+    const cli = this.locate(provider, this.settings.providers[provider].path, distribution);
     if (!cli) throw new Error(`Could not find the ${providerNames[provider]} CLI. Set its path.`);
     if (wake && this.hubClaude) throw new Error("Wake Claude only works with direct sign-ins.");
-    if (this.paused || !this.polled[provider] || !(wake ? this.settings.wake : this.settings.enabled))
+    if (this.paused || !this.observed(key) || !(wake ? this.settings.wake : this.settings.enabled))
       throw new Error("Automation was switched off.");
     await this.run(cli);
   }
 }
 
+const isStartProvider = (provider: ProviderId): provider is StartProviderId =>
+  startProviderIds.some((id) => id === provider);
+
+/** `distribution` is the WSL distribution a direct sign-in lives in, and null for the home sign-in and
+ * for a hub account. */
 type StartTarget = {
   key: string;
   provider: StartProviderId;
   usage: ProviderUsage;
   polled: boolean;
+  distribution: string | null;
   hub: { id: string; accountId: string } | null;
 };

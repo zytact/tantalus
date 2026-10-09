@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { namedHubAccounts, providerNames } from "../shared/usage";
+import { directAccountKey, namedDirectAccounts, namedHubAccounts, providerNames } from "../shared/usage";
 import type { AccountName as Name, UsageSnapshot } from "../shared/usage";
 import { startProviderIds, windowStartKey } from "../shared/window-start";
 import type { StartProviderId, WindowStart } from "../shared/window-start";
@@ -87,21 +87,29 @@ function hasHubProvider(snapshot: UsageSnapshot | null, provider: StartProviderI
   return snapshot?.proxy_hubs.some((hub) => hub.accounts.some((account) => account.provider === provider)) ?? false;
 }
 
-/** Every account a provider starts windows for: the direct sign-in when it is polled, then each hub account. */
+/** Every account a provider starts windows for: each direct sign-in, then each hub account. The first
+ * direct sign-in says what would run for it until it is tried, since that is the CLI Settings shows. */
 export function startAccounts(
   start: WindowStart,
   snapshot: UsageSnapshot | null,
   provider: StartProviderId,
 ): { key: string; name: Name; status: string }[] {
-  const direct = snapshot?.enabled[provider]
-    ? [
-        {
-          key: provider,
-          name: { title: "Direct", email: null, label: `Direct ${providerNames[provider]}` },
-          status: startStatus(start.providers[provider]),
-        },
-      ]
-    : [];
+  const direct = namedDirectAccounts(snapshot?.accounts ?? [])
+    .filter((account) => account.provider === provider)
+    .map((account, index) => {
+      const key = directAccountKey(account);
+      const last = snapshot?.window_starts?.[key];
+      return {
+        key,
+        name: { title: "Direct", email: account.name.email, label: `Direct ${account.name.label}` },
+        status:
+          index === 0
+            ? startStatus(start.providers[provider])
+            : last
+              ? attemptStatus(last)
+              : "Waiting for an idle window.",
+      };
+    });
   const hubs = (snapshot?.proxy_hubs ?? []).flatMap((hub) =>
     namedHubAccounts(hub)
       .filter((account) => account.provider === provider)

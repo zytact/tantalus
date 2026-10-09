@@ -13,6 +13,7 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [window-start](window-start.md) - starting idle Claude and Codex 5-hour windows through their CLIs
 - [tray-usage](tray-usage.md) - one account or pool's remaining allowance beside the tray icon, and its account picker
 - [provider-switch](provider-switch.md) - provider enablement and persistence
+- [sign-in-sources](sign-in-sources.md) - Windows and WSL sign-in switches, and one account per login found
 - [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - read-only page over the local network and Tailscale, and device pairing
 - [host-link](host-link.md) - following another Tantalus's usage instead of reading this machine's

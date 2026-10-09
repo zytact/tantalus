@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, win32 } from "node:path";
-import { claudeSubscription, subscriptionName } from "../shared/usage";
-import type { ProviderId } from "../shared/usage";
+import { posix, win32 } from "node:path";
+import { claudeSubscription, homeSignIn, subscriptionName } from "../shared/usage";
+import type { DirectAccount, ProviderId, SignInSettings } from "../shared/usage";
 import { ReadFailure } from "./failure";
 import { field, parseCodexSubscription, stringAt } from "./parse";
 
@@ -33,56 +33,121 @@ const locations = {
   },
 } as const satisfies Record<ProviderId, { variable: string; underVariable: string[]; underHome: string[] }>;
 
-/** The directory holding the provider's login on this machine, which is where its CLI keeps its
- * sessions too. WSL homes are left out, since touching them starts the distribution. */
-export function dataDirectory(provider: ProviderId): string {
+/** The machine sign-ins are looked up on, passed in so Windows and WSL homes can be faked in tests. */
+export type SignInHost = {
+  platform: NodeJS.Platform;
+  env: NodeJS.ProcessEnv;
+  home: string;
+  exists: (path: string) => Promise<boolean>;
+  /** The entries of a directory, or null when it cannot be read. */
+  list: (path: string) => Promise<string[] | null>;
+  distributions: () => Promise<string[]>;
+};
+
+let distributions: Promise<string[]> | undefined;
+
+export const localHost: SignInHost = {
+  platform: process.platform,
+  env: process.env,
+  // Node reads HOME only on POSIX, but a Windows shell that sets it relocates the logins too.
+  get home() {
+    return process.env.HOME || homedir();
+  },
+  exists: (path) =>
+    access(path).then(
+      () => true,
+      () => false,
+    ),
+  list: (path) => readdir(path).catch(() => null),
+  // Distribution names are listed once per process. The homes behind them are read on every lookup,
+  // so a fresh login is picked up without a restart.
+  distributions: () =>
+    (distributions ??= new Promise((resolve) => {
+      execFile("wsl.exe", ["--list", "--quiet"], { encoding: "buffer", windowsHide: true }, (_error, stdout) =>
+        resolve(distributionNames(stdout)),
+      );
+    })),
+};
+
+/** A credential file found on this machine. `id` stays the same across reads, and `distribution` names
+ * the WSL distribution the file lives in, or is null for this machine's own home folder. */
+export type SignIn = Pick<DirectAccount, "id" | "distribution"> & { path: string };
+
+/** Every credential file of `provider` in the sources switched on, the home folder's first. The
+ * provider's variable relocates the home folder's file only. Only a Windows host has WSL homes, and
+ * with WSL off they are never touched, since touching one starts its distribution. */
+export async function findSignIns(
+  provider: ProviderId,
+  sources: SignInSettings,
+  host: SignInHost = localHost,
+): Promise<SignIn[]> {
+  const candidates = [
+    ...(readsHome(host, sources) ? [homeFolderSignIn(provider, host)] : []),
+    ...(host.platform === "win32" && sources.wsl ? await wslSignIns(provider, host) : []),
+  ];
+  const found = await Promise.all(candidates.map(async (signIn) => ((await host.exists(signIn.path)) ? [signIn] : [])));
+  return found.flat();
+}
+
+/** The directories each sign-in's CLI keeps its sessions in, which is where its credentials live. The
+ * home folder's is kept without a sign-in, since its CLI may still be in use. */
+export async function dataDirectories(
+  provider: ProviderId,
+  sources: SignInSettings,
+  host: SignInHost = localHost,
+): Promise<string[]> {
+  const path = host.platform === "win32" ? win32 : posix;
+  const signIns = [
+    ...(readsHome(host, sources) ? [homeFolderSignIn(provider, host)] : []),
+    ...(await findSignIns(provider, sources, host)),
+  ];
+  return [...new Set(signIns.map((signIn) => path.dirname(signIn.path)))];
+}
+
+const readsHome = ({ platform }: SignInHost, sources: SignInSettings) => platform !== "win32" || sources.windows;
+
+function homeFolderSignIn(provider: ProviderId, { platform, env, home }: SignInHost): SignIn {
   const { variable, underVariable, underHome } = locations[provider];
-  const directory = process.env[variable];
-  return dirname(directory ? join(directory, ...underVariable) : join(process.env.HOME || homedir(), ...underHome));
+  const path = platform === "win32" ? win32 : posix;
+  const directory = env[variable];
+  return {
+    id: homeSignIn,
+    distribution: null,
+    path: directory ? path.join(directory, ...underVariable) : path.join(home, ...underHome),
+  };
 }
 
-export async function readCredentials(provider: ProviderId): Promise<Credentials> {
-  return (await locateCredentials(provider)).credentials;
-}
+const SHARE_ROOTS = ["\\\\wsl.localhost", "\\\\wsl$"];
 
-type Located = { path: string; credentials: Credentials };
-
-/** Finds the first readable credential file for `provider`. Its variable wins outright; otherwise the
- * home directory is tried before any WSL distribution home. */
-export async function locateCredentials(provider: ProviderId): Promise<Located> {
-  const { variable, underVariable, underHome } = locations[provider];
-  const directory = process.env[variable];
-  if (directory) return readFrom(provider, join(directory, ...underVariable));
-  try {
-    // Node reads HOME only on POSIX, but a Windows shell that sets it relocates the logins too.
-    return await firstReadable(provider, [join(process.env.HOME || homedir(), ...underHome)]);
-  } catch (error) {
-    if (!(error instanceof ReadFailure) || error.reason !== "missingFile") throw error;
-  }
-  // Touching the WSL share starts the distribution behind it, so it is only scanned once the home
-  // directory has turned up nothing.
-  return firstReadable(provider, await wslAuthPaths(underHome));
-}
-
-/** The first path holding credentials. A file that exists but cannot be used outranks a missing one
- * in the failure. */
-async function firstReadable(provider: ProviderId, paths: string[]): Promise<Located> {
-  let failure = new ReadFailure("missingFile");
-  for (const path of paths) {
-    try {
-      return await readFrom(provider, path);
-    } catch (error) {
-      if (error instanceof ReadFailure && error.reason !== "missingFile") failure = error;
+/** The possible credential files inside every WSL distribution, one per home under `/home` plus
+ * `/root`, reached over the `\\wsl.localhost` share. */
+async function wslSignIns(provider: ProviderId, host: SignInHost): Promise<SignIn[]> {
+  const { underHome } = locations[provider];
+  const signIns: SignIn[] = [];
+  for (const distribution of await host.distributions()) {
+    for (const root of SHARE_ROOTS) {
+      const base = win32.join(root, distribution);
+      const users = await host.list(win32.join(base, "home"));
+      if (users === null) continue;
+      const homes = [...users.map((user) => `/home/${user}`), "/root"];
+      signIns.push(
+        ...homes.map((home) => ({
+          id: `wsl:${distribution}:${home}`,
+          distribution,
+          path: win32.join(base, ...home.split("/"), ...underHome),
+        })),
+      );
+      break;
     }
   }
-  throw failure;
+  return signIns;
 }
 
-async function readFrom(provider: ProviderId, path: string): Promise<Located> {
+export async function readCredentials(provider: ProviderId, path: string): Promise<Credentials> {
   const raw = await readFile(path, "utf8").catch(() => {
     throw new ReadFailure("missingFile");
   });
-  return { path, credentials: parseCredentials(provider, raw) };
+  return parseCredentials(provider, raw);
 }
 
 const tokenPaths = [
@@ -162,33 +227,6 @@ function jwtPayload(token: string): unknown {
   } catch {
     return null;
   }
-}
-
-const SHARE_ROOTS = ["\\\\wsl.localhost", "\\\\wsl$"];
-let distributions: Promise<string[]> | undefined;
-
-/** Windows hosts can hold their logins inside a WSL distribution, reachable over the
- * `\\wsl.localhost` share. Distribution names are listed once per process; the home directories
- * behind them are read on every lookup so a fresh login is picked up without a restart. */
-async function wslAuthPaths(underHome: readonly string[]): Promise<string[]> {
-  if (process.platform !== "win32") return [];
-  distributions ??= new Promise((resolve) => {
-    execFile("wsl.exe", ["--list", "--quiet"], { encoding: "buffer", windowsHide: true }, (_error, stdout) =>
-      resolve(distributionNames(stdout)),
-    );
-  });
-  const paths: string[] = [];
-  for (const distribution of await distributions) {
-    for (const root of SHARE_ROOTS) {
-      const base = win32.join(root, distribution);
-      const users = await readdir(win32.join(base, "home")).catch(() => null);
-      if (users === null) continue;
-      const homes = [...users.map((user) => win32.join(base, "home", user)), win32.join(base, "root")];
-      paths.push(...homes.map((home) => win32.join(home, ...underHome)));
-      break;
-    }
-  }
-  return paths;
 }
 
 /** `wsl.exe --list --quiet` writes UTF-16LE on most Windows builds and UTF-8 on some, so the encoding

@@ -2,8 +2,8 @@ import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Activity } from "../shared/pace";
-import type { ProviderId } from "../shared/usage";
-import { dataDirectory } from "./auth";
+import type { ProviderId, SignInSettings } from "../shared/usage";
+import { dataDirectories } from "./auth";
 
 /** A session file that changed this recently means the provider is in use. It spans a few polls, so a
  * long tool call that writes nothing while it runs still counts. */
@@ -23,11 +23,13 @@ const sessionFiles: Record<ProviderId, (directory: string, now: number) => Promi
   opencode: async (directory) => [join(directory, "opencode.db"), join(directory, "opencode.db-wal")],
 };
 
-/** Reads only modification times, never contents. A provider whose files cannot be found reads as not
- * in use, which keeps the tortoise away rather than showing one by mistake. */
-export async function readActivity(now = Date.now()): Promise<Activity> {
+/** Reads only modification times, never contents, across every sign-in source switched on. A provider
+ * whose files cannot be found reads as not in use, which keeps the tortoise away rather than showing
+ * one by mistake. */
+export async function readActivity(sources: SignInSettings, now = Date.now()): Promise<Activity> {
   const active = async (provider: ProviderId) => {
-    const files = await sessionFiles[provider](dataDirectory(provider), now);
+    const directories = await dataDirectories(provider, sources);
+    const files = (await Promise.all(directories.map((directory) => sessionFiles[provider](directory, now)))).flat();
     const changed = await Promise.all(
       files.map((file) =>
         stat(file).then(

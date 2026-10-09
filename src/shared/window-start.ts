@@ -23,6 +23,7 @@ export type WindowStart = {
   providers: Record<StartProviderId, StartProviderSettings & { command: string | null; last: StartAttempt | null }>;
 };
 
-export function windowStartKey(provider: ProviderId, hub?: { hubId: string; accountId: string }): string {
-  return hub ? JSON.stringify([hub.hubId, provider, hub.accountId]) : provider;
+/** A hub account's key. A direct sign-in's is its `directAccountKey`, which never starts with a bracket. */
+export function windowStartKey(provider: ProviderId, hub: { hubId: string; accountId: string }): string {
+  return JSON.stringify([hub.hubId, provider, hub.accountId]);
 }
