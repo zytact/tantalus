@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
+import { PROTOCOL } from "../shared/ipc";
 import { Pairing } from "./pairing";
 import { deviceName, trustedHost, WebServer } from "./web-server";
 
@@ -124,7 +125,7 @@ describe("web server", () => {
   });
 
   it("reports its ID to anyone, and its routes only to a paired device", async () => {
-    expect(await (await fetch(`${origin}/api/version`)).json()).toMatchObject({ protocol: 1, id: "host-id" });
+    expect(await (await fetch(`${origin}/api/version`)).json()).toMatchObject({ protocol: PROTOCOL, id: "host-id" });
     expect(await (await paired("/api/routes")).json()).toEqual({
       urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"],
       complete: true,

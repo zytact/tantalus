@@ -88,7 +88,7 @@ async function impostor(port: number) {
   const tokens: string[] = [];
   const server = createServer((request, response) => {
     if (request.headers.authorization) tokens.push(request.headers.authorization);
-    response.end(JSON.stringify({ protocol: 1, name: "fedora", id: "someone-else" }));
+    response.end(JSON.stringify({ protocol: PROTOCOL, name: "fedora", id: "someone-else" }));
   });
   await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
   return { tokens, close: () => new Promise((resolve) => server.close(resolve)) };
