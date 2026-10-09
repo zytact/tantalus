@@ -23,7 +23,7 @@ import type {
   SignInSource,
   UsageSnapshot,
 } from "../shared/usage";
-import { ReadFailure } from "./failure";
+import { asError, ReadFailure } from "./failure";
 import { noActivity } from "./pace-tracker";
 import type { PaceTracker } from "./pace-tracker";
 import { ProxyHubError, ProxyHubRejected } from "./proxy-hub-api";
@@ -137,7 +137,7 @@ export class UsageState {
     const readings = await this.readProvider(id, this.sources()).catch((error: unknown): DirectReading[] =>
       this.snapshot.accounts
         .filter(({ provider }) => provider === id)
-        .map((account) => ({ ...account, usage: error instanceof Error ? error : new Error(String(error)) })),
+        .map((account) => ({ ...account, usage: asError(error) })),
     );
     if (this.paused || !this.snapshot.enabled[id] || this.snapshot.sign_ins !== sources) return;
     const previous = new Map(
@@ -159,9 +159,7 @@ export class UsageState {
 
   /** Drops the reading when the hub was edited, switched off, or removed while it was read. */
   private async refreshHub(hub: ProxyHubSnapshot, config: ProxyHubConfig) {
-    const reading = await this.readHub(config).catch((error: unknown) =>
-      error instanceof Error ? error : new Error(String(error)),
-    );
+    const reading = await this.readHub(config).catch(asError);
     // A read that lands while paused is dropped, so following a host never changes local settings.
     if (this.paused || !this.snapshot.proxy_hubs.includes(hub)) return;
     const snapshots = this.snapshot.proxy_hubs.map((current) =>

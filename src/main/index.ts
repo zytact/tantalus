@@ -15,6 +15,7 @@ import type { UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { findSignIns, readCredentials } from "./auth";
+import { asError } from "./failure";
 import { runCli, startCli } from "./cli";
 import { HostLinkClient } from "./host-link";
 import type { TokenVault } from "./host-link";
@@ -110,10 +111,7 @@ function start() {
         (await findSignIns(provider, sources)).map(async ({ id, distribution, path }) => ({
           id,
           distribution,
-          usage: await readCredentials(provider, path).then(
-            (credentials) => api.fetch(provider, credentials),
-            (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
-          ),
+          usage: await readCredentials(provider, path).then((credentials) => api.fetch(provider, credentials), asError),
         })),
       ),
     (config) => proxyHubs.read(config),

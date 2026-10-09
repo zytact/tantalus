@@ -51,11 +51,13 @@ describe("CLI lookup", () => {
     expect(resolveCli("codex", configured, "Debian", windows)?.label).toBe("codex in WSL (Debian)");
   });
 
-  it("runs a configured POSIX path inside WSL on Windows", () => {
-    const windows = host("win32", { PATH: "" }, [], "C:\\Users\\a");
-    expect(resolveCli("codex", "/home/a/.local/bin/codex", null, windows)?.label).toBe(
-      "/home/a/.local/bin/codex in WSL",
+  it("applies a configured POSIX path to WSL sign-ins only, never running WSL for the Windows one", () => {
+    const native = "C:\\Users\\a\\.local\\bin\\codex.exe";
+    const windows = host("win32", { PATH: "" }, [native], "C:\\Users\\a");
+    expect(resolveCli("codex", "/home/a/.local/bin/codex", "Ubuntu", windows)?.label).toBe(
+      "/home/a/.local/bin/codex in WSL (Ubuntu)",
     );
+    expect(resolveCli("codex", "/home/a/.local/bin/codex", null, windows)?.file).toBe(native);
   });
 
   it.runIf(process.platform !== "win32").each([0, 7])(
@@ -67,7 +69,7 @@ describe("CLI lookup", () => {
         writeFileSync(program, `#!/bin/sh\ntest -z "$(ls -A)" || exit 99\nprintf '%s\\n' "$PWD" "$@"\nexit ${code}\n`, {
           mode: 0o700,
         });
-        const cli = resolveCli("codex", program, null, host("win32", {}, []));
+        const cli = resolveCli("codex", program, "Ubuntu", host("win32", {}, []));
         if (!cli) throw new Error("Expected a WSL command");
         const shell = cli.args.slice(cli.args.indexOf("--exec") + 1);
         const args = ["spaces and 'quotes'", "$(false)", "semi;colon", ""];

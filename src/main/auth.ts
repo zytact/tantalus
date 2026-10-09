@@ -50,7 +50,9 @@ export const localHost: SignInHost = {
   platform: process.platform,
   env: process.env,
   // Node reads HOME only on POSIX, but a Windows shell that sets it relocates the logins too.
-  home: process.env.HOME || homedir(),
+  get home() {
+    return process.env.HOME || homedir();
+  },
   exists: (path) =>
     access(path).then(
       () => true,

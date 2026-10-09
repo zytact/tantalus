@@ -7,3 +7,6 @@ export class ReadFailure extends Error {
     super(failureMessages[reason]);
   }
 }
+
+/** A rejection as an `Error`, so a failed read can stand in for its reading. */
+export const asError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));

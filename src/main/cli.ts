@@ -58,30 +58,30 @@ export function startCli(
 }
 
 /** On Windows, a sign-in inside a WSL distribution runs the CLI in that distribution, through a login
- * shell, which puts the user's own bin directories on the PATH. A configured POSIX path runs in WSL
- * too, and a configured Windows path applies only to the Windows sign-in. */
+ * shell, which puts the user's own bin directories on the PATH. A configured POSIX path applies only
+ * there, and a configured Windows path only to the Windows sign-in, which never runs through WSL. */
 export function resolveCli(
   provider: StartProviderId,
   configured: string | null,
   distribution: string | null,
   host: Host,
 ): Cli | null {
-  const wslPath = configured?.startsWith("/") ? configured : null;
-  if (host.platform === "win32" && (distribution !== null || wslPath !== null)) {
-    return inWsl(wslPath ?? provider, distribution, startArgs[provider]);
-  }
-  const file = configured ?? findOnHost(provider, host);
+  const windows = host.platform === "win32";
+  const wslPath = windows && configured?.startsWith("/") ? configured : null;
+  if (windows && distribution !== null) return inWsl(wslPath ?? provider, distribution, startArgs[provider]);
+  const file = (wslPath === null ? configured : null) ?? findOnHost(provider, host);
   if (file === null) return null;
   const shell = host.platform === "win32" && /\.(cmd|bat)$/i.test(file);
   const quote = (value: string) => (shell ? `"${value}"` : value);
   return { file: quote(file), args: startArgs[provider].map(quote), shell, label: file };
 }
 
-function inWsl(program: string, distribution: string | null, args: string[]): Cli {
+function inWsl(program: string, distribution: string, args: string[]): Cli {
   return {
     file: "wsl.exe",
     args: [
-      ...(distribution ? ["-d", distribution] : []),
+      "-d",
+      distribution,
       "--cd",
       "/tmp",
       "--exec",
@@ -92,7 +92,7 @@ function inWsl(program: string, distribution: string | null, args: string[]): Cl
       ...args,
     ],
     shell: false,
-    label: `${program} in WSL${distribution ? ` (${distribution})` : ""}`,
+    label: `${program} in WSL (${distribution})`,
   };
 }
 

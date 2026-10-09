@@ -167,7 +167,7 @@ export class WindowStarter {
     if (epoch - since >= GRACE && !this.attempted.has(key) && !this.running.has(key)) void this.start(target);
   }
 
-  /** What runs for the provider's first direct sign-in, which is its home one when that is read. */
+  /** What runs for the provider's first direct sign-in, the home one when its source is on. */
   private provider(id: StartProviderId): WindowStart["providers"][StartProviderId] {
     const settings = this.settings.providers[id];
     const first = this.targets.find(({ provider, hub }) => provider === id && hub === null);
@@ -227,7 +227,8 @@ export class WindowStarter {
 const isStartProvider = (provider: ProviderId): provider is StartProviderId =>
   startProviderIds.some((id) => id === provider);
 
-/** `distribution` is the WSL distribution a direct sign-in lives in, and null for a hub account. */
+/** `distribution` is the WSL distribution a direct sign-in lives in, and null for the home sign-in and
+ * for a hub account. */
 type StartTarget = {
   key: string;
   provider: StartProviderId;
