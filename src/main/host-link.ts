@@ -301,6 +301,7 @@ export class HostLinkClient {
   private async preferredAnswer(session: Session, url: string, signal: AbortSignal): Promise<boolean> {
     while (!signal.aborted) {
       await this.sleep(ROUTE_CHECK_MILLISECONDS, signal);
+      if (signal.aborted) break;
       await this.learn(session, { url, id: session.saved.id });
       const routes = preferred(session.saved.routes);
       const inUse = routes.findIndex((route) => route.url === url);

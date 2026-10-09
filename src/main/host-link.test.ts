@@ -338,18 +338,23 @@ describe("routes", () => {
   });
 
   it("keeps the routes it knows when the host cannot report them", async () => {
-    reported = [forwarded];
-    const first = client();
-    await first.link.connect(origin, offered());
-    await until(() => first.link.read()?.routes.length === 2);
-    const saved = readFileSync(join(directory, "host-link.json"), "utf8");
-
+    const saved = JSON.stringify({
+      host: "fedora",
+      id: "host-id",
+      routes: [
+        { url: origin, found: false },
+        { url: forwarded, found: true },
+      ],
+      token: { plain: pairing.pair(offered(), "laptop") },
+    });
+    writeFileSync(join(directory, "host-link.json"), saved);
     reported = null;
-    const restarted = client();
-    restarted.link.start();
-    await until(() => routeReads >= 2 && restarted.link.read()?.state === "connected");
+    const { link } = client();
+    link.start();
+    // By the third read the earlier ones have been handled.
+    await until(() => routeReads >= 3);
     expect(readFileSync(join(directory, "host-link.json"), "utf8")).toBe(saved);
-    expect(restarted.link.read()?.routes).toHaveLength(2);
+    expect(link.read()?.routes).toHaveLength(2);
   });
 
   it("refreshes through a route it reaches when no stream is open", async () => {
