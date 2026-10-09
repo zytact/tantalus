@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -76,21 +77,57 @@ function storedDevice(value: unknown): StoredDevice | null {
     : null;
 }
 
-/** The host a client follows. The token is sealed by the operating system's keychain where there is
- * one, and kept as is where there is not. */
-export type SavedHostLink = { url: string; host: string; token: { sealed: string } | { plain: string } };
+/** An address the followed host answers on. `found` marks one the host reported. */
+export type SavedRoute = { url: string; found: boolean };
+
+/** The host a client follows. `id` is null for a host from before routes, which keeps its one typed
+ * address. The token is sealed by the operating system's keychain where there is one, and kept as is
+ * where there is not. */
+export type SavedHostLink = {
+  host: string;
+  id: string | null;
+  routes: SavedRoute[];
+  token: { sealed: string } | { plain: string };
+};
 
 export function loadHostLink(path: string): SavedHostLink | null {
   return load<SavedHostLink | null>(path, null, null, (value) => {
-    const url = field(value, "url");
     const host = field(value, "host");
+    const id = field(value, "id") ?? null;
     const token = field(value, "token");
     const sealed = field(token, "sealed");
     const plain = field(token, "plain");
-    if (typeof url !== "string" || !httpUrl(url) || typeof host !== "string") return null;
-    if (typeof sealed === "string") return { url, host, token: { sealed } };
-    return typeof plain === "string" ? { url, host, token: { plain } } : null;
+    // A link saved before routes holds the one address it was paired over.
+    const url = field(value, "url");
+    const routes = savedRoutes(typeof url === "string" ? [{ url, found: false }] : field(value, "routes"));
+    if (typeof host !== "string" || (id !== null && typeof id !== "string") || !routes) return null;
+    if (typeof sealed === "string") return { host, id, routes, token: { sealed } };
+    return typeof plain === "string" ? { host, id, routes, token: { plain } } : null;
   });
+}
+
+function savedRoutes(value: unknown): SavedRoute[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const routes = value.map(savedRoute);
+  return routes.every((route) => route !== null) ? routes : null;
+}
+
+function savedRoute(value: unknown): SavedRoute | null {
+  const url = field(value, "url");
+  const found = field(value, "found");
+  return typeof url === "string" && httpUrl(url) && typeof found === "boolean" ? { url, found } : null;
+}
+
+/** The random ID this machine answers to as a host, made on first use. */
+export function loadHostId(path: string): string {
+  const saved = load<string | null>(path, null, null, (value) => {
+    const id = field(value, "id");
+    return typeof id === "string" && id !== "" ? id : null;
+  });
+  if (saved) return saved;
+  const id = randomUUID();
+  saveSettings(path, { id });
+  return id;
 }
 
 export function loadPaceSettings(path: string): PaceSettings {

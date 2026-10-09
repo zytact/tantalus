@@ -1,5 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { connect, createServer as createTcpServer } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
@@ -7,13 +9,16 @@ import { PROTOCOL } from "../shared/ipc";
 import type { HostLink } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
-import { HostLinkClient, hostUrl } from "./host-link";
+import { HostLinkClient, hostUrl, mergedRoutes, routeKind } from "./host-link";
 import type { TokenVault } from "./host-link";
 import { Pairing } from "./pairing";
 import { WebServer } from "./web-server";
 
-const PORT = 47_480;
-const origin = `http://127.0.0.1:${PORT}`;
+/** Each test's host gets its own port, so no client reuses a connection to the previous one. */
+let port = 47_500;
+let origin: string;
+const FORWARD_PORT = 47_482;
+const forwarded = `http://127.0.0.1:${FORWARD_PORT}`;
 
 const snapshot = (claude: boolean): UsageSnapshot => ({
   enabled: { codex: true, claude, opencode: false },
@@ -34,6 +39,10 @@ let pairing: Pairing;
 let server: WebServer;
 let current: UsageSnapshot;
 let clients: HostLinkClient[];
+/** The addresses the host reports, or null while reading them fails. */
+let reported: string[] | null;
+/** How many times a client asked the host for its routes. */
+let routeReads: number;
 
 /** A client that records what it shows, with retries a few milliseconds apart. */
 function client() {
@@ -56,6 +65,36 @@ const offered = () => {
   return pairing.read(new Set()).pairing!.code;
 };
 
+/** A second route to the host that a test can cut, the way Tailscale Serve forwards to it. */
+async function forwarder() {
+  const sockets = new Set<Socket>();
+  const forward = createTcpServer((socket) => {
+    const upstream = connect(port, "127.0.0.1");
+    for (const end of [socket, upstream]) {
+      sockets.add(end);
+      end.on("close", () => sockets.delete(end));
+      end.on("error", () => {});
+    }
+    socket.pipe(upstream).pipe(socket);
+  });
+  await new Promise<void>((resolve) => forward.listen(FORWARD_PORT, "127.0.0.1", resolve));
+  return async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => forward.close(resolve));
+  };
+}
+
+/** Another Tantalus that records whether anyone sent it a token. */
+async function impostor(port: number) {
+  const tokens: string[] = [];
+  const server = createServer((request, response) => {
+    if (request.headers.authorization) tokens.push(request.headers.authorization);
+    response.end(JSON.stringify({ protocol: PROTOCOL, name: "fedora", id: "someone-else" }));
+  });
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  return { tokens, close: () => new Promise((resolve) => server.close(resolve)) };
+}
+
 async function until(check: () => boolean) {
   for (let tries = 0; !check(); tries += 1) {
     if (tries > 200) throw new Error("Timed out.");
@@ -64,12 +103,16 @@ async function until(check: () => boolean) {
 }
 
 beforeEach(async () => {
+  port += 1;
+  origin = `http://127.0.0.1:${port}`;
   directory = mkdtempSync(join(tmpdir(), "tantalus-link-"));
   const root = join(directory, "dist");
   mkdirSync(root);
   writeFileSync(join(root, "index.html"), "<main></main>");
   current = snapshot(true);
   clients = [];
+  reported = [];
+  routeReads = 0;
   pairing = new Pairing(
     join(directory, "paired-devices.json"),
     () => {},
@@ -77,9 +120,15 @@ beforeEach(async () => {
   );
   server = new WebServer({
     root,
-    port: PORT,
+    port,
+    id: "host-id",
     snapshot: () => current,
     refresh: async () => (current = snapshot(false)),
+    routes: async () => {
+      routeReads += 1;
+      if (!reported) throw new Error("Tailscale did not answer.");
+      return { urls: reported, complete: true };
+    },
     pairing,
     onConnections: () => {},
   });
@@ -95,8 +144,12 @@ afterEach(async () => {
 describe("host link", () => {
   it("pairs with an offered code, follows the host's usage and refreshes through it", async () => {
     const { link, shown } = client();
-    const connected = await link.connect(`127.0.0.1:${PORT}`, offered());
-    expect(connected).toMatchObject({ url: origin, state: "connecting", since: null });
+    const connected = await link.connect(`127.0.0.1:${port}`, offered());
+    expect(connected).toMatchObject({
+      routes: [{ url: origin, kind: "localNetwork", found: false }],
+      state: "connecting",
+      since: null,
+    });
     await until(() => link.read()?.state === "connected");
     expect(shown.at(-1)).toEqual(current);
 
@@ -170,6 +223,153 @@ describe("host link", () => {
     const restarted = client();
     restarted.link.start();
     await until(() => restarted.link.read()?.state === "connected");
+  });
+});
+
+describe("routes", () => {
+  it("falls back to a route the host reported, and moves back once the preferred one answers", async () => {
+    let cut = await forwarder();
+    reported = [origin];
+    const { link } = client();
+    await link.connect(forwarded, offered());
+    await until(() => link.read()?.active === forwarded && link.read()!.routes.length === 2);
+    expect(link.read()!.routes[1]).toEqual({ url: origin, kind: "localNetwork", found: true });
+
+    await cut();
+    await until(() => link.read()?.active === origin);
+    expect(link.read()?.state).toBe("connected");
+
+    cut = await forwarder();
+    await until(() => link.read()?.active === forwarded);
+    await cut();
+  });
+
+  it("takes a route without waiting on a hung one below it", async () => {
+    const hung = createTcpServer(() => {});
+    await new Promise<void>((resolve) => hung.listen(47_483, "127.0.0.1", resolve));
+    const token = pairing.pair(offered(), "laptop");
+    writeFileSync(
+      join(directory, "host-link.json"),
+      JSON.stringify({
+        host: "fedora",
+        id: "host-id",
+        routes: [
+          { url: origin, found: false },
+          { url: "http://127.0.0.1:47483", found: true },
+        ],
+        token: { plain: token },
+      }),
+    );
+    const { link } = client();
+    link.start();
+    // `until` gives up after about 2 seconds, well inside the 10 second request timeout.
+    await until(() => link.read()?.active === origin);
+    hung.close();
+  });
+
+  it("never sends the token to an address where another Tantalus answers", async () => {
+    const other = await impostor(47_481);
+    reported = ["http://127.0.0.1:47481"];
+    const { link } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.routes.length === 2);
+    await expect(link.addRoute("127.0.0.1:47481")).rejects.toThrow("already a route");
+    await expect(link.addRoute(`localhost:${port}`)).resolves.toMatchObject({ routes: { length: 3 } });
+
+    await server.listen(null);
+    await until(() => link.read()?.state === "unreachable");
+    expect(other.tokens).toEqual([]);
+    await other.close();
+  });
+
+  it("refuses to add an address where another Tantalus answers", async () => {
+    const other = await impostor(47_481);
+    const { link } = client();
+    await link.connect(origin, offered());
+    await expect(link.addRoute("127.0.0.1:47481")).rejects.toThrow("another Tantalus, not");
+    expect(other.tokens).toEqual([]);
+    await other.close();
+  });
+
+  it("learns the host ID and routes for a link saved before routes", async () => {
+    const token = pairing.pair(offered(), "laptop");
+    writeFileSync(
+      join(directory, "host-link.json"),
+      JSON.stringify({ url: origin, host: "fedora", token: { plain: token } }),
+    );
+    reported = [forwarded];
+    const { link } = client();
+    link.start();
+    await until(() => link.read()?.routes.length === 2);
+    const saved = JSON.parse(readFileSync(join(directory, "host-link.json"), "utf8"));
+    expect(saved).toMatchObject({
+      id: "host-id",
+      routes: [
+        { url: origin, found: false },
+        { url: forwarded, found: true },
+      ],
+    });
+  });
+
+  it("drops a found route a complete report leaves out, unless it is in use", () => {
+    const routes = [
+      { url: "http://192.168.1.5:4747", found: false },
+      { url: "http://192.168.1.6:4747", found: true },
+      { url: "http://192.168.1.7:4747", found: true },
+    ];
+    const report = { urls: ["http://192.168.1.8:4747"], complete: true };
+    expect(mergedRoutes(routes, report, "http://192.168.1.7:4747")).toEqual([
+      { url: "http://192.168.1.5:4747", found: false },
+      { url: "http://192.168.1.7:4747", found: true },
+      { url: "http://192.168.1.8:4747", found: true },
+    ]);
+    expect(mergedRoutes(routes, { ...report, complete: false }, "http://192.168.1.7:4747")).toEqual([
+      ...routes,
+      { url: "http://192.168.1.8:4747", found: true },
+    ]);
+  });
+
+  it("finds a route the host switches back on without waiting for the stream to drop", async () => {
+    const { link } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    reported = [forwarded];
+    await until(() => link.read()?.routes.length === 2);
+  });
+
+  it("keeps the routes it knows when the host cannot report them", async () => {
+    const saved = JSON.stringify({
+      host: "fedora",
+      id: "host-id",
+      routes: [
+        { url: origin, found: false },
+        { url: forwarded, found: true },
+      ],
+      token: { plain: pairing.pair(offered(), "laptop") },
+    });
+    writeFileSync(join(directory, "host-link.json"), saved);
+    reported = null;
+    const { link } = client();
+    link.start();
+    // By the third read the earlier ones have been handled.
+    await until(() => routeReads >= 3);
+    expect(readFileSync(join(directory, "host-link.json"), "utf8")).toBe(saved);
+    expect(link.read()?.routes).toHaveLength(2);
+  });
+
+  it("refreshes through a route it reaches when no stream is open", async () => {
+    const first = client();
+    await first.link.connect(origin, offered());
+    const restarted = client();
+    restarted.link.start();
+    expect((await restarted.link.refresh()).enabled.claude).toBe(false);
+  });
+
+  it("tells a Tailscale address from a local network one", () => {
+    expect(routeKind("https://fedora.tail1.ts.net:8443")).toBe("tailscale");
+    expect(routeKind("http://100.101.2.3:4747")).toBe("tailscale");
+    expect(routeKind("http://100.20.2.3:4747")).toBe("localNetwork");
+    expect(routeKind("http://192.168.1.5:4747")).toBe("localNetwork");
   });
 });
 

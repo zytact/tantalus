@@ -772,6 +772,133 @@ button.danger:hover:not(:disabled) {
 .settings-notice {
   margin-top: 0;
 }
+.status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status) 18%, transparent);
+}
+.status-dot.ok {
+  --status: var(--ok);
+}
+.status-dot.warn {
+  --status: var(--warn);
+}
+.status-dot.danger {
+  --status: var(--danger);
+}
+.routes {
+  padding: 2px 0 17px;
+  border-bottom: 1px solid var(--hairline);
+}
+.routes h3 {
+  margin: 0 0 7px 12px;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.route-group {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px) saturate(145%);
+}
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.route-group li {
+  position: relative;
+}
+/* Separators start after the leading icon, the way an inset grouped list draws them. */
+.route-group li + li::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 40px;
+  border-top: 1px solid var(--hairline);
+  content: "";
+}
+.route-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--ink);
+}
+.route-copy {
+  flex: 1;
+  min-width: 0;
+}
+.route-copy p {
+  margin: 0;
+}
+.route-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.route-found {
+  color: var(--text-faint);
+  font-weight: 450;
+}
+.route-copy .route-url {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.route-pill {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+  font-size: 0.68rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.route-add {
+  padding: 4px 12px 4px 40px;
+}
+.route-add-button {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  font-weight: 600;
+}
+.route-add-button:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+  transform: none;
+}
+.route-add .hub-form {
+  padding: 8px 0;
+  border-bottom: 0;
+}
+.route-add .settings-notice {
+  margin-bottom: 8px;
+}
+.route-footer {
+  max-width: 28rem;
+  margin: 7px 12px 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
 .tray-usage-footer {
   display: flex;
   align-items: center;

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
+import { PROTOCOL } from "../shared/ipc";
 import { Pairing } from "./pairing";
 import { deviceName, trustedHost, WebServer } from "./web-server";
 
@@ -62,6 +63,7 @@ beforeAll(async () => {
   server = new WebServer({
     root,
     port: PORT,
+    id: "host-id",
     snapshot: () => current,
     refresh: async () => {
       await gate;
@@ -69,6 +71,7 @@ beforeAll(async () => {
       current = snapshot(false);
       return current;
     },
+    routes: async () => ({ urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"], complete: true }),
     pairing,
     onConnections: () => {},
     now: () => 1_234_567,
@@ -92,7 +95,7 @@ describe("web server", () => {
   });
 
   it("serves usage only to a paired device", async () => {
-    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events"]) {
+    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events", "/api/routes"]) {
       expect((await fetch(`${origin}${path}`)).status).toBe(401);
       expect((await fetch(`${origin}${path}`, { headers: { cookie: "tantalus-47470=forged" } })).status).toBe(401);
     }
@@ -119,6 +122,14 @@ describe("web server", () => {
     expect(await (await paired("/api/current/usageSnapshot")).json()).toEqual(current);
     expect(await (await paired("/api/current/serverEpoch")).json()).toBe(1_234_567);
     expect(await (await paired("/api/current/updateAvailable")).json()).toBeNull();
+  });
+
+  it("reports its ID to anyone, and its routes only to a paired device", async () => {
+    expect(await (await fetch(`${origin}/api/version`)).json()).toMatchObject({ protocol: PROTOCOL, id: "host-id" });
+    expect(await (await paired("/api/routes")).json()).toEqual({
+      urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"],
+      complete: true,
+    });
   });
 
   it("refreshes usage only through POST", async () => {

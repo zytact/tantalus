@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings, recordSample } from "../shared/pace";
 import {
   defaultSettings,
+  loadHostId,
+  loadHostLink,
   loadPaceLogs,
   loadPaceSettings,
   loadProxyHubSettings,
@@ -69,6 +71,31 @@ describe("remote access settings", () => {
     expect(loadRemoteSettings(file)).toEqual(noRemoteAccess);
     saveSettings(file, { localNetwork: false, tailscale: true });
     expect(loadRemoteSettings(file)).toEqual({ localNetwork: false, tailscale: true });
+  });
+});
+
+describe("host link settings", () => {
+  it("loads a link saved before routes as its one typed route, with no host ID", () => {
+    const file = path();
+    writeFileSync(file, '{"url":"http://192.168.1.5:4747","host":"fedora","token":{"plain":"t"}}');
+    expect(loadHostLink(file)).toEqual({
+      host: "fedora",
+      id: null,
+      routes: [{ url: "http://192.168.1.5:4747", found: false }],
+      token: { plain: "t" },
+    });
+    writeFileSync(
+      file,
+      '{"host":"fedora","id":"a","routes":[{"url":"ftp://fedora","found":true}],"token":{"plain":"t"}}',
+    );
+    expect(loadHostLink(file)).toBeNull();
+  });
+
+  it("makes a host ID once and keeps it", () => {
+    const file = path();
+    const id = loadHostId(file);
+    expect(id).toMatch(/^[\da-f-]{36}$/);
+    expect(loadHostId(file)).toBe(id);
   });
 });
 

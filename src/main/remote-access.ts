@@ -1,5 +1,5 @@
 import { networkInterfaces } from "node:os";
-import type { RemoteAccess, RemoteRoute, RemoteSettings } from "../shared/ipc";
+import type { HostRoutes, RemoteAccess, RemoteRoute, RemoteSettings } from "../shared/ipc";
 import type { Identity } from "./identity";
 import { loadRemoteSettings, saveSettings } from "./settings";
 import { serveTailscale, stopTailscale, tailscaleUrl } from "./tailscale";
@@ -91,6 +91,15 @@ export class RemoteAccessRoutes {
             )
           : [],
       },
+    };
+  }
+
+  /** What `/api/routes` reports to a paired Tantalus. */
+  async served(): Promise<HostRoutes> {
+    const { localNetwork, tailscale } = await this.read();
+    return {
+      urls: [...tailscale.urls, ...localNetwork.urls],
+      complete: !tailscale.enabled || tailscale.urls.length > 0,
     };
   }
 
