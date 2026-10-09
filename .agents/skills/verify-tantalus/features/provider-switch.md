@@ -2,7 +2,7 @@
 
 Settings has accessible switches for direct Codex, Claude, and Opencode. Defaults are Codex and Claude on, Opencode off. A missing settings file uses those defaults. A malformed or unreadable file disables direct providers. Separately configured hubs are unaffected.
 
-The main process saves the proposed choice before changing live state. Turning a direct provider off retains its last reading in the snapshot, removes its allowance block and tray rows, and prevents credential reads. Turning one on refreshes it immediately. A save failure preserves the previous setting and shows an alert. Each hub has its own switch for all its Codex and Claude accounts, independent of the direct switches. Opencode has no hub support.
+The main process saves the proposed choice before changing live state. Turning a direct provider off drops its accounts from the snapshot, which removes its allowance blocks and tray rows, and prevents credential reads. Turning one on refreshes it immediately. A save failure preserves the previous setting and shows an alert. Each hub has its own switch for all its Codex and Claude accounts, independent of the direct switches. Opencode has no hub support.
 
 ## Preview proof
 
