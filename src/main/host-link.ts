@@ -17,8 +17,8 @@ const RETRY_LONGEST_MILLISECONDS = 30_000;
 /** A host pings every open stream every 15 seconds, so this much silence means the link is gone. */
 const SILENCE_MILLISECONDS = 45_000;
 const REQUEST_TIMEOUT_MILLISECONDS = 10_000;
-/** How often a link on a fallback route checks whether a preferred one answers again. */
-const PREFERRED_PROBE_MILLISECONDS = 30_000;
+/** How often a followed link reads the host's routes again and checks whether a preferred one answers. */
+const ROUTE_CHECK_MILLISECONDS = 30_000;
 
 /** Seals the token with the operating system's keychain where there is one. */
 export type TokenVault = {
@@ -210,9 +210,7 @@ export class HostLinkClient {
       return "failed";
     }
     session.url = reached.url;
-    void this.learn(session, reached).catch((error: unknown) =>
-      console.error("Could not save the host's routes:", error),
-    );
+    void this.learn(session, reached);
     const outcome = await this.stream(session, reached.url);
     session.url = null;
     if (outcome === "failed") this.lost(session, "unreachable");
@@ -258,7 +256,12 @@ export class HostLinkClient {
     // A route list that did not arrive says nothing about which routes are gone.
     const routes = reported ? mergedRoutes(session.saved.routes, reported, url) : session.saved.routes;
     const saved = { ...session.saved, id, routes };
-    if (JSON.stringify(saved) !== JSON.stringify(session.saved)) this.save(session, saved);
+    if (JSON.stringify(saved) === JSON.stringify(session.saved)) return;
+    try {
+      this.save(session, saved);
+    } catch (error) {
+      console.error("Could not save the host's routes:", error);
+    }
   }
 
   /** Follows one stream until it ends. `delivered` means it carried at least one snapshot. A stream
@@ -293,10 +296,12 @@ export class HostLinkClient {
   }
 
   /** Resolves true once a route preferred over `url` answers as the followed host, or false once
-   * `signal` aborts. */
+   * `signal` aborts. It reads the host's routes again each time, so a route the host switches back on
+   * is found without waiting for the stream to drop. */
   private async preferredAnswer(session: Session, url: string, signal: AbortSignal): Promise<boolean> {
     while (!signal.aborted) {
-      await this.sleep(PREFERRED_PROBE_MILLISECONDS, signal);
+      await this.sleep(ROUTE_CHECK_MILLISECONDS, signal);
+      await this.learn(session, { url, id: session.saved.id });
       const routes = preferred(session.saved.routes);
       const inUse = routes.findIndex((route) => route.url === url);
       const better = routes.slice(0, inUse);
@@ -371,12 +376,14 @@ export class HostLinkClient {
 /** A route that answered as the followed host, with the host ID it reported. */
 type Reached = { url: string; id: string | null };
 
-/** Tailscale first, since it is encrypted end to end while the local network route is plain HTTP. */
+/** Tailscale first, since it is encrypted end to end while the local network route is plain HTTP.
+ * Within a kind HTTPS comes first, so the order does not depend on when each route was learned. */
 function preferred(routes: SavedRoute[]): SavedRoute[] {
   return routes.toSorted((a, b) => rank(a) - rank(b));
 }
 
-const rank = (route: SavedRoute) => (routeKind(route.url) === "tailscale" ? 0 : 1);
+const rank = ({ url }: SavedRoute) =>
+  (routeKind(url) === "tailscale" ? 0 : 2) + (new URL(url).protocol === "https:" ? 0 : 1);
 
 /** The routes as Settings lists them, most preferred first. */
 const routeViews = (routes: SavedRoute[]): HostRoute[] =>

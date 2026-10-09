@@ -14,8 +14,9 @@ import type { TokenVault } from "./host-link";
 import { Pairing } from "./pairing";
 import { WebServer } from "./web-server";
 
-const PORT = 47_480;
-const origin = `http://127.0.0.1:${PORT}`;
+/** Each test's host gets its own port, so no client reuses a connection to the previous one. */
+let port = 47_500;
+let origin: string;
 const FORWARD_PORT = 47_482;
 const forwarded = `http://127.0.0.1:${FORWARD_PORT}`;
 
@@ -68,7 +69,7 @@ const offered = () => {
 async function forwarder() {
   const sockets = new Set<Socket>();
   const forward = createTcpServer((socket) => {
-    const upstream = connect(PORT, "127.0.0.1");
+    const upstream = connect(port, "127.0.0.1");
     for (const end of [socket, upstream]) {
       sockets.add(end);
       end.on("close", () => sockets.delete(end));
@@ -102,6 +103,8 @@ async function until(check: () => boolean) {
 }
 
 beforeEach(async () => {
+  port += 1;
+  origin = `http://127.0.0.1:${port}`;
   directory = mkdtempSync(join(tmpdir(), "tantalus-link-"));
   const root = join(directory, "dist");
   mkdirSync(root);
@@ -117,7 +120,7 @@ beforeEach(async () => {
   );
   server = new WebServer({
     root,
-    port: PORT,
+    port,
     id: "host-id",
     snapshot: () => current,
     refresh: async () => (current = snapshot(false)),
@@ -141,7 +144,7 @@ afterEach(async () => {
 describe("host link", () => {
   it("pairs with an offered code, follows the host's usage and refreshes through it", async () => {
     const { link, shown } = client();
-    const connected = await link.connect(`127.0.0.1:${PORT}`, offered());
+    const connected = await link.connect(`127.0.0.1:${port}`, offered());
     expect(connected).toMatchObject({
       routes: [{ url: origin, kind: "localNetwork", found: false }],
       state: "connecting",
@@ -271,7 +274,7 @@ describe("routes", () => {
     await link.connect(origin, offered());
     await until(() => link.read()?.routes.length === 2);
     await expect(link.addRoute("127.0.0.1:47481")).rejects.toThrow("already a route");
-    await expect(link.addRoute(`localhost:${PORT}`)).resolves.toMatchObject({ routes: { length: 3 } });
+    await expect(link.addRoute(`localhost:${port}`)).resolves.toMatchObject({ routes: { length: 3 } });
 
     await server.listen(null);
     await until(() => link.read()?.state === "unreachable");
@@ -326,6 +329,14 @@ describe("routes", () => {
     ]);
   });
 
+  it("finds a route the host switches back on without waiting for the stream to drop", async () => {
+    const { link } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    reported = [forwarded];
+    await until(() => link.read()?.routes.length === 2);
+  });
+
   it("keeps the routes it knows when the host cannot report them", async () => {
     reported = [forwarded];
     const first = client();
@@ -336,7 +347,7 @@ describe("routes", () => {
     reported = null;
     const restarted = client();
     restarted.link.start();
-    await until(() => routeReads === 2 && restarted.link.read()?.state === "connected");
+    await until(() => routeReads >= 2 && restarted.link.read()?.state === "connected");
     expect(readFileSync(join(directory, "host-link.json"), "utf8")).toBe(saved);
     expect(restarted.link.read()?.routes).toHaveLength(2);
   });
