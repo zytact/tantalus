@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { version } from "../../package.json";
 import type { ReleaseChange, ReleaseNotes } from "../shared/ipc";
 import { PendingLabel } from "./busy";
 import type { Loadable } from "./busy";
@@ -9,14 +8,16 @@ const kindLabels = { new: "New", fixed: "Fixed", changed: "Changed" } satisfies 
 /** The groups a release's changes fall into, in the order they are shown. */
 const kindOrder: ReleaseChange["kind"][] = ["new", "fixed", "changed"];
 
-/** A full-window page listing what changed between the running build and `target`. It reads the
- * notes when it opens, and `footer` holds the install action. */
+/** A full-window page listing what changed up to an update. `range` names the versions it spans. It
+ * reads the notes through `command` when it opens, and `footer` holds the install action. */
 export function ReleaseNotesPage({
-  target,
+  range,
+  command,
   onClose,
   footer,
 }: {
-  target: string;
+  range: string;
+  command: "releaseNotes" | "hostReleaseNotes";
   onClose: () => void;
   footer: ReactNode;
 }) {
@@ -25,8 +26,8 @@ export function ReleaseNotesPage({
 
   useEffect(() => {
     dialog.current?.showModal();
-    window.tantalus.invoke("releaseNotes").then(setReleases, () => setReleases("unavailable"));
-  }, []);
+    window.tantalus.invoke(command).then(setReleases, () => setReleases("unavailable"));
+  }, [command]);
 
   return (
     <dialog ref={dialog} className="release-notes" aria-labelledby="release-notes-title" onClose={onClose}>
@@ -34,9 +35,7 @@ export function ReleaseNotesPage({
         <header>
           <div>
             <h1 id="release-notes-title">What's new</h1>
-            <p className="status">
-              v{version} to v{target}
-            </p>
+            <p className="status">{range}</p>
           </div>
           <button onClick={() => dialog.current?.close()}>Back</button>
         </header>

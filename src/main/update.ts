@@ -43,7 +43,7 @@ export class Updater {
   private progress: InstallProgress | null = null;
 
   constructor(
-    private readonly announce: (update: AvailableUpdate) => void,
+    private readonly announce: (update: AvailableUpdate | null) => void,
     private readonly report: (progress: InstallProgress | null) => void,
   ) {}
 
@@ -67,7 +67,7 @@ export class Updater {
     const manifest = parseManifest(await response.json());
     this.pending = selectUpdate(manifest, app.getVersion());
     const update = this.available();
-    if (update) this.announce(update);
+    this.announce(update);
     return update;
   }
 
