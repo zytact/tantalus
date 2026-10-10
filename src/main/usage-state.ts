@@ -54,6 +54,8 @@ export class UsageState {
    * and keeps nothing it reads. */
   paused = false;
   private again: RefreshScope | null = null;
+  /** Called when a read of everything finishes, whoever asked for it. */
+  onFullRead: () => void = () => {};
   private hubConfigs: ProxyHubConfig[];
 
   constructor(
@@ -98,8 +100,10 @@ export class UsageState {
   }
 
   private async run(scope: RefreshScope): Promise<UsageSnapshot> {
+    let full = false;
     for (;;) {
       this.again = null;
+      full ||= scope === "all";
       const activity = this.pace.readActivity(this.sources()).catch(() => noActivity);
       const hubs = this.snapshot.proxy_hubs.flatMap((hub) => {
         const config = this.hubConfigs.find(({ id }) => id === hub.id);
@@ -118,6 +122,7 @@ export class UsageState {
       this.snapshot = this.pace.track(this.snapshot, worked);
       if (!this.again || this.paused) {
         this.running = null;
+        if (full) this.onFullRead();
         this.publish(this.snapshot);
         return this.snapshot;
       }
@@ -507,19 +512,30 @@ export function nextBackoff(
   return current === null ? start : Math.min(current * 2, interval);
 }
 
-/** Retries read only what has not settled, and never sleep past the time everything is due again. */
+/** Reads everything once `REFRESH_INTERVAL` has passed since the last full read finished, whoever asked
+ * for it. Retries before then read only what has not settled, and never sleep past that point. `sleep`
+ * resolves early when `wake` aborts. A paused state reads nothing, so a full attempt moves `due` too. */
 export async function pollUsage(
   state: UsageState,
-  sleep: (milliseconds: number) => Promise<unknown>,
+  sleep: (milliseconds: number, wake: AbortSignal) => Promise<unknown>,
   now: () => number = Date.now,
 ) {
   let backoff: number | null = null;
   let due = -Infinity;
+  let wake = new AbortController();
+  state.onFullRead = () => {
+    due = now() + REFRESH_INTERVAL;
+    wake.abort();
+  };
+  let scope: RefreshScope | null = "all";
   for (;;) {
-    const scope = now() >= due ? "all" : "unsettled";
     if (scope === "all") due = now() + REFRESH_INTERVAL;
-    const snapshot = await state.refresh(scope);
+    const snapshot = scope ? await state.refresh(scope) : state.snapshot;
     backoff = nextBackoff(settled(snapshot), backoff, RETRY_BACKOFF_START, REFRESH_INTERVAL);
-    await sleep(backoff === null ? REFRESH_INTERVAL : Math.min(backoff, Math.max(0, due - now())));
+    const untilDue = Math.max(0, due - now());
+    const wait = Math.min(backoff ?? REFRESH_INTERVAL, untilDue);
+    wake = new AbortController();
+    await sleep(wait, wake.signal);
+    scope = wake.signal.aborted ? null : wait === untilDue ? "all" : "unsettled";
   }
 }
