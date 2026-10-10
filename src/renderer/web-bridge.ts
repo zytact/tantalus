@@ -34,10 +34,9 @@ const commands: {
 
 /** The page as the host serves it now, which names the build's files, or null when it does not answer. */
 const servedPage = () =>
-  fetch("/", { cache: "no-store" }).then(
-    (response) => (response.ok ? response.text() : null),
-    () => null,
-  );
+  fetch("/", { cache: "no-store" })
+    .then((response) => (response.ok ? response.text() : null))
+    .catch(() => null);
 
 /** Keeps the page current through a host that goes away and comes back. The browser retries a dropped
  * stream itself, and the host sends everything again, so the page reloads only when the host came back
