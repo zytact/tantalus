@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { PROTOCOL } from "../shared/ipc";
-import type { HostLink } from "../shared/ipc";
+import type { AvailableUpdate, HostLink, HostUpdateEvents } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
 import { HostLinkClient, hostUrl, mergedRoutes, routeKind } from "./host-link";
@@ -43,21 +43,28 @@ let clients: HostLinkClient[];
 let reported: string[] | null;
 /** How many times a client asked the host for its routes. */
 let routeReads: number;
+/** The update the host found, once a client asked it to check. */
+const update: AvailableUpdate = { version: "9.0.0", manualInstall: false, notices: [] };
+let offer: AvailableUpdate | null;
+/** The acknowledgements each install request carried. */
+let installs: string[][];
 
 /** A client that records what it shows, with retries a few milliseconds apart. */
 function client() {
   const shown: UsageSnapshot[] = [];
   const links: (HostLink | null)[] = [];
+  const updates: HostUpdateEvents[] = [];
   const link = new HostLinkClient({
     path: join(directory, "host-link.json"),
     vault,
     onSnapshot: (published) => shown.push(published),
+    onHostUpdate: (published) => updates.push(published),
     onChange: (changed) => links.push(changed),
     sleep: (_, signal) => new Promise((resolve) => (signal.aborted ? resolve() : setTimeout(resolve, 5))),
     now: () => 1_000,
   });
   clients.push(link);
-  return { link, shown, links };
+  return { link, shown, links, updates };
 }
 
 const offered = () => {
@@ -113,6 +120,8 @@ beforeEach(async () => {
   clients = [];
   reported = [];
   routeReads = 0;
+  offer = null;
+  installs = [];
   pairing = new Pairing(
     join(directory, "paired-devices.json"),
     () => {},
@@ -128,6 +137,20 @@ beforeEach(async () => {
       routeReads += 1;
       if (!reported) throw new Error("Tailscale did not answer.");
       return { urls: reported, complete: true };
+    },
+    updates: {
+      available: () => offer,
+      progress: () => null,
+      check: async () => {
+        offer = update;
+        server.publish("hostUpdate", offer);
+        return offer;
+      },
+      install: async (acknowledgedNoticeIds) => {
+        installs.push(acknowledgedNoticeIds);
+        throw new Error("Could not install the update: the download returned 404");
+      },
+      notes: async () => [{ version: update.version, publishedAt: null, changes: [] }],
     },
     pairing,
     onConnections: () => {},
@@ -158,7 +181,7 @@ describe("host link", () => {
     expect(pairing.read(new Set()).devices).toHaveLength(1);
 
     expect((await link.refresh()).enabled.claude).toBe(false);
-    server.publish(snapshot(true));
+    server.publish("usageSnapshot", snapshot(true));
     await until(() => shown.at(-1)?.enabled.claude === true);
   });
 
@@ -223,6 +246,35 @@ describe("host link", () => {
     const restarted = client();
     restarted.link.start();
     await until(() => restarted.link.read()?.state === "connected");
+  });
+});
+
+describe("host update", () => {
+  it("checks for, shows and installs the host's update, and forgets it with the host", async () => {
+    const { link, updates } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    expect(link.updates.hostUpdate).toBeNull();
+
+    expect(await link.checkUpdate()).toEqual(update);
+    await until(() => link.updates.hostUpdate !== null);
+    expect(updates.at(-1)).toEqual({ hostUpdate: update, hostInstallProgress: null });
+    expect(await link.releaseNotes()).toEqual([{ version: "9.0.0", publishedAt: null, changes: [] }]);
+    await expect(link.installUpdate(["notice"])).rejects.toThrow(
+      "Could not install the update: the download returned 404",
+    );
+    expect(installs).toEqual([["notice"]]);
+
+    link.disconnect();
+    expect(updates.at(-1)).toEqual({ hostUpdate: null, hostInstallProgress: null });
+  });
+
+  it("says the host restarts when it stops answering an install", async () => {
+    const { link } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    await server.listen(null);
+    await expect(link.installUpdate([])).rejects.toThrow("stopped answering. It restarts once the install finishes.");
   });
 });
 

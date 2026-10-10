@@ -5,7 +5,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
 import { PROTOCOL } from "../shared/ipc";
-import type { HostHello, HostRoutes } from "../shared/ipc";
+import type { AvailableUpdate, HostEvents, HostHello, HostRoutes, InstallProgress, ReleaseNotes } from "../shared/ipc";
 import type { UsageSnapshot } from "../shared/usage";
 import { nowEpoch } from "../shared/usage";
 import { field } from "./parse";
@@ -19,8 +19,8 @@ const contentTypes: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-/** The largest pairing request body read. */
-const PAIR_BODY_BYTES = 1024;
+/** The largest request body read. */
+const BODY_BYTES = 1024;
 /** Every open stream gets a comment this often, so a client notices a host that vanished without
  * closing the connection. */
 export const PING_MILLISECONDS = 15_000;
@@ -28,6 +28,15 @@ export const PING_MILLISECONDS = 15_000;
 const DEVICE_NAME_LENGTH = 64;
 /** A browser keeps its pairing until the host removes the device. */
 const COOKIE_SECONDS = 10 * 365 * 24 * 60 * 60;
+
+/** The host's updater, as a paired device drives it. */
+export type HostUpdates = {
+  available: () => AvailableUpdate | null;
+  progress: () => InstallProgress | null;
+  check: () => Promise<AvailableUpdate | null>;
+  install: (acknowledgedNoticeIds: string[]) => Promise<void>;
+  notes: () => Promise<ReleaseNotes[]>;
+};
 
 export type WebServerOptions = {
   root: string;
@@ -38,14 +47,16 @@ export type WebServerOptions = {
   refresh: () => Promise<UsageSnapshot>;
   /** Every address the page is served on, which a paired Tantalus falls back between. */
   routes: () => Promise<HostRoutes>;
+  updates: HostUpdates;
   pairing: Pairing;
   /** Called when a device starts or stops following usage. */
   onConnections: () => void;
   now?: () => number;
 };
 
-/** Serves the built page to browsers on other devices: snapshots over HTTP and server-sent events,
- * plus a guarded refresh action. The page itself is public, but usage goes only to paired devices. */
+/** Serves the built page to browsers on other devices: snapshots and the host's update over HTTP and
+ * server-sent events, plus guarded actions to refresh usage and to check for and install that update.
+ * The page itself is public, but everything else goes only to paired devices. */
 export class WebServer {
   private server: Server | null = null;
   private host: string | null = null;
@@ -84,8 +95,8 @@ export class WebServer {
     }, PING_MILLISECONDS);
   }
 
-  publish(snapshot: UsageSnapshot) {
-    for (const listener of this.listeners.keys()) listener.write(event(snapshot));
+  publish<E extends keyof HostEvents>(name: E, payload: HostEvents[E]) {
+    for (const listener of this.listeners.keys()) listener.write(event(name, payload));
   }
 
   /** The devices with a stream open. */
@@ -139,19 +150,24 @@ export class WebServer {
     void this.sendFile(response, path);
   }
 
+  /** What a paired device can do to the host, keyed by the path under `/api/` and the action header a
+   * POST there must carry. */
+  private readonly actions = new Map<string, (request: IncomingMessage) => Promise<unknown>>([
+    ["refresh", () => this.options.refresh().catch(() => Promise.reject(new Error("Could not refresh")))],
+    ["check-update", () => this.options.updates.check()],
+    ["update", (request) => this.install(request)],
+  ]);
+
   private respondPaired(device: string, path: string, request: IncomingMessage, response: ServerResponse) {
-    if (path === "/api/refresh") {
-      if (!action(request, "refresh")) return send(response, 405, "text/plain", "Method not allowed");
-      return void this.options.refresh().then(
-        (snapshot) =>
-          this.options.pairing.holds(device)
-            ? send(response, 200, "application/json", JSON.stringify(snapshot))
-            : send(response, 401, "text/plain", "Pair this device first"),
-        () => send(response, 500, "text/plain", "Could not refresh"),
-      );
+    const name = path.slice("/api/".length);
+    const run = this.actions.get(name);
+    if (run) {
+      if (!action(request, name)) return send(response, 405, "text/plain", "Method not allowed");
+      return void this.answer(device, response, run(request));
     }
     if (request.method !== "GET") return send(response, 405, "text/plain", "Method not allowed");
     if (path === "/api/events") return this.stream(device, request, response);
+    if (path === "/api/release-notes") return void this.answer(device, response, this.options.updates.notes());
     if (path === "/api/routes") {
       return void this.options.routes().then(
         (routes) => this.sendJson(response, routes),
@@ -160,6 +176,27 @@ export class WebServer {
     }
     if (path.startsWith("/api/current/")) return this.sendCurrent(response, path);
     send(response, 404, "text/plain", "Not found");
+  }
+
+  /** Installs the update the host already found. The request names the notices the device's user
+   * acknowledged and nothing else. A host that installs restarts before it can answer. */
+  private async install(request: IncomingMessage) {
+    const acknowledged = field(await jsonBody(request).catch(() => null), "acknowledgedNoticeIds");
+    if (!Array.isArray(acknowledged) || !acknowledged.every((id) => typeof id === "string")) {
+      throw new Error("Bad request");
+    }
+    await this.options.updates.install(acknowledged);
+  }
+
+  /** Answers with what `work` resolves to, or with its error message for the device to show. A device
+   * removed while it ran gets neither. */
+  private async answer(device: string, response: ServerResponse, work: Promise<unknown>) {
+    const [status, type, body] = await work.then(
+      (value) => [200, "application/json", JSON.stringify(value ?? null)] as const,
+      (error: unknown) => [500, "text/plain", error instanceof Error ? error.message : String(error)] as const,
+    );
+    if (!this.options.pairing.holds(device)) return send(response, 401, "text/plain", "Pair this device first");
+    send(response, status, type, body);
   }
 
   private routePair(request: IncomingMessage, response: ServerResponse) {
@@ -205,14 +242,18 @@ export class WebServer {
     const current: Record<string, () => unknown> = {
       "/api/current/usageSnapshot": this.options.snapshot,
       "/api/current/serverEpoch": this.now,
+      "/api/current/hostUpdate": this.options.updates.available,
+      "/api/current/hostInstallProgress": this.options.updates.progress,
     };
     send(response, 200, "application/json", JSON.stringify(current[path]?.() ?? null));
   }
 
-  /** The first event is the current snapshot, so a browser that reconnects misses nothing. */
+  /** The first events are the current snapshot and update, so a browser that reconnects misses nothing. */
   private stream(device: string, request: IncomingMessage, response: ServerResponse) {
     response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-    response.write(event(this.options.snapshot()));
+    response.write(event("usageSnapshot", this.options.snapshot()));
+    response.write(event("hostUpdate", this.options.updates.available()));
+    response.write(event("hostInstallProgress", this.options.updates.progress()));
     this.listeners.set(response, device);
     this.options.onConnections();
     request.on("close", () => this.drop(response));
@@ -264,7 +305,7 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
   let body = "";
   for await (const chunk of request) {
     body += String(chunk);
-    if (body.length > PAIR_BODY_BYTES) throw new Error("Body too large.");
+    if (body.length > BODY_BYTES) throw new Error("Body too large.");
   }
   return JSON.parse(body);
 }
@@ -302,7 +343,8 @@ function pathname(url = "/"): string | null {
   }
 }
 
-const event = (snapshot: UsageSnapshot) => `event: usageSnapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
+const event = <E extends keyof HostEvents>(name: E, payload: HostEvents[E]) =>
+  `event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`;
 
 function send(response: ServerResponse, status: number, type: string, body: string | Buffer) {
   response.writeHead(status, { "content-type": type, "x-content-type-options": "nosniff" });

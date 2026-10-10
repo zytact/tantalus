@@ -14,7 +14,7 @@ import { ProxyHubSettingsRows } from "./proxy-hub-settings";
 import { QrCode } from "./qr-code";
 import { SettingPending, Toggle } from "./settings-controls";
 import { TrayUsageRows } from "./tray-usage-settings";
-import { UpdateNotice } from "./update-notice";
+import { UpdateNotice, useUpdateCheck } from "./update-notice";
 import { WindowStartRows } from "./window-start-settings";
 
 /** The provider choice, or why it cannot be shown yet. */
@@ -257,23 +257,9 @@ function RemoteRow({
   );
 }
 
-/** The running version and a manual check. A found release is offered by the update notice,
- * which the main process's announcement reaches the same way as a background check. */
+/** The running version and a manual check for a newer one. */
 function VersionRow() {
-  const [check, setCheck] = useState<"idle" | "checking" | "latest">("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  const checkForUpdate = async () => {
-    setCheck("checking");
-    setError(null);
-    try {
-      const update = await window.tantalus.invoke("checkForUpdate");
-      setCheck(update ? "idle" : "latest");
-    } catch (reason) {
-      setCheck("idle");
-      setError(reason instanceof Error ? reason.message : "Could not check for updates.");
-    }
-  };
+  const { state: check, error, check: checkForUpdate } = useUpdateCheck();
 
   return (
     <>

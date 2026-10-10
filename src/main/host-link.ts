@@ -2,9 +2,21 @@ import { rmSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { hostname } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { hostLinkProblem } from "../shared/host-link";
+import { hostLinkProblem, hostRequestInit, hostUnanswered } from "../shared/host-link";
+import type { HostRequest } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
-import type { HostHello, HostLink, HostLinkState, HostRoute, HostRoutes, RemoteRoute } from "../shared/ipc";
+import type {
+  AvailableUpdate,
+  HostEvents,
+  HostHello,
+  HostLink,
+  HostLinkState,
+  HostRoute,
+  HostRoutes,
+  HostUpdateEvents,
+  ReleaseNotes,
+  RemoteRoute,
+} from "../shared/ipc";
 import { nowEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { field } from "./parse";
@@ -19,6 +31,10 @@ const SILENCE_MILLISECONDS = 45_000;
 const REQUEST_TIMEOUT_MILLISECONDS = 10_000;
 /** How often a followed link reads the host's routes again and checks whether a preferred one answers. */
 const ROUTE_CHECK_MILLISECONDS = 30_000;
+/** The host gives GitHub 30 seconds to answer a check or the release notes. */
+const UPDATE_TIMEOUT_MILLISECONDS = 45_000;
+/** The host gives a download 10 minutes, then installs, which can wait on a password prompt. */
+const INSTALL_TIMEOUT_MILLISECONDS = 30 * 60 * 1000;
 
 /** Seals the token with the operating system's keychain where there is one. */
 export type TokenVault = {
@@ -31,6 +47,8 @@ export type HostLinkOptions = {
   vault: TokenVault;
   /** Called with each snapshot the host publishes. */
   onSnapshot: (snapshot: UsageSnapshot) => void;
+  /** Called with the host's update and its install progress when either changes. */
+  onHostUpdate: (updates: HostUpdateEvents) => void;
   /** Called whenever the link's state changes, with null once it is forgotten. */
   onChange: (link: HostLink | null) => void;
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
@@ -63,6 +81,7 @@ export class HostLinkClient {
   private attempt = 0;
   private link: HostLink | null = null;
   private latest: UsageSnapshot | null = null;
+  private hostUpdates: HostUpdateEvents = { hostUpdate: null, hostInstallProgress: null };
   private readonly sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   private readonly now: () => number;
   /** The host to follow, saved or just paired. */
@@ -81,6 +100,11 @@ export class HostLinkClient {
   /** The last snapshot the host published, or null before the first arrives. */
   get snapshot(): UsageSnapshot | null {
     return this.latest;
+  }
+
+  /** The update waiting on the host and its install progress, as last streamed. */
+  get updates(): HostUpdateEvents {
+    return this.hostUpdates;
   }
 
   read(): HostLink | null {
@@ -146,6 +170,7 @@ export class HostLinkClient {
     this.saved = null;
     rmSync(this.options.path, { force: true });
     this.latest = null;
+    this.forgetUpdates();
     this.set(null);
   }
 
@@ -169,6 +194,52 @@ export class HostLinkClient {
     return snapshot;
   }
 
+  /** Asks the host to look for a newer release of itself. */
+  checkUpdate(): Promise<AvailableUpdate | null> {
+    return this.ask({ path: "/api/check-update", action: "check-update" }, UPDATE_TIMEOUT_MILLISECONDS);
+  }
+
+  /** Asks the host to install the update it found. A host that installs restarts instead of answering,
+   * so this resolves only for a failure, which it throws. */
+  installUpdate(acknowledgedNoticeIds: string[]): Promise<void> {
+    return this.ask(
+      { path: "/api/update", action: "update", body: { acknowledgedNoticeIds } },
+      INSTALL_TIMEOUT_MILLISECONDS,
+    );
+  }
+
+  releaseNotes(): Promise<ReleaseNotes[]> {
+    return this.ask({ path: "/api/release-notes" }, UPDATE_TIMEOUT_MILLISECONDS);
+  }
+
+  /** Sends the host a paired request and returns its answer. A failure the host explains is thrown
+   * in the host's words. */
+  private async ask<T>(request: HostRequest, timeout: number): Promise<T> {
+    const session = this.session;
+    if (!session) throw new Error("Not following a host.");
+    const { host } = session.saved;
+    const response = await this.send(session, request, timeout).catch(() => null);
+    if (!response) throw new Error(hostUnanswered(host, request.action === "update"));
+    if (response.status === 401) this.removed(session);
+    // A host from before remote updates has no such path.
+    if (response.status === 404 || response.status === 405) {
+      throw new Error(`Tantalus on ${host} is too old to update from here. Update it on ${host} first.`);
+    }
+    if (!response.ok) throw new Error(await response.text());
+    return response.json();
+  }
+
+  private async send(session: Session, request: HostRequest, timeout: number): Promise<Response> {
+    const url = await this.routeFor(session);
+    if (!url) throw new LinkError(`Could not reach ${session.saved.host}.`);
+    const init = hostRequestInit(request);
+    return fetch(`${url}${request.path}`, {
+      ...init,
+      headers: { ...init.headers, ...this.authorization(session.saved) },
+      signal: AbortSignal.any([session.stop.signal, AbortSignal.timeout(timeout)]),
+    });
+  }
+
   /** The route the open stream runs over, or between streams the one a stream would take. */
   private async routeFor(session: Session): Promise<string | null> {
     if (session.url) return session.url;
@@ -182,6 +253,7 @@ export class HostLinkClient {
     this.session = session;
     this.saved = saved;
     this.latest = null;
+    this.forgetUpdates();
     this.set({ host: saved.host, state: "connecting", since: null, routes: routeViews(saved.routes), active: null });
     void this.run(session);
   }
@@ -282,9 +354,13 @@ export class HostLinkClient {
         signal: AbortSignal.any([session.stop.signal, silence.signal, ended.signal]),
       });
       if (response.status === 401) this.removed(session);
-      for await (const snapshot of events(response, () => silence.reset())) {
-        delivered = true;
-        this.publish(session, url, snapshot);
+      for await (const message of events(response, () => silence.reset())) {
+        if (message.event === "usageSnapshot") {
+          delivered = true;
+          this.publish(session, url, message.payload);
+        } else if (!session.stop.signal.aborted) {
+          this.showUpdates({ ...this.hostUpdates, [message.event]: message.payload });
+        }
       }
     } catch {
       // A dropped, refused or silent stream is retried.
@@ -349,6 +425,16 @@ export class HostLinkClient {
     this.latest = snapshot;
     this.options.onSnapshot(snapshot);
     this.update({ state: "connected", since: null, active: url });
+  }
+
+  private showUpdates(updates: HostUpdateEvents) {
+    this.hostUpdates = updates;
+    this.options.onHostUpdate(updates);
+  }
+
+  /** One host's update must not show under the next one's name. */
+  private forgetUpdates() {
+    this.showUpdates({ hostUpdate: null, hostInstallProgress: null });
   }
 
   private save(session: Session, saved: SavedHostLink) {
@@ -425,8 +511,13 @@ export function hostUrl(address: string): string {
   throw new LinkError(`${address.trim() || "That"} is not an address.`);
 }
 
-/** The snapshots in a server-sent event stream. `onData` is called on every chunk, pings included. */
-async function* events(response: Response, onData: () => void): AsyncGenerator<UsageSnapshot> {
+const hostEvents = ["usageSnapshot", "hostUpdate", "hostInstallProgress"] as const satisfies (keyof HostEvents)[];
+
+type HostEvent = { [E in keyof HostEvents]: { event: E; payload: HostEvents[E] } }[keyof HostEvents];
+
+/** The events in a server-sent event stream that this build knows. `onData` is called on every chunk,
+ * pings included. */
+async function* events(response: Response, onData: () => void): AsyncGenerator<HostEvent> {
   if (!response.ok || !response.body) throw new Error("The host sent no stream.");
   let buffer = "";
   for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
@@ -437,9 +528,11 @@ async function* events(response: Response, onData: () => void): AsyncGenerator<U
       const message = buffer.slice(0, end);
       buffer = buffer.slice(end + 2);
       const lines = message.split("\n");
-      if (!lines.includes("event: usageSnapshot")) continue;
+      const event = hostEvents.find((name) => lines.includes(`event: ${name}`));
       const data = lines.find((line) => line.startsWith("data: "));
-      if (data) yield JSON.parse(data.slice("data: ".length));
+      if (!event || !data) continue;
+      const known: HostEvent = { event, payload: JSON.parse(data.slice("data: ".length)) };
+      yield known;
     }
   }
 }
