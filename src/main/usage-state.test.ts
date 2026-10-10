@@ -586,12 +586,13 @@ describe("polling", () => {
     const waits: number[] = [];
     await pollUsage(
       state,
-      async (milliseconds) => {
+      async (milliseconds, wake) => {
         waits.push(milliseconds);
         if (waits.length === 3) throw new Error("stop");
         if (waits.length > 1) return void (clock += milliseconds);
         clock += 120_000;
         await state.refresh();
+        if (!wake.aborted) clock += milliseconds - 120_000;
       },
       () => clock,
     ).catch(() => {});

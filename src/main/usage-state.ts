@@ -514,7 +514,7 @@ export function nextBackoff(
 
 /** Reads everything once `REFRESH_INTERVAL` has passed since the last full read finished, whoever asked
  * for it. Retries before then read only what has not settled, and never sleep past that point. A full
- * read someone else asked for starts the retry backoff over. `sleep` resolves early when `wake` aborts.
+ * read that cuts the sleep short starts the retry backoff over. `sleep` resolves early when `wake` aborts.
  * A paused state reads nothing, so a full attempt moves `due` too. */
 export async function pollUsage(
   state: UsageState,
