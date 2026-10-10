@@ -190,7 +190,7 @@ describe("web server", () => {
     expect((await install({ acknowledgedNoticeIds: ["notice"] }, "refresh")).status).toBe(405);
     expect((await install({ url: "https://example.com/tantalus.rpm" })).status).toBe(400);
     const refused = await install({ acknowledgedNoticeIds: [] });
-    expect(refused.status).toBe(500);
+    expect(refused.status).toBe(409);
     expect(await refused.text()).toBe("Read and acknowledge the update notice before installing.");
     expect((await install({ acknowledgedNoticeIds: ["notice"] })).status).toBe(200);
   });

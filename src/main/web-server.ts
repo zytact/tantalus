@@ -194,14 +194,15 @@ export class WebServer {
     await this.options.updates.install(acknowledged);
   }
 
-  /** Answers with what `work` resolves to, or with its error message for the device to show. A device
-   * removed while it ran gets neither. */
+  /** Answers with what `work` resolves to, or with its error message for the device to show. A failure
+   * is a 409, since a device reads a server error as a proxy answering for a host that is away. A
+   * device removed while it ran gets neither. */
   private async answer(device: string, response: ServerResponse, work: Promise<unknown>) {
     const [status, type, body] = await work.then(
       (value) => [200, "application/json", JSON.stringify(value ?? null)] as const,
       (error: unknown) =>
         [
-          error instanceof BadRequest ? 400 : 500,
+          error instanceof BadRequest ? 400 : 409,
           "text/plain",
           error instanceof Error ? error.message : String(error),
         ] as const,

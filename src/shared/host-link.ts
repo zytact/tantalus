@@ -22,18 +22,22 @@ export type HostAction = "refresh" | "check-update" | "update";
 /** A paired request to a host. `action` makes it a POST carrying `body` as JSON. */
 export type HostRequest = { path: string; action?: HostAction; body?: unknown };
 
+/** A host serves each action at the path of the same name. */
+const act = (action: HostAction, body?: unknown): HostRequest => ({ path: `/api/${action}`, action, body });
+
 /** The requests a browser and a following Tantalus send alike. `update` carries only the notices the
  * user acknowledged, so the host installs nothing but the update it already found. */
 export const hostRequests = {
-  refresh: { path: "/api/refresh", action: "refresh" },
-  checkUpdate: { path: "/api/check-update", action: "check-update" },
-  update: (acknowledgedNoticeIds: string[]) => ({
-    path: "/api/update",
-    action: "update",
-    body: { acknowledgedNoticeIds },
-  }),
+  refresh: act("refresh"),
+  checkUpdate: act("check-update"),
+  update: (acknowledgedNoticeIds: string[]) => act("update", { acknowledgedNoticeIds }),
   releaseNotes: { path: "/api/release-notes" },
 } satisfies Record<string, HostRequest | ((...args: never[]) => HostRequest)>;
+
+/** Whether a host answered at all. A proxy in front of a host that is away answers for it, with a
+ * server error, so the host's own refusals never use one. */
+export const hostAnswered = (response: Response | null): response is Response =>
+  response !== null && response.status < 500;
 
 /** How a host request is sent, before the sender adds what proves it is paired. */
 export function hostRequestInit({ action, body }: HostRequest): {

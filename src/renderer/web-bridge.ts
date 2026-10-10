@@ -1,14 +1,15 @@
-import { hostRequestInit, hostRequests, hostUnanswered } from "../shared/host-link";
+import { hostAnswered, hostRequestInit, hostRequests, hostUnanswered } from "../shared/host-link";
 import type { HostRequest } from "../shared/host-link";
 import type { Bridge, Commands, Events } from "../shared/ipc";
 
-/** How long a stream the host stopped serving waits before it is opened again. */
-const REOPEN_MILLISECONDS = 3000;
+/** How often a host that is away is asked whether it is back. */
+const RETRY_MILLISECONDS = 3000;
 
 /** The host's answer, or null when none came. A failure the host explains is thrown in its words. */
 async function respond(request: HostRequest): Promise<Response | null> {
   const response = await fetch(request.path, hostRequestInit(request)).catch(() => null);
-  if (response && !response.ok) throw new Error(await response.text());
+  if (!hostAnswered(response)) return null;
+  if (!response.ok) throw new Error(await response.text());
   return response;
 }
 
@@ -31,47 +32,35 @@ const commands: {
   hostReleaseNotes: () => ask(hostRequests.releaseNotes),
 };
 
-type Forward = (message: MessageEvent<string>) => void;
+/** Reloads the page once the host answers again after its stream dropped. A host that restarted may
+ * have updated into a build that serves another page, and one that removed this device serves the
+ * pairing page. The browser retries a dropped stream itself, but gives up on one that is refused,
+ * which a proxy does for a host that is away, so then the host is asked until it answers. */
+function reloadWhenBack(source: EventSource) {
+  let dropped = false;
+  source.addEventListener("open", () => {
+    if (dropped) location.reload();
+  });
+  source.addEventListener("error", () => {
+    dropped = true;
+    if (source.readyState === EventSource.CLOSED) void reloadOnceAnswered();
+  });
+}
 
-/** The host's event stream, kept open through a host that restarts. The browser retries a dropped
- * stream itself, but gives up on one the host or a proxy in front of it refuses. A refusal from the
- * host means the device was removed, and reloading shows the pairing page. Any other is a host that is
- * away, so the stream is opened again until it answers. */
-function hostStream() {
-  const forwards = new Set<readonly [string, Forward]>();
-  let source: EventSource;
-  const reopen = async () => {
-    const status = await fetch("/api/current/serverEpoch").then(
-      (response) => response.status,
-      () => null,
-    );
-    if (status === 401) return location.reload();
-    setTimeout(open, REOPEN_MILLISECONDS);
-  };
-  const open = () => {
-    source = new EventSource("/api/events");
-    for (const [event, forward] of forwards) source.addEventListener(event, forward);
-    source.addEventListener("error", () => {
-      if (source.readyState === EventSource.CLOSED) void reopen();
-    });
-  };
-  open();
-  return (event: string, forward: Forward) => {
-    const entry = [event, forward] as const;
-    forwards.add(entry);
-    source.addEventListener(event, forward);
-    return () => {
-      forwards.delete(entry);
-      source.removeEventListener(event, forward);
-    };
-  };
+async function reloadOnceAnswered() {
+  for (;;) {
+    const response = await fetch("/api/current/serverEpoch").catch(() => null);
+    if (hostAnswered(response)) return location.reload();
+    await new Promise((resolve) => setTimeout(resolve, RETRY_MILLISECONDS));
+  }
 }
 
 /** What a browser on another device uses in place of the preload. It follows published events over
  * HTTP and exposes the remote actions: refreshing usage, and checking for and installing the host's
  * update. */
 export function webBridge(): Bridge {
-  const listen = hostStream();
+  const source = new EventSource("/api/events");
+  reloadWhenBack(source);
   return {
     invoke<C extends keyof Commands>(command: C, ...args: Parameters<Commands[C]>): Promise<ReturnType<Commands[C]>> {
       return (
@@ -79,10 +68,12 @@ export function webBridge(): Bridge {
       );
     },
     on<E extends keyof Events>(event: E, listener: (payload: Events[E]) => void) {
-      return listen(event, (message) => {
+      const forward = (message: MessageEvent<string>) => {
         const payload: Events[E] = JSON.parse(message.data);
         listener(payload);
-      });
+      };
+      source.addEventListener(event, forward);
+      return () => source.removeEventListener(event, forward);
     },
     async current<E extends keyof Events>(event: E): Promise<Events[E] | null> {
       const response = await fetch(`/api/current/${event}`);

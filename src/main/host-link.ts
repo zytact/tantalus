@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { hostname } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { hostLinkProblem, hostRequestInit, hostRequests, hostUnanswered } from "../shared/host-link";
+import { hostAnswered, hostLinkProblem, hostRequestInit, hostRequests, hostUnanswered } from "../shared/host-link";
 import type { HostRequest } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
 import type {
@@ -198,7 +198,7 @@ export class HostLinkClient {
   }
 
   /** Asks the host to install the update it found. A host that installs restarts instead of answering,
-   * so a dropped request is no failure, and the stream says how the install went. */
+   * so a dropped request is no failure, and the stream shows the install's progress. */
   async installUpdate(acknowledgedNoticeIds: string[]): Promise<void> {
     await this.respond(hostRequests.update(acknowledgedNoticeIds), null);
   }
@@ -221,7 +221,7 @@ export class HostLinkClient {
     const { host } = session.saved;
     const response = await this.send(session, request, timeout).catch(() => null);
     if (session !== this.session) throw new Error(`Stopped following ${host}.`);
-    if (!response) return null;
+    if (!hostAnswered(response)) return null;
     if (response.status === 401) {
       this.removed(session);
       throw new Error(`${host} removed this device.`);

@@ -60,8 +60,12 @@ export function HostRows({ link }: { link: HostLink }) {
       <Failure message={error} />
       {link.state === "removed" && <ConnectForm address={link.routes[0]?.url} />}
       <Routes link={link} />
-      <HostUpdateCheck host={link.host} />
-      <UpdateNotice host={link.host} />
+      {link.state !== "removed" && (
+        <>
+          <HostUpdateCheck host={link.host} />
+          <UpdateNotice host={link.host} />
+        </>
+      )}
     </>
   );
 }
