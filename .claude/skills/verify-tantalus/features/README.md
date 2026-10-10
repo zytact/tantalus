@@ -15,10 +15,10 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [provider-switch](provider-switch.md) - provider enablement and persistence
 - [sign-in-sources](sign-in-sources.md) - Windows and WSL sign-in switches, and one account per login found
 - [settings](settings.md) - every Settings row, version, and updates
-- [remote-access](remote-access.md) - read-only page over the local network and Tailscale, and device pairing
-- [host-link](host-link.md) - following another Tantalus's usage instead of reading this machine's
+- [remote-access](remote-access.md) - the allowance page over the local network and Tailscale, device pairing, and checking for the host's update from the page
+- [host-link](host-link.md) - following another Tantalus's usage instead of reading this machine's, and checking for that host's update
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
-- [updates](updates.md) - release update checks and installation
+- [updates](updates.md) - release update checks and installation, on this machine and on a host from a paired device
 
 All UI proof uses the built Tantalus Preview app, driven through `drive.ts`, and its window screenshots. Do not load the page in a separate browser or stub the preload bridge. The remote access page is the exception: it is meant for a browser, so load it from the running preview's server using the collaborative browser when available, otherwise `drive.ts --web`. Fixture usage from `launch.sh --mock` is allowed because only the network answers change. The preview's product name, app id, executable, settings, autostart entry, and single-instance lock are separate from the installed release.
 
