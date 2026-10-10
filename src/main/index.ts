@@ -314,7 +314,11 @@ function localPolling(state: UsageState, starter: WindowStarter) {
       state.paused = false;
       starter.paused = false;
       const { signal } = (running = new AbortController());
-      void pollUsage(state, (milliseconds) => sleep(milliseconds, undefined, { signal })).catch(() => {});
+      void pollUsage(state, (milliseconds, wake) =>
+        sleep(milliseconds, undefined, { signal: AbortSignal.any([signal, wake]) }).catch(() =>
+          signal.throwIfAborted(),
+        ),
+      ).catch(() => {});
     },
     stop() {
       state.paused = true;

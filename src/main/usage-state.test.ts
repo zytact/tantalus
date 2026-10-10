@@ -558,7 +558,7 @@ describe("polling", () => {
       async (milliseconds) => {
         waits.push(milliseconds);
         if (waits.length === 7) throw new Error("stop");
-        // Each refresh takes a second, which counts toward the interval too.
+        // Each retry takes a second, which counts toward the interval too.
         clock += milliseconds + 1000;
         reads.push([]);
       },
@@ -574,6 +574,50 @@ describe("polling", () => {
       ["codex"],
       ["codex", "claude"],
     ]);
+  });
+
+  it("waits a full interval after a refresh asked for in between", async () => {
+    const readAt: number[] = [];
+    let clock = 0;
+    const state = createState(async (id) => {
+      if (id === "codex") readAt.push(clock);
+      return ready(1);
+    });
+    const waits: number[] = [];
+    await pollUsage(
+      state,
+      async (milliseconds, wake) => {
+        waits.push(milliseconds);
+        if (waits.length === 3) throw new Error("stop");
+        if (waits.length > 1) return void (clock += milliseconds);
+        clock += 120_000;
+        await state.refresh();
+        if (!wake.aborted) clock += milliseconds - 120_000;
+      },
+      () => clock,
+    ).catch(() => {});
+    expect(waits).toEqual([300_000, 300_000, 300_000]);
+    expect(readAt).toEqual([0, 120_000, 420_000]);
+  });
+
+  it("starts the retry backoff over after a refresh asked for in between", async () => {
+    const state = createState(async (id) => {
+      if (id === "codex") throw new Error("Down");
+      return ready(1);
+    });
+    const waits: number[] = [];
+    let clock = 0;
+    await pollUsage(
+      state,
+      async (milliseconds) => {
+        waits.push(milliseconds);
+        if (waits.length === 5) throw new Error("stop");
+        if (waits.length === 3) await state.refresh();
+        else clock += milliseconds;
+      },
+      () => clock,
+    ).catch(() => {});
+    expect(waits).toEqual([5000, 10_000, 20_000, 5000, 10_000]);
   });
 
   it("holds back while any direct sign-in has no current reading", () => {
