@@ -48,6 +48,8 @@ const update: AvailableUpdate = { version: "9.0.0", manualInstall: false, notice
 let offer: AvailableUpdate | null;
 /** The acknowledgements each install request carried. */
 let installs: string[][];
+/** Whether an install goes through, which stops the host before it answers. */
+let restarts: boolean;
 
 /** A client that records what it shows, with retries a few milliseconds apart. */
 function client() {
@@ -122,6 +124,7 @@ beforeEach(async () => {
   routeReads = 0;
   offer = null;
   installs = [];
+  restarts = false;
   pairing = new Pairing(
     join(directory, "paired-devices.json"),
     () => {},
@@ -148,7 +151,9 @@ beforeEach(async () => {
       },
       install: async (acknowledgedNoticeIds) => {
         installs.push(acknowledgedNoticeIds);
-        throw new Error("Could not install the update: the download returned 404");
+        if (!restarts) throw new Error("Could not install the update: the download returned 404");
+        void server.listen(null);
+        return new Promise(() => {});
       },
       notes: async () => [{ version: update.version, publishedAt: null, changes: [] }],
     },
@@ -269,13 +274,16 @@ describe("host update", () => {
     expect(updates.at(-1)).toEqual({ hostUpdate: null, hostInstallProgress: null });
   });
 
-  it("takes a host that stops answering an install as restarting, not as a failure", async () => {
+  it("takes a host that drops an install it was sent as restarting, but not one it never reached", async () => {
     const { link } = client();
     await link.connect(origin, offered());
     await until(() => link.read()?.state === "connected");
-    await server.listen(null);
+    restarts = true;
     await expect(link.installUpdate([])).resolves.toBeUndefined();
-    await expect(link.checkUpdate()).rejects.toThrow("stopped answering.");
+    expect(installs).toEqual([[]]);
+    await until(() => link.read()?.state === "unreachable");
+    await expect(link.installUpdate([])).rejects.toThrow("Could not reach");
+    expect(installs).toEqual([[]]);
   });
 
   it("stops showing the host's update once the host removes this device", async () => {

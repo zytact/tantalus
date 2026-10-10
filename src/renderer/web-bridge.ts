@@ -20,7 +20,7 @@ async function ask<T>(request: HostRequest): Promise<T> {
 }
 
 /** Everything a browser on another device can ask of the host. A host that installs restarts instead
- * of answering, so a dropped install is no failure, and the stream says how it went. */
+ * of answering, so a dropped install is no failure, and the stream shows its progress. */
 const commands: {
   [C in keyof Commands]?: (...args: Parameters<Commands[C]>) => Promise<ReturnType<Commands[C]>>;
 } = {
@@ -32,14 +32,26 @@ const commands: {
   hostReleaseNotes: () => ask(hostRequests.releaseNotes),
 };
 
-/** Reloads the page once the host answers again after its stream dropped. A host that restarted may
- * have updated into a build that serves another page, and one that removed this device serves the
- * pairing page. The browser retries a dropped stream itself, but gives up on one that is refused,
- * which a proxy does for a host that is away, so then the host is asked until it answers. */
-function reloadWhenBack(source: EventSource) {
+/** The page as the host serves it now, which names the build's files, or null when it does not answer. */
+const servedPage = () =>
+  fetch("/", { cache: "no-store" }).then(
+    (response) => (response.ok ? response.text() : null),
+    () => null,
+  );
+
+/** Keeps the page current through a host that goes away and comes back. The browser retries a dropped
+ * stream itself, and the host sends everything again, so the page reloads only when the host came back
+ * as another build. The browser gives up on a stream that is refused, which a proxy does for a host
+ * that is away and the host does for a device it removed. Then the host is asked until it answers, and
+ * the page reloads into the allowance or the pairing page. */
+function followRestarts(source: EventSource) {
+  const loaded = servedPage();
   let dropped = false;
-  source.addEventListener("open", () => {
-    if (dropped) location.reload();
+  source.addEventListener("open", async () => {
+    if (!dropped) return;
+    dropped = false;
+    const [before, now] = await Promise.all([loaded, servedPage()]);
+    if (now !== null && now !== before) location.reload();
   });
   source.addEventListener("error", () => {
     dropped = true;
@@ -60,7 +72,7 @@ async function reloadOnceAnswered() {
  * update. */
 export function webBridge(): Bridge {
   const source = new EventSource("/api/events");
-  reloadWhenBack(source);
+  followRestarts(source);
   return {
     invoke<C extends keyof Commands>(command: C, ...args: Parameters<Commands[C]>): Promise<ReturnType<Commands[C]>> {
       return (

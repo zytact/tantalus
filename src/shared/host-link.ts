@@ -35,7 +35,7 @@ export const hostRequests = {
 } satisfies Record<string, HostRequest | ((...args: never[]) => HostRequest)>;
 
 /** Whether a host answered at all. A proxy in front of a host that is away answers for it, with a
- * server error, so the host's own refusals never use one. */
+ * server error, so a host refuses an action with another status. */
 export const hostAnswered = (response: Response | null): response is Response =>
   response !== null && response.status < 500;
 

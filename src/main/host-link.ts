@@ -213,13 +213,15 @@ export class HostLinkClient {
     return response.json();
   }
 
-  /** The host's answer to a paired request, or null when none came within `timeout`. A failure the
-   * host explains is thrown in the host's words. */
+  /** The host's answer to a paired request it was sent, or null when none came within `timeout`. A
+   * failure the host explains is thrown in the host's words. */
   private async respond(request: HostRequest, timeout: number | null): Promise<Response | null> {
     const session = this.session;
     if (!session) throw new Error("Not following a host.");
     const { host } = session.saved;
-    const response = await this.send(session, request, timeout).catch(() => null);
+    const url = await this.routeFor(session);
+    if (!url) throw new Error(`Could not reach ${host}.`);
+    const response = await this.send(session, `${url}${request.path}`, request, timeout).catch(() => null);
     if (session !== this.session) throw new Error(`Stopped following ${host}.`);
     if (!hostAnswered(response)) return null;
     if (response.status === 401) {
@@ -234,12 +236,10 @@ export class HostLinkClient {
     return response;
   }
 
-  private async send(session: Session, request: HostRequest, timeout: number | null): Promise<Response> {
-    const url = await this.routeFor(session);
-    if (!url) throw new LinkError(`Could not reach ${session.saved.host}.`);
+  private send(session: Session, url: string, request: HostRequest, timeout: number | null): Promise<Response> {
     const init = hostRequestInit(request);
     const { signal } = session.stop;
-    return fetch(`${url}${request.path}`, {
+    return fetch(url, {
       ...init,
       headers: { ...init.headers, ...this.authorization(session.saved) },
       signal: timeout === null ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
@@ -397,8 +397,7 @@ export class HostLinkClient {
 
   private async hello(url: string): Promise<HostHello> {
     const response = await request(`${url}/api/version`).catch(() => null);
-    // A proxy in front of a host that is down answers for it, with a server error.
-    if (!response || response.status >= 500) throw new LinkError(`Could not reach ${url}.`);
+    if (!hostAnswered(response)) throw new LinkError(`Could not reach ${url}.`);
     const body: unknown = await response.json().catch(() => null);
     const protocol = field(body, "protocol");
     const name = field(body, "name");
