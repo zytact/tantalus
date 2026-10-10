@@ -14,14 +14,26 @@ export function hostLinkProblem({ host, state }: HostLink): string | null {
   return problems[state](host);
 }
 
-/** What a paired device says when the host drops a request. A host that finishes an install restarts
- * instead of answering, so a dropped install reads the same as a finished one. */
-export function hostUnanswered(host: string, installing: boolean): string {
-  return `${host} stopped answering.${installing ? " It restarts once the install finishes." : ""}`;
-}
+/** What a paired device says when the host drops a request. */
+export const hostUnanswered = (host: string) => `${host} stopped answering.`;
 
-/** A paired request to a host. `action` names a guarded action, which is a POST carrying `body` as JSON. */
-export type HostRequest = { path: string; action?: string; body?: unknown };
+/** The guarded actions a paired device can take on its host. */
+export type HostAction = "refresh" | "check-update" | "update";
+/** A paired request to a host. `action` makes it a POST carrying `body` as JSON. */
+export type HostRequest = { path: string; action?: HostAction; body?: unknown };
+
+/** The requests a browser and a following Tantalus send alike. `update` carries only the notices the
+ * user acknowledged, so the host installs nothing but the update it already found. */
+export const hostRequests = {
+  refresh: { path: "/api/refresh", action: "refresh" },
+  checkUpdate: { path: "/api/check-update", action: "check-update" },
+  update: (acknowledgedNoticeIds: string[]) => ({
+    path: "/api/update",
+    action: "update",
+    body: { acknowledgedNoticeIds },
+  }),
+  releaseNotes: { path: "/api/release-notes" },
+} satisfies Record<string, HostRequest | ((...args: never[]) => HostRequest)>;
 
 /** How a host request is sent, before the sender adds what proves it is paired. */
 export function hostRequestInit({ action, body }: HostRequest): {

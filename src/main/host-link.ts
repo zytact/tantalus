@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { isIPv4 } from "node:net";
 import { hostname } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { hostLinkProblem, hostRequestInit, hostUnanswered } from "../shared/host-link";
+import { hostLinkProblem, hostRequestInit, hostRequests, hostUnanswered } from "../shared/host-link";
 import type { HostRequest } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
 import type {
@@ -33,8 +33,6 @@ const REQUEST_TIMEOUT_MILLISECONDS = 10_000;
 const ROUTE_CHECK_MILLISECONDS = 30_000;
 /** The host gives GitHub 30 seconds to answer a check or the release notes. */
 const UPDATE_TIMEOUT_MILLISECONDS = 45_000;
-/** The host gives a download 10 minutes, then installs, which can wait on a password prompt. */
-const INSTALL_TIMEOUT_MILLISECONDS = 30 * 60 * 1000;
 
 /** Seals the token with the operating system's keychain where there is one. */
 export type TokenVault = {
@@ -196,47 +194,55 @@ export class HostLinkClient {
 
   /** Asks the host to look for a newer release of itself. */
   checkUpdate(): Promise<AvailableUpdate | null> {
-    return this.ask({ path: "/api/check-update", action: "check-update" }, UPDATE_TIMEOUT_MILLISECONDS);
+    return this.ask(hostRequests.checkUpdate);
   }
 
   /** Asks the host to install the update it found. A host that installs restarts instead of answering,
-   * so this resolves only for a failure, which it throws. */
-  installUpdate(acknowledgedNoticeIds: string[]): Promise<void> {
-    return this.ask(
-      { path: "/api/update", action: "update", body: { acknowledgedNoticeIds } },
-      INSTALL_TIMEOUT_MILLISECONDS,
-    );
+   * so a dropped request is no failure, and the stream says how the install went. */
+  async installUpdate(acknowledgedNoticeIds: string[]): Promise<void> {
+    await this.respond(hostRequests.update(acknowledgedNoticeIds), null);
   }
 
   releaseNotes(): Promise<ReleaseNotes[]> {
-    return this.ask({ path: "/api/release-notes" }, UPDATE_TIMEOUT_MILLISECONDS);
+    return this.ask(hostRequests.releaseNotes);
   }
 
-  /** Sends the host a paired request and returns its answer. A failure the host explains is thrown
-   * in the host's words. */
-  private async ask<T>(request: HostRequest, timeout: number): Promise<T> {
+  private async ask<T>(request: HostRequest): Promise<T> {
+    const response = await this.respond(request, UPDATE_TIMEOUT_MILLISECONDS);
+    if (!response) throw new Error(hostUnanswered(this.link?.host ?? "The host"));
+    return response.json();
+  }
+
+  /** The host's answer to a paired request, or null when none came within `timeout`. A failure the
+   * host explains is thrown in the host's words. */
+  private async respond(request: HostRequest, timeout: number | null): Promise<Response | null> {
     const session = this.session;
     if (!session) throw new Error("Not following a host.");
     const { host } = session.saved;
     const response = await this.send(session, request, timeout).catch(() => null);
-    if (!response) throw new Error(hostUnanswered(host, request.action === "update"));
-    if (response.status === 401) this.removed(session);
+    if (session !== this.session) throw new Error(`Stopped following ${host}.`);
+    if (!response) return null;
+    if (response.status === 401) {
+      this.removed(session);
+      throw new Error(`${host} removed this device.`);
+    }
     // A host from before remote updates has no such path.
     if (response.status === 404 || response.status === 405) {
       throw new Error(`Tantalus on ${host} is too old to update from here. Update it on ${host} first.`);
     }
     if (!response.ok) throw new Error(await response.text());
-    return response.json();
+    return response;
   }
 
-  private async send(session: Session, request: HostRequest, timeout: number): Promise<Response> {
+  private async send(session: Session, request: HostRequest, timeout: number | null): Promise<Response> {
     const url = await this.routeFor(session);
     if (!url) throw new LinkError(`Could not reach ${session.saved.host}.`);
     const init = hostRequestInit(request);
+    const { signal } = session.stop;
     return fetch(`${url}${request.path}`, {
       ...init,
       headers: { ...init.headers, ...this.authorization(session.saved) },
-      signal: AbortSignal.any([session.stop.signal, AbortSignal.timeout(timeout)]),
+      signal: timeout === null ? signal : AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
     });
   }
 
@@ -410,6 +416,7 @@ export class HostLinkClient {
   /** Stops retrying, but keeps following, so Settings can offer to pair again. */
   private removed(session: Session) {
     if (session.stop.signal.aborted) return;
+    this.forgetUpdates();
     this.update({ state: "removed", since: this.link?.since ?? this.now(), active: null });
     session.stop.abort();
   }

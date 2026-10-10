@@ -43,8 +43,8 @@ let clients: HostLinkClient[];
 let reported: string[] | null;
 /** How many times a client asked the host for its routes. */
 let routeReads: number;
-/** The update the host found, once a client asked it to check. */
 const update: AvailableUpdate = { version: "9.0.0", manualInstall: false, notices: [] };
+/** The update the host found, once a client asked it to check. */
 let offer: AvailableUpdate | null;
 /** The acknowledgements each install request carried. */
 let installs: string[][];
@@ -269,12 +269,25 @@ describe("host update", () => {
     expect(updates.at(-1)).toEqual({ hostUpdate: null, hostInstallProgress: null });
   });
 
-  it("says the host restarts when it stops answering an install", async () => {
+  it("takes a host that stops answering an install as restarting, not as a failure", async () => {
     const { link } = client();
     await link.connect(origin, offered());
     await until(() => link.read()?.state === "connected");
     await server.listen(null);
-    await expect(link.installUpdate([])).rejects.toThrow("stopped answering. It restarts once the install finishes.");
+    await expect(link.installUpdate([])).resolves.toBeUndefined();
+    await expect(link.checkUpdate()).rejects.toThrow("stopped answering.");
+  });
+
+  it("stops showing the host's update once the host removes this device", async () => {
+    const { link, updates } = client();
+    await link.connect(origin, offered());
+    await until(() => link.read()?.state === "connected");
+    await link.checkUpdate();
+    await until(() => link.updates.hostUpdate !== null);
+    pairing.remove(pairing.read(new Set()).devices[0]!.id);
+    await expect(link.checkUpdate()).rejects.toThrow("removed this device.");
+    expect(link.read()?.state).toBe("removed");
+    expect(updates.at(-1)).toEqual({ hostUpdate: null, hostInstallProgress: null });
   });
 });
 

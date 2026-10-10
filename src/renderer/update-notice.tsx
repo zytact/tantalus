@@ -8,7 +8,7 @@ import { usePublishedState } from "./published-state";
 import { ReleaseNotesPage } from "./release-notes";
 
 /** Whose update is on offer: this app's, or with `host` the one waiting on the host a paired device
- * shows. `where` ends a sentence about it, and `range` names the versions its release notes span. */
+ * shows. `onHost` says where in a sentence about it, and `range` names the versions its release notes span. */
 function sourceFor(host: string | undefined) {
   return host === undefined
     ? ({
@@ -17,7 +17,7 @@ function sourceFor(host: string | undefined) {
         check: "checkForUpdate",
         install: "installUpdate",
         notes: "releaseNotes",
-        where: "",
+        onHost: "",
         range: (version: string) => `v${runningVersion} to v${version}`,
       } as const)
     : ({
@@ -26,7 +26,7 @@ function sourceFor(host: string | undefined) {
         check: "checkForHostUpdate",
         install: "installHostUpdate",
         notes: "hostReleaseNotes",
-        where: ` on ${host}`,
+        onHost: ` on ${host}`,
         range: (version: string) => `Up to v${version} on ${host}`,
       } as const);
 }
@@ -75,7 +75,7 @@ function InstallableUpdate({
   progress: InstallProgress | null;
   source: Source;
 }) {
-  const { where } = source;
+  const { onHost } = source;
   const { installing, error, install } = useInstall(source.install);
   const [notesOpen, setNotesOpen] = useState(false);
   const [acknowledged, setAcknowledged] = useState<string | null>(null);
@@ -104,7 +104,7 @@ function InstallableUpdate({
       {noticeContent}
       <InstallProgressStrip version={update.version} progress={progress}>
         <div className="release-notes-install">
-          <p>Tantalus{where} relaunches after installing.</p>
+          <p>Tantalus{onHost} relaunches after installing.</p>
           {installButton}
         </div>
       </InstallProgressStrip>
@@ -115,7 +115,7 @@ function InstallableUpdate({
     <>
       <UpdateBanner
         version={update.version}
-        where={where}
+        onHost={onHost}
         progress={progress}
         notice={noticeContent}
         installButton={installButton}
@@ -136,14 +136,14 @@ function InstallableUpdate({
 
 function UpdateBanner({
   version,
-  where,
+  onHost,
   progress,
   notice,
   installButton,
   onNotes,
 }: {
   version: string;
-  where: string;
+  onHost: string;
   progress: InstallProgress | null;
   notice: ReactNode;
   installButton: ReactNode;
@@ -154,7 +154,7 @@ function UpdateBanner({
       <section className="update" aria-label="Update available">
         <div className="update-content">
           <p>
-            Version {version} is available{where}.
+            Version {version} is available{onHost}.
           </p>
           {notice}
           <div className="update-actions">

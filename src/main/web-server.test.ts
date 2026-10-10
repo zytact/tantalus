@@ -188,7 +188,7 @@ describe("web server", () => {
     const install = (body: unknown, action = "update") =>
       paired("/api/update", { method: "POST", headers: { "x-tantalus-action": action }, body: JSON.stringify(body) });
     expect((await install({ acknowledgedNoticeIds: ["notice"] }, "refresh")).status).toBe(405);
-    expect((await install({ url: "https://example.com/tantalus.rpm" })).status).toBe(500);
+    expect((await install({ url: "https://example.com/tantalus.rpm" })).status).toBe(400);
     const refused = await install({ acknowledgedNoticeIds: [] });
     expect(refused.status).toBe(500);
     expect(await refused.text()).toBe("Read and acknowledge the update notice before installing.");

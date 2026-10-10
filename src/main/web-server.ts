@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { extname, join, sep } from "node:path";
+import type { HostAction } from "../shared/host-link";
 import { PROTOCOL } from "../shared/ipc";
 import type { AvailableUpdate, HostEvents, HostHello, HostRoutes, InstallProgress, ReleaseNotes } from "../shared/ipc";
 import type { UsageSnapshot } from "../shared/usage";
@@ -53,6 +54,9 @@ export type WebServerOptions = {
   onConnections: () => void;
   now?: () => number;
 };
+
+/** A request the device got wrong, as opposed to work the host could not do. */
+class BadRequest extends Error {}
 
 /** Serves the built page to browsers on other devices: snapshots and the host's update over HTTP and
  * server-sent events, plus guarded actions to refresh usage and to check for and install that update.
@@ -152,11 +156,13 @@ export class WebServer {
 
   /** What a paired device can do to the host, keyed by the path under `/api/` and the action header a
    * POST there must carry. */
-  private readonly actions = new Map<string, (request: IncomingMessage) => Promise<unknown>>([
-    ["refresh", () => this.options.refresh().catch(() => Promise.reject(new Error("Could not refresh")))],
-    ["check-update", () => this.options.updates.check()],
-    ["update", (request) => this.install(request)],
-  ]);
+  private readonly actions = new Map(
+    Object.entries({
+      refresh: () => this.options.refresh().catch(() => Promise.reject(new Error("Could not refresh"))),
+      "check-update": () => this.options.updates.check(),
+      update: (request) => this.install(request),
+    } satisfies Record<HostAction, (request: IncomingMessage) => Promise<unknown>>),
+  );
 
   private respondPaired(device: string, path: string, request: IncomingMessage, response: ServerResponse) {
     const name = path.slice("/api/".length);
@@ -183,7 +189,7 @@ export class WebServer {
   private async install(request: IncomingMessage) {
     const acknowledged = field(await jsonBody(request).catch(() => null), "acknowledgedNoticeIds");
     if (!Array.isArray(acknowledged) || !acknowledged.every((id) => typeof id === "string")) {
-      throw new Error("Bad request");
+      throw new BadRequest("Bad request");
     }
     await this.options.updates.install(acknowledged);
   }
@@ -193,7 +199,12 @@ export class WebServer {
   private async answer(device: string, response: ServerResponse, work: Promise<unknown>) {
     const [status, type, body] = await work.then(
       (value) => [200, "application/json", JSON.stringify(value ?? null)] as const,
-      (error: unknown) => [500, "text/plain", error instanceof Error ? error.message : String(error)] as const,
+      (error: unknown) =>
+        [
+          error instanceof BadRequest ? 400 : 500,
+          "text/plain",
+          error instanceof Error ? error.message : String(error),
+        ] as const,
     );
     if (!this.options.pairing.holds(device)) return send(response, 401, "text/plain", "Pair this device first");
     send(response, status, type, body);
