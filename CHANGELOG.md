@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/zytact/tantalus/compare/v0.2.0...v0.2.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **usage:** restart the 5 minute auto-refresh after a manual refresh ([#132](https://github.com/zytact/tantalus/issues/132)) ([7f6fc27](https://github.com/zytact/tantalus/commit/7f6fc279b4ed8b9e3a1ea96f6583f20a619a8b5e))
+
 ## [0.2.0](https://github.com/zytact/tantalus/compare/v0.1.0...v0.2.0) (2026-10-09)
 
 
