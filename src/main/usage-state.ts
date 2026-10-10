@@ -513,8 +513,9 @@ export function nextBackoff(
 }
 
 /** Reads everything once `REFRESH_INTERVAL` has passed since the last full read finished, whoever asked
- * for it. Retries before then read only what has not settled, and never sleep past that point. `sleep`
- * resolves early when `wake` aborts. A paused state reads nothing, so a full attempt moves `due` too. */
+ * for it. Retries before then read only what has not settled, and never sleep past that point. A full
+ * read someone else asked for starts the retry backoff over. `sleep` resolves early when `wake` aborts.
+ * A paused state reads nothing, so a full attempt moves `due` too. */
 export async function pollUsage(
   state: UsageState,
   sleep: (milliseconds: number, wake: AbortSignal) => Promise<unknown>,
@@ -531,7 +532,7 @@ export async function pollUsage(
   for (;;) {
     if (scope === "all") due = now() + REFRESH_INTERVAL;
     const snapshot = scope ? await state.refresh(scope) : state.snapshot;
-    backoff = nextBackoff(settled(snapshot), backoff, RETRY_BACKOFF_START, REFRESH_INTERVAL);
+    backoff = nextBackoff(settled(snapshot), scope ? backoff : null, RETRY_BACKOFF_START, REFRESH_INTERVAL);
     const untilDue = Math.max(0, due - now());
     const wait = Math.min(backoff ?? REFRESH_INTERVAL, untilDue);
     wake = new AbortController();
