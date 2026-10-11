@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1](https://github.com/zytact/tantalus/compare/v0.2.0...v0.2.1) (2026-10-11)
+
+
+### Features
+
+* **remote:** check for and install a host's update from another device ([#134](https://github.com/zytact/tantalus/issues/134)) ([d662f33](https://github.com/zytact/tantalus/commit/d662f33702339f78440acfd52550b36d3c5731f0))
+* **update:** install Linux updates without a password prompt ([#135](https://github.com/zytact/tantalus/issues/135)) ([fe81bd2](https://github.com/zytact/tantalus/commit/fe81bd2bfdc6ad3ff849fe0ca56f2173934a5327))
+
+
+### Bug Fixes
+
+* **usage:** restart the 5 minute auto-refresh after a manual refresh ([#132](https://github.com/zytact/tantalus/issues/132)) ([7f6fc27](https://github.com/zytact/tantalus/commit/7f6fc279b4ed8b9e3a1ea96f6583f20a619a8b5e))
+
 ## [0.2.0](https://github.com/zytact/tantalus/compare/v0.1.0...v0.2.0) (2026-10-09)
 
 
