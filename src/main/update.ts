@@ -101,8 +101,8 @@ export class Updater {
 
   /** Downloads the pending update, verifies its signature, installs it, then relaunches into it. A
    * deb or rpm install runs the root update helper through polkit, which asks for a password only
-   * outside an active session. Windows hands over to the
-   * NSIS installer, which starts the new version itself. */
+   * outside an active session. Windows hands over to the NSIS installer, which starts the new version
+   * itself. */
   async install(acknowledgedNoticeIds: string[]) {
     const update = this.pending;
     if (!update) throw new Error("No update is ready to install.");

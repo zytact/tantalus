@@ -31,7 +31,7 @@ describe("update helper", () => {
       installed = readFileSync(String(args?.at(-1)), "utf8");
       return "";
     });
-    installUpdate(["rpm", file, "signed"]);
+    installUpdate("rpm", file, "signed");
     const [command, args] = installer.mock.calls[0];
     const copy = String(args?.at(-1));
     expect([command, args?.slice(0, -1)]).toEqual(["/usr/bin/rpm", ["-U"]]);
@@ -41,14 +41,14 @@ describe("update helper", () => {
   });
 
   it("refuses a downgrade on a deb", () => {
-    installUpdate(["deb", file, "signed"]);
+    installUpdate("deb", file, "signed");
     expect(installer.mock.calls[0][1]).toContain("--refuse-downgrade");
   });
 
-  it("runs no installer for a package the release key did not sign", () => {
-    expect(() => installUpdate(["rpm", file, "forged"])).toThrow("signature check");
-    expect(() => installUpdate(["rpm", directory, "signed"])).toThrow("not a regular file");
-    expect(() => installUpdate(["tar", file, "signed"])).toThrow("usage");
+  it("runs no installer for anything it refuses", () => {
+    expect(() => installUpdate("rpm", file, "forged")).toThrow("signature check");
+    expect(() => installUpdate("rpm", directory, "signed")).toThrow("not a package file");
+    expect(() => installUpdate("tar", file, "signed")).toThrow("usage");
     expect(installer).not.toHaveBeenCalled();
   });
 });

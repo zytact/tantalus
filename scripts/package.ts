@@ -80,7 +80,8 @@ await build({
 
 /** Writes the root update helper and its polkit policy, and returns the fpm mappings that install them
  * outside `/opt`. pkexec clears the environment, so the helper is a shell wrapper that starts the app
- * binary as Node on `src/main/update-helper.ts`. */
+ * binary as Node on the `update-helper` bundle. Electron reads switches such as `--js-flags` anywhere
+ * in its arguments, so the caller's arguments reach it only through the environment. */
 async function updateHelperFiles(identity: Identity, format: "deb" | "rpm"): Promise<string[]> {
   const helper = updateHelper(identity);
   const app = `/opt/${identity.productName}`;
@@ -91,7 +92,8 @@ async function updateHelperFiles(identity: Identity, format: "deb" | "rpm"): Pro
   await writeFile(
     wrapper,
     `#!/bin/sh
-ELECTRON_RUN_AS_NODE=1 exec '${app}/${identity.executableName}' '${app}/resources/app.asar/dist-electron/update-helper.mjs' ${format} "$@"
+TANTALUS_UPDATE_PACKAGE="$1" TANTALUS_UPDATE_SIGNATURE="$2" ELECTRON_RUN_AS_NODE=1 \\
+  exec '${app}/${identity.executableName}' '${app}/resources/app.asar/dist-electron/update-helper.mjs' ${format}
 `,
     { mode: 0o755 },
   );
