@@ -43,7 +43,7 @@ If `build-preview.sh` fails with `The specified electronDist does not exist`, th
 
 Following another Tantalus (see `features/host-link.md`) needs a host and a client preview at once, so the client runs from a second worktree. Each checkout gets its own run directory under `/tmp/opencode/tantalus-verify/`, named after the checkout and printed by `run-dir.sh` and by `launch.sh` when ready. Every script and `drive.ts` resolve it from their own location, so agents in separate worktrees can build, launch, drive and clean up at the same time. The one shared resource is the preview's remote access ports, so verify remote access in one worktree at a time.
 
-When the user wants to install a preview and test it by hand, run `build-preview.sh --package`. It also writes the preview's deb and rpm to `release/tantalus-preview/` and lists them. The package installs as `tantalus-preview` beside the release app, with its own settings, so give the user the path rather than installing it yourself. The rpm keeps the `package.json` version, so replacing an installed preview of the same version needs `dnf reinstall`.
+When the user wants to install a preview and test it by hand, run `build-preview.sh --package`. It also writes the preview's deb and rpm to `release/tantalus-preview/` and lists them. The package installs as `tantalus-preview` beside the release app, with its own settings, so give the user the path rather than installing it yourself. The one exception is the root update helper proof in `features/updates.md`, which installs the preview rpm with the user at the keyboard. The rpm keeps the `package.json` version, so replacing an installed preview of the same version needs `dnf reinstall`.
 
 Ready means `doctor.sh` confirms the preview identity, executable, recorded process, isolated display, DevTools port, and usage mode. Run doctor before the first drive and again after any failed or surprising interaction.
 
@@ -189,6 +189,7 @@ All helpers in `scripts/` are executable or run with `node`:
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)
 - `seed-pace.sh` writes a learned pace log into the mock settings directory, and refuses outside mock mode; run `launch.sh --restart` after it
 - `seed-creatures.sh` writes a moving pace stretch into the mock settings directory, with a dragon on Codex 5h and a tortoise on Claude 5h plus recent session activity, and refuses outside mock mode; run `launch.sh --restart` after it
+- `signed-preview-rpm.sh RELEASE` builds a preview rpm that trusts a throwaway key in the run directory and signs it, for the root update helper proof (see `features/updates.md`)
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
 
