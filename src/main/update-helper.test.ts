@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -11,15 +11,17 @@ import { installUpdate } from "./update-helper";
 
 const installer = vi.mocked(execFileSync);
 let directory: string;
-let file: string;
+let input: number;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "tantalus-helper-test-"));
-  file = join(directory, "update.rpm");
+  const file = join(directory, "update.rpm");
   writeFileSync(file, "signed");
+  input = openSync(file, "r");
 });
 
 afterEach(() => {
+  closeSync(input);
   rmSync(directory, { recursive: true, force: true });
   installer.mockReset();
 });
@@ -31,7 +33,7 @@ describe("update helper", () => {
       installed = readFileSync(String(args?.at(-1)), "utf8");
       return "";
     });
-    installUpdate("rpm", file, "signed");
+    installUpdate("rpm", "signed", input);
     const [command, args] = installer.mock.calls[0];
     const copy = String(args?.at(-1));
     expect([command, args?.slice(0, -1)]).toEqual(["/usr/bin/rpm", ["-U"]]);
@@ -41,14 +43,14 @@ describe("update helper", () => {
   });
 
   it("refuses a downgrade on a deb", () => {
-    installUpdate("deb", file, "signed");
+    installUpdate("deb", "signed", input);
     expect(installer.mock.calls[0][1]).toContain("--refuse-downgrade");
   });
 
   it("runs no installer for anything it refuses", () => {
-    expect(() => installUpdate("rpm", file, "forged")).toThrow("signature check");
-    expect(() => installUpdate("rpm", directory, "signed")).toThrow("not a package file");
-    expect(() => installUpdate("tar", file, "signed")).toThrow("usage");
+    expect(() => installUpdate("rpm", "forged", input)).toThrow("signature check");
+    expect(() => installUpdate("tar", "signed", input)).toThrow("usage");
+    expect(() => installUpdate("rpm", undefined, input)).toThrow("usage");
     expect(installer).not.toHaveBeenCalled();
   });
 });

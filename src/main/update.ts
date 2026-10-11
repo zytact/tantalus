@@ -124,7 +124,7 @@ export class Updater {
       if (!verifySignature(data, update.signature)) throw new Error("the download failed its signature check");
       const file = join(directory, basename(new URL(update.url).pathname));
       await writeFile(file, data);
-      await installBundle(file, directory, () => installLinuxPackage(this.linuxHelper, file, update.signature));
+      await installBundle(file, directory, () => installLinuxPackage(this.linuxHelper, data, update.signature));
     } catch (error) {
       if (directory) {
         await rm(directory, { recursive: true, force: true }).catch((cleanupError: unknown) =>
@@ -182,13 +182,17 @@ async function installBundle(file: string, directory: string, installLinux: () =
   app.exit(0);
 }
 
-/** The helper checks the signature again as root, since the check in `install` proves nothing to it. */
-async function installLinuxPackage(helper: string, file: string, signature: string) {
+/** Pipes the package to the root helper, which checks the signature again, since the check in `install`
+ * proves nothing to root. */
+async function installLinuxPackage(helper: string, data: Buffer, signature: string) {
   // An instance an older release relaunched carries no_new_privs, which pkexec cannot run under.
   if (/^NoNewPrivs:\s*1$/m.test(await readFile("/proc/self/status", "utf8"))) {
     throw new Error("Tantalus needs a restart first. Quit and reopen it, then install again.");
   }
-  await run("pkexec", [helper, file, signature]);
+  const installing = run("pkexec", [helper, signature]);
+  // A helper that exits early closes the pipe. Its exit reports why.
+  installing.child.stdin?.on("error", () => {}).end(data);
+  await installing;
   await relaunchLinux().catch((error: unknown) => {
     console.error("Failed to relaunch through the shell:", error);
     app.relaunch();
