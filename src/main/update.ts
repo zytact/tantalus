@@ -43,6 +43,7 @@ export class Updater {
   private progress: InstallProgress | null = null;
 
   constructor(
+    private readonly linuxHelper: string,
     private readonly announce: (update: AvailableUpdate | null) => void,
     private readonly report: (progress: InstallProgress | null) => void,
   ) {}
@@ -99,8 +100,9 @@ export class Updater {
   }
 
   /** Downloads the pending update, verifies its signature, installs it, then relaunches into it. A
-   * deb or rpm install asks for an administrator password through polkit. Windows hands over to the
-   * NSIS installer, which starts the new version itself. */
+   * deb or rpm install runs the root update helper through polkit, which asks for a password only
+   * outside an active session. Windows hands over to the NSIS installer, which starts the new version
+   * itself. */
   async install(acknowledgedNoticeIds: string[]) {
     const update = this.pending;
     if (!update) throw new Error("No update is ready to install.");
@@ -122,7 +124,7 @@ export class Updater {
       if (!verifySignature(data, update.signature)) throw new Error("the download failed its signature check");
       const file = join(directory, basename(new URL(update.url).pathname));
       await writeFile(file, data);
-      await installBundle(file, directory);
+      await installBundle(file, directory, () => installLinuxPackage(this.linuxHelper, data, update.signature));
     } catch (error) {
       if (directory) {
         await rm(directory, { recursive: true, force: true }).catch((cleanupError: unknown) =>
@@ -161,7 +163,7 @@ function selectAsset(manifest: Manifest): ReleaseAsset {
   return asset;
 }
 
-async function installBundle(file: string, directory: string) {
+async function installBundle(file: string, directory: string, installLinux: () => Promise<void>) {
   switch (process.platform) {
     case "win32":
       await launchDetached(file, ["--updated", "/S", "--force-run"]);
@@ -172,7 +174,7 @@ async function installBundle(file: string, directory: string) {
       app.relaunch();
       break;
     default:
-      await installLinuxPackage(file);
+      await installLinux();
   }
   await rm(directory, { recursive: true, force: true }).catch((error: unknown) =>
     console.error("Failed to remove the update directory:", error),
@@ -180,12 +182,17 @@ async function installBundle(file: string, directory: string) {
   app.exit(0);
 }
 
-async function installLinuxPackage(file: string) {
+/** Pipes the package to the root helper, which checks the signature again, since the check in `install`
+ * proves nothing to root. */
+async function installLinuxPackage(helper: string, data: Buffer, signature: string) {
   // An instance an older release relaunched carries no_new_privs, which pkexec cannot run under.
   if (/^NoNewPrivs:\s*1$/m.test(await readFile("/proc/self/status", "utf8"))) {
     throw new Error("Tantalus needs a restart first. Quit and reopen it, then install again.");
   }
-  await run("pkexec", platformKey()?.endsWith("-rpm") ? ["rpm", "-U", file] : ["dpkg", "-i", file]);
+  const installing = run("pkexec", [helper, signature]);
+  // A helper that exits early closes the pipe. Its exit reports why.
+  installing.child.stdin?.on("error", () => {}).end(data);
+  await installing;
   await relaunchLinux().catch((error: unknown) => {
     console.error("Failed to relaunch through the shell:", error);
     app.relaunch();
