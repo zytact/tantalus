@@ -16,7 +16,7 @@ describe("direct update limit", () => {
           new Response(JSON.stringify({ version: "0.0.25", minimumVersion: "0.0.10", notices: [], platforms: {} })),
         ),
     );
-    const updater = new Updater(vi.fn(), vi.fn());
+    const updater = new Updater("/usr/libexec/tantalus-update", vi.fn(), vi.fn());
     expect(await updater.check()).toEqual({ version: "0.0.25", manualInstall: true, notices: [] });
     await expect(updater.install([])).rejects.toThrow("fresh install");
   });

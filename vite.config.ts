@@ -44,6 +44,13 @@ export default defineConfig({
       clean: false,
       deps: { neverBundle: ["electron"] },
     },
+    // Runs as root under the app binary in Node mode, so it never loads Electron.
+    {
+      entry: { "update-helper": "src/main/update-helper-entry.ts" },
+      format: "esm",
+      outDir: "dist-electron",
+      clean: false,
+    },
   ],
   fmt: {
     ignorePatterns: notOurs,

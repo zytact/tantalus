@@ -1,10 +1,15 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { build } from "electron-builder";
-import { identities } from "../src/main/identity.ts";
+import { identities, updateHelper } from "../src/main/identity.ts";
+import type { Identity } from "../src/main/identity.ts";
 
 /** Bundles the app for the platform it runs on from `dist/` and `dist-electron/`, which `vp build` and
  * `vp pack` write. `--preview` bundles the preview identity, and `--dir` stops at the unpacked app. */
 const identity = process.argv.includes("--preview") ? identities.preview : identities.release;
 const unpacked = process.argv.includes("--dir");
+
+const output = `release/${identity.executableName}`;
 
 await build({
   publish: "never",
@@ -15,8 +20,10 @@ await build({
       name: identity.executableName,
       productName: identity.productName,
       desktopName: identity.productName,
+      // A worktree has no `.git/config` for the builder to read the project URL from.
+      homepage: "https://github.com/zytact/tantalus",
     },
-    directories: { output: `release/${identity.executableName}`, buildResources: "build" },
+    directories: { output, buildResources: "build" },
     electronDist: "node_modules/electron/dist",
     files: ["dist/**", "dist-electron/**", "package.json"],
     // Never published by the builder. It is set so the Linux packages record their format in
@@ -30,10 +37,17 @@ await build({
       maintainer: "Arnab",
       syncDesktopName: true,
     },
-    deb: { artifactName: "${name}_${version}_amd64.${ext}" },
+    deb: {
+      artifactName: "${name}_${version}_amd64.${ext}",
+      fpm: unpacked ? [] : await updateHelperFiles(identity, "deb"),
+    },
     rpm: {
       artifactName: "${name}-${version}.x86_64.${ext}",
-      fpm: ["--rpm-rpmbuild-define", "_build_id_links none"],
+      fpm: [
+        "--rpm-rpmbuild-define",
+        "_build_id_links none",
+        ...(unpacked ? [] : await updateHelperFiles(identity, "rpm")),
+      ],
     },
     mac: {
       target: unpacked
@@ -63,3 +77,43 @@ await build({
     },
   },
 });
+
+/** Writes the root update helper and its polkit policy, and returns the fpm mappings that install them
+ * outside `/opt`. pkexec clears the environment, so the helper is a shell wrapper that starts the app
+ * binary as Node on `src/main/update-helper.ts`. */
+async function updateHelperFiles(identity: Identity, format: "deb" | "rpm"): Promise<string[]> {
+  const helper = updateHelper(identity);
+  const app = `/opt/${identity.productName}`;
+  const directory = resolve(output, "update-helper", format);
+  const wrapper = join(directory, "helper");
+  const policy = join(directory, "policy");
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    wrapper,
+    `#!/bin/sh
+ELECTRON_RUN_AS_NODE=1 exec '${app}/${identity.executableName}' '${app}/resources/app.asar/dist-electron/update-helper.mjs' ${format} "$@"
+`,
+    { mode: 0o755 },
+  );
+  await writeFile(
+    policy,
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <action id="${helper.action}">
+    <description>Install a ${identity.productName} update</description>
+    <message>Authentication is required to update ${identity.productName}</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">${helper.path}</annotate>
+  </action>
+</policyconfig>
+`,
+    { mode: 0o644 },
+  );
+  return [`${wrapper}=${helper.path}`, `${policy}=/usr/share/polkit-1/actions/${helper.action}.policy`];
+}

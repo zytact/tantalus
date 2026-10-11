@@ -19,7 +19,7 @@ import { asError } from "./failure";
 import { runCli, startCli } from "./cli";
 import { HostLinkClient } from "./host-link";
 import type { TokenVault } from "./host-link";
-import { identities } from "./identity";
+import { identities, updateHelper } from "./identity";
 import { launchedHidden, openAtLogin, setOpenAtLogin } from "./open-at-login";
 import { PaceTracker } from "./pace-tracker";
 import { Pairing } from "./pairing";
@@ -175,6 +175,7 @@ function start() {
   const { usage, tray: trayUsage, refresh, sameSource } = usageSource(link, state);
   const polling = localPolling(state, starter);
   const updater = new Updater(
+    updateHelper(identity).path,
     (update) => {
       renderTray();
       if (update) publish("updateAvailable", update);

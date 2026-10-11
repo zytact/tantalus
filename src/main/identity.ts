@@ -20,3 +20,10 @@ export const identities = {
 } as const;
 
 export type Identity = (typeof identities)[keyof typeof identities];
+
+/** The root helper a deb or rpm installs updates through, and the polkit action that lets an active
+ * session run it without a password. */
+export const updateHelper = (identity: Identity) => ({
+  path: `/usr/libexec/${identity.executableName}-update`,
+  action: `${identity.appId}.update`,
+});
