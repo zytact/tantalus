@@ -49,7 +49,9 @@ The **Wake Claude sign-in** switch in Settings runs the same `claude -p OK` prom
 
 ## Remote access
 
-Settings has two switches that let other devices open a read-only copy of the allowance page. It has no Refresh button and no Settings, and it updates whenever the app refreshes. Both start off, and the choice is saved to `remote-access.json` in the app config directory.
+Settings has two switches that let other devices open a copy of the allowance page. It has no Settings, and it updates whenever the app refreshes. A paired device can do three things to the host from that page: refresh usage, check for a newer Tantalus, and install the update the host found. Both switches start off, and the choice is saved to `remote-access.json` in the app config directory.
+
+**Updating the host from another device.** The page has a **Check the host for updates** button at the bottom, and a Tantalus following the host has the same button in Settings, named after the host. A found update shows the same banner, release notes, notices and install progress as on the host, and **Install update** installs it there. The request carries only the notices you acknowledged, so the host installs nothing but the signed release it already found. The host restarts after installing, and the page and a following Tantalus reconnect on their own. A Windows or macOS host installs with no prompt. A Linux deb or rpm host still asks for an administrator password on its own screen, so the install waits until someone types it there. A release that needs a fresh install can only be installed at the host.
 
 **Local network** listens on every interface at port 4747, so `http://<machine address>:4747` works from any device on the same network. Settings lists the addresses. Anyone on that network can read the page, and a firewall such as firewalld may need the port opened.
 

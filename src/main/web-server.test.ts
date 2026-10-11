@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { defaultPaceSettings } from "../shared/pace";
 import type { UsageSnapshot } from "../shared/usage";
 import { PROTOCOL } from "../shared/ipc";
+import type { AvailableUpdate } from "../shared/ipc";
 import { Pairing } from "./pairing";
 import { deviceName, trustedHost, WebServer } from "./web-server";
 
@@ -27,6 +28,13 @@ let refreshes: number;
 let gate: Promise<void> | null = null;
 let pairing: Pairing;
 let cookie: string;
+const update: AvailableUpdate = {
+  version: "9.0.0",
+  manualInstall: false,
+  notices: [{ id: "notice", message: "Read me.", fromVersion: "0.1.0", throughVersion: "9.0.0" }],
+};
+/** The update the host has found, once a device asked it to check. */
+let offer: AvailableUpdate | null = null;
 
 /** Pairs a browser through the server and returns its cookie. */
 async function pair(): Promise<string> {
@@ -44,7 +52,7 @@ async function pair(): Promise<string> {
   return header.split(";")[0]!;
 }
 
-const paired = (path: string, init: { method?: string; headers?: Record<string, string> } = {}) =>
+const paired = (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
   fetch(`${origin}${path}`, { ...init, headers: { ...init.headers, cookie } });
 
 beforeAll(async () => {
@@ -72,6 +80,17 @@ beforeAll(async () => {
       return current;
     },
     routes: async () => ({ urls: ["https://fedora.tail1.ts.net:8443", "http://192.168.1.5:4747"], complete: true }),
+    updates: {
+      available: () => offer,
+      progress: () => null,
+      check: async () => (offer = update),
+      install: async (acknowledgedNoticeIds) => {
+        if (!acknowledgedNoticeIds.includes("notice")) {
+          throw new Error("Read and acknowledge the update notice before installing.");
+        }
+      },
+      notes: async () => [],
+    },
     pairing,
     onConnections: () => {},
     now: () => 1_234_567,
@@ -95,13 +114,24 @@ describe("web server", () => {
   });
 
   it("serves usage only to a paired device", async () => {
-    for (const path of ["/api/current/usageSnapshot", "/api/current/serverEpoch", "/api/events", "/api/routes"]) {
+    for (const path of [
+      "/api/current/usageSnapshot",
+      "/api/current/serverEpoch",
+      "/api/current/hostUpdate",
+      "/api/events",
+      "/api/routes",
+      "/api/release-notes",
+    ]) {
       expect((await fetch(`${origin}${path}`)).status).toBe(401);
       expect((await fetch(`${origin}${path}`, { headers: { cookie: "tantalus-47470=forged" } })).status).toBe(401);
     }
     expect(
       (await fetch(`${origin}/api/refresh`, { method: "POST", headers: { "x-tantalus-action": "refresh" } })).status,
     ).toBe(401);
+    for (const name of ["check-update", "update"]) {
+      const response = await fetch(`${origin}/api/${name}`, { method: "POST", headers: { "x-tantalus-action": name } });
+      expect(response.status).toBe(401);
+    }
   });
 
   it("names a browser after what it runs on and refuses a wrong code", async () => {
@@ -144,6 +174,27 @@ describe("web server", () => {
     expect(refreshes).toBe(1);
   });
 
+  it("checks for the host's update and installs it only through guarded POSTs", async () => {
+    expect(await (await paired("/api/current/hostUpdate")).json()).toBeNull();
+    expect((await paired("/api/check-update", { method: "POST" })).status).toBe(405);
+    const check = await paired("/api/check-update", {
+      method: "POST",
+      headers: { "x-tantalus-action": "check-update" },
+    });
+    expect(await check.json()).toEqual(update);
+    expect(await (await paired("/api/current/hostUpdate")).json()).toEqual(update);
+    expect(await (await paired("/api/release-notes")).json()).toEqual([]);
+
+    const install = (body: unknown, action = "update") =>
+      paired("/api/update", { method: "POST", headers: { "x-tantalus-action": action }, body: JSON.stringify(body) });
+    expect((await install({ acknowledgedNoticeIds: ["notice"] }, "refresh")).status).toBe(405);
+    expect((await install({ url: "https://example.com/tantalus.rpm" })).status).toBe(400);
+    const refused = await install({ acknowledgedNoticeIds: [] });
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toBe("Read and acknowledge the update notice before installing.");
+    expect((await install({ acknowledgedNoticeIds: ["notice"] })).status).toBe(200);
+  });
+
   it("refuses a refresh whose device was removed while it ran", async () => {
     let open = () => {};
     gate = new Promise((resolve) => (open = resolve));
@@ -163,9 +214,20 @@ describe("web server", () => {
   it("streams the current snapshot, then each one published, until the device is removed", async () => {
     const response = await paired("/api/events");
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
-    const next = async () => JSON.parse((await reader.read()).value!.split("data: ")[1]!) as UsageSnapshot;
+    let buffer = "";
+    /** The next event's name and payload, whatever chunks they arrive in. */
+    const message = async () => {
+      while (!buffer.includes("\n\n")) buffer += (await reader.read()).value!;
+      const [head, ...rest] = buffer.split("\n\n");
+      buffer = rest.join("\n\n");
+      const [name, data] = head!.split("\n");
+      return [name!.slice("event: ".length), JSON.parse(data!.slice("data: ".length))] as const;
+    };
+    const next = async () => (await message())[1] as UsageSnapshot;
     expect(await next()).toEqual(current);
-    server.publish(snapshot(false));
+    expect(await message()).toEqual(["hostUpdate", offer]);
+    expect(await message()).toEqual(["hostInstallProgress", null]);
+    server.publish("usageSnapshot", snapshot(false));
     expect((await next()).enabled.claude).toBe(false);
 
     const [device] = [...server.connected()];

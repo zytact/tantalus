@@ -21,6 +21,12 @@ export type InstallProgress = ({ stage: "download" } & DownloadProgress) | { sta
 export type ReleaseChange = { kind: "new" | "fixed" | "changed"; scope: string | null; summary: string };
 export type ReleaseNotes = { version: string; publishedAt: string | null; changes: ReleaseChange[] };
 
+/** The update waiting on a host and how far its install has come, as a paired device shows them.
+ * `hostUpdate` is null while the host has none on offer. */
+export type HostUpdateEvents = { hostUpdate: AvailableUpdate | null; hostInstallProgress: InstallProgress | null };
+/** What a host streams to a paired device, keyed by event name. */
+export type HostEvents = { usageSnapshot: UsageSnapshot } & HostUpdateEvents;
+
 /** The ways another device can open the allowance page, and whether each is switched on. */
 export const remoteRoutes = ["localNetwork", "tailscale"] as const;
 export type RemoteRoute = (typeof remoteRoutes)[number];
@@ -88,6 +94,11 @@ export type Commands = {
   openLatestRelease: () => void;
   /** The notes of every release after the running build, up to the available update, newest first. */
   releaseNotes: () => ReleaseNotes[];
+  /** The same three for the host a paired device shows. Installing sends only the acknowledgements,
+   * so the host installs nothing but the update it already found. */
+  checkForHostUpdate: () => AvailableUpdate | null;
+  installHostUpdate: (acknowledgedNoticeIds: string[]) => void;
+  hostReleaseNotes: () => ReleaseNotes[];
   openAtLogin: () => boolean;
   setOpenAtLogin: (enabled: boolean) => void;
   windowStart: () => WindowStart;
@@ -112,7 +123,7 @@ export type Commands = {
 
 /** What the main process publishes to the window, keyed by channel. The window can also read the
  * latest value of each, which is null until there is one. */
-export type Events = {
+export type Events = HostUpdateEvents & {
   /** Null while a followed host has published nothing yet. */
   usageSnapshot: UsageSnapshot | null;
   toast: string;

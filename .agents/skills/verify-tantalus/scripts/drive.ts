@@ -6,6 +6,9 @@
 //   drive.ts scroll|hover|focus <role> <name> scroll to, hover, or focus an element
 //   drive.ts press <key>                    press a key or chord, e.g. Control+R
 //   drive.ts screenshot <dir> [name]        save the window's page as <dir>/<name>.png
+//   drive.ts wait <seconds>                 keep the page open that long
+// Join commands with `then` to run them in order on one page, e.g. `click button Refresh then snapshot`.
+// A --web page lives only for one invocation, so this is how to read what a click on it did.
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a
 // headless Chrome at phone size. Its profile lives in the run directory, so a pairing carries over
 // from one --web command to the next until cleanup. TANTALUS_CHROME overrides the Chrome executable.
@@ -29,7 +32,11 @@ const nth = option("--nth");
 if (nth !== null && !/^\d+$/.test(nth)) throw new Error("--nth takes a zero-based match index.");
 const matchIndex = nth === null ? null : Number(nth);
 if (matchIndex !== null && !Number.isSafeInteger(matchIndex)) throw new Error("--nth index is too large.");
-const [command, ...args] = argv;
+/** The commands to run in order, split at each `then`. */
+const steps = argv.reduce<string[][]>(
+  (list, word) => (word === "then" ? [...list, []] : [...list.slice(0, -1), [...list.at(-1)!, word]]),
+  [[]],
+);
 const browser = webUrl
   ? await chromium.launchPersistentContext(join(RUN_DIR, "web-profile"), {
       executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome",
@@ -54,7 +61,7 @@ try {
     const matches = page.getByRole(role as Parameters<typeof page.getByRole>[0], { name, exact: true });
     return matchIndex === null ? matches : matches.nth(matchIndex);
   };
-  switch (command) {
+  for (const [command, ...args] of steps) switch (command) {
     case "snapshot":
       console.log(await page.locator("body").ariaSnapshot());
       break;
@@ -107,9 +114,13 @@ try {
       console.log(`SCREENSHOT: ${path}`);
       break;
     }
+    case "wait":
+      await page.waitForTimeout(Number(args[0]) * 1000);
+      console.log(`WAITED ${args[0]}s`);
+      break;
     default:
       throw new Error(
-        "usage: drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>",
+        "usage: drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME] | wait SECONDS> [then <command> ...]",
       );
   }
 } finally {

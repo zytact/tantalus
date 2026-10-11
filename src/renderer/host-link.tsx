@@ -6,6 +6,7 @@ import { refreshedEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { absoluteTime } from "./presentation";
 import { RouteIcon } from "./route-icon";
+import { HostUpdateCheck, UpdateNotice } from "./update-notice";
 
 /** Says why a followed host's usage is not live, and how old the usage shown is. */
 export function HostBanner({ link, snapshot }: { link: HostLink; snapshot: UsageSnapshot | null }) {
@@ -35,8 +36,8 @@ const states: Record<HostLinkState, { tone: "ok" | "warn" | "danger"; status: (l
   "update-client": { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
 };
 
-/** Settings while following a host: where usage comes from, the routes to it, and the way back to this
- * machine's own. */
+/** Settings while following a host: where usage comes from, the routes to it, the host's update, and
+ * the way back to this machine's own. */
 export function HostRows({ link }: { link: HostLink }) {
   const [error, setError] = useState<string | null>(null);
   const { tone, status } = states[link.state];
@@ -59,6 +60,12 @@ export function HostRows({ link }: { link: HostLink }) {
       <Failure message={error} />
       {link.state === "removed" && <ConnectForm address={link.routes[0]?.url} />}
       <Routes link={link} />
+      {link.state !== "removed" && (
+        <>
+          <HostUpdateCheck host={link.host} />
+          <UpdateNotice host={link.host} />
+        </>
+      )}
     </>
   );
 }

@@ -26,6 +26,7 @@ import type {
   UsageSnapshot,
   WindowUsage,
 } from "../shared/usage";
+import type { HostLink } from "../shared/ipc";
 import { windowStartKey } from "../shared/window-start";
 import type { StartAttempt } from "../shared/window-start";
 import { Email } from "./account-name";
@@ -57,7 +58,7 @@ import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
 import { Toast } from "./toast";
-import { UpdateNotice } from "./update-notice";
+import { HostUpdateCheck, UpdateNotice } from "./update-notice";
 import { webBridge } from "./web-bridge";
 import "./styles.css";
 
@@ -450,16 +451,20 @@ function HubAccounts({
   ));
 }
 
-/** The strips above the providers, which only the app window shows. */
+/** The strips above the providers. A view of a host's usage shows only that host's update, and the
+ * rest only the app window reading its own usage shows. */
 function Notices({
+  host,
   snapshot,
   onSnapshot,
   onSettings,
 }: {
+  host: string | undefined;
   snapshot: UsageSnapshot | null;
   onSnapshot: (snapshot: UsageSnapshot) => void;
   onSettings: () => void;
 }) {
+  if (host !== undefined) return <UpdateNotice host={host} />;
   return (
     <>
       <UpdateNotice />
@@ -554,6 +559,10 @@ function useNow(useServerClock: boolean) {
 
 /** A browser on another device has no preload, so it reads snapshots and refreshes over HTTP. */
 const remote = !("tantalus" in window);
+/** What a browser calls the host serving its page, whose machine name it never reads. */
+const BROWSER_HOST = "the host";
+/** The host whose usage this view shows, or undefined while the app reads its own. */
+const shownHost = (link: HostLink | null) => link?.host ?? (remote ? BROWSER_HOST : undefined);
 
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
@@ -627,9 +636,12 @@ function App() {
 
           {hostLink && <HostBanner link={hostLink} snapshot={snapshot} />}
 
-          {!remote && !hostLink && (
-            <Notices snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
-          )}
+          <Notices
+            host={shownHost(hostLink)}
+            snapshot={snapshot}
+            onSnapshot={setSnapshot}
+            onSettings={() => setPage("settings")}
+          />
 
           {snapshot && snapshot.accounts.length === 0 && snapshot.proxy_hubs.length === 0 && (
             <p className="empty">No providers are on. Turn one on in Settings.</p>
@@ -659,6 +671,10 @@ function App() {
                 starts={snapshot.window_starts}
               />
             ))}
+
+          {remote && (
+            <HostUpdateCheck host={BROWSER_HOST} onFound={() => window.scrollTo({ top: 0, behavior: "smooth" })} />
+          )}
 
           <footer>Auto-refreshes every 5 minutes</footer>
         </>

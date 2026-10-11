@@ -92,6 +92,12 @@ node .agents/skills/verify-tantalus/scripts/drive.ts press Control+R
 node .agents/skills/verify-tantalus/scripts/drive.ts screenshot "$EVIDENCE" settings
 ```
 
+Join commands with `then` to run them in order on one page, and use `wait SECONDS` to keep the page open between them:
+
+```sh
+node .agents/skills/verify-tantalus/scripts/drive.ts click button Refresh then wait 2 then snapshot
+```
+
 `snapshot` prints the accessibility tree, which is the fastest way to read figures, status words, and alerts. Click, fill, and scroll by ARIA role and accessible name, as the snapshot shows them. `screenshot` captures only what the window shows, so scroll the element you want into view first.
 
 When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. Take a fresh snapshot before targeting a creature because its name includes a changing projection. Use `focus ROLE NAME` to open its tooltip and pause its animation before `hover ROLE NAME` or `scroll ROLE NAME`, which wait for a stable element. Capture the same scheme to inspect its text and position.
@@ -115,7 +121,7 @@ node .agents/skills/verify-tantalus/scripts/drive.ts --scheme dark screenshot "$
 
 Chromium draws native popups, such as a `<select>` list, outside the page in its own colors, so `screenshot` misses them and they can ignore the theme. Capture the whole display to see one: `import -display "$(cat "$(.agents/skills/verify-tantalus/scripts/run-dir.sh)/run.display")" -window root "$EVIDENCE/display.png"`.
 
-For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot or the pairing form, runs the command, and closes that Chrome. Its profile lives in `web-profile/` in the run directory, so a device paired in one `--web` command stays paired for the next until cleanup. The preview is untouched:
+For the remote access page, use the collaborative browser when available and close its verification tab at teardown. Otherwise prefix a command with `--web <url>`. It launches a headless Chrome at phone size (`/usr/bin/google-chrome`, or `TANTALUS_CHROME`), waits for the first snapshot or the pairing form, runs the command, and closes that Chrome. The page lives only for that one invocation, so chain with `then` to read what a click did, such as `click button "Check the host for updates" then wait 1 then snapshot`, or to hold the page open with `wait` while the host restarts. Its profile lives in `web-profile/` in the run directory, so a device paired in one `--web` command stays paired for the next until cleanup. The preview is untouched:
 
 ```sh
 node .agents/skills/verify-tantalus/scripts/drive.ts --web http://127.0.0.1:4748/ snapshot
@@ -177,7 +183,7 @@ All helpers in `scripts/` are executable or run with `node`:
 
 - `build-preview.sh` builds the separately identified preview app without installing it, and refuses while a harness preview runs
 - `launch.sh [--mock [SCENARIO] | --restart]` starts the built preview on an isolated Xvfb display with its DevTools port open, with a fixture server in mock mode, or relaunches only the preview
-- `drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME]>` drives the preview window, or the remote access page in headless Chrome
+- `drive.ts [--web URL] [--scheme light|dark] [--nth INDEX] <snapshot | click ROLE NAME | fill ROLE NAME TEXT | submit ROLE NAME TEXT | scroll ROLE NAME | hover ROLE NAME | focus ROLE NAME | press KEY | screenshot DIR [NAME] | wait SECONDS> [then <command> ...]` drives the preview window, or the remote access page in headless Chrome
 - `fixture-server.py <PORT_FILE> <REQUEST_LOG> <SCENARIO>` serves scenario responses on the providers' paths; `launch.sh --mock` starts it
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)

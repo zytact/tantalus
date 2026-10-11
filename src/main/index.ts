@@ -88,6 +88,13 @@ function start() {
     snapshot: () => state.snapshot,
     refresh: () => state.refresh(),
     routes: () => remote.served(),
+    updates: {
+      available: () => updater.available(),
+      progress: () => updater.installProgress(),
+      check: () => checkForUpdate(),
+      install: (acknowledgedNoticeIds) => updater.install(acknowledgedNoticeIds),
+      notes: () => updater.releaseNotes(),
+    },
     pairing,
     onConnections: () => publish("remoteDevices", remoteDevices()),
   });
@@ -125,7 +132,7 @@ function start() {
       snapshot.window_starts = starter.results();
       renderTray();
       publish("usageSnapshot", snapshot);
-      web.publish(snapshot);
+      web.publish("usageSnapshot", snapshot);
     },
     new PaceTracker(
       join(app.getPath("userData"), "pace-log.json"),
@@ -156,6 +163,10 @@ function start() {
       renderTray();
       publish("usageSnapshot", snapshot);
     },
+    onHostUpdate: ({ hostUpdate, hostInstallProgress }) => {
+      publish("hostUpdate", hostUpdate);
+      publish("hostInstallProgress", hostInstallProgress);
+    },
     onChange: (hostLink) => {
       renderTray();
       publish("hostLink", hostLink);
@@ -166,13 +177,24 @@ function start() {
   const updater = new Updater(
     (update) => {
       renderTray();
-      publish("updateAvailable", update);
+      if (update) publish("updateAvailable", update);
+      web.publish("hostUpdate", update);
     },
-    (progress) => publish("installProgress", progress),
+    (progress) => {
+      publish("installProgress", progress);
+      web.publish("hostInstallProgress", progress);
+    },
   );
   // A dev build has no bundle to replace, and a preview installs under its own name, so a release
   // would land beside it rather than update it.
   const updatesEnabled = app.isPackaged && !preview;
+  /** The manual check, from this window or a paired device. */
+  const checkForUpdate = async () => {
+    if (!updatesEnabled) throw new Error("Dev and preview builds do not check for updates.");
+    return updater.check().catch((error: unknown) => {
+      throw new Error(`Could not check for updates: ${message(error)}`);
+    });
+  };
 
   const tray = new Tray(trayImage());
   bindTrayClick(tray);
@@ -202,15 +224,12 @@ function start() {
     serverEpoch: nowEpoch,
     remoteDevices,
     hostLink: () => link.read(),
+    hostUpdate: () => link.updates.hostUpdate,
+    hostInstallProgress: () => link.updates.hostInstallProgress,
   };
   ipcMain.handle(CURRENT, (_event, event: keyof Events) => current[event]?.() ?? null);
   registerUsageHandlers(state, refresh, sameSource);
-  handle("checkForUpdate", async () => {
-    if (!updatesEnabled) throw new Error("Dev and preview builds do not check for updates.");
-    return updater.check().catch((error: unknown) => {
-      throw new Error(`Could not check for updates: ${message(error)}`);
-    });
-  });
+  handle("checkForUpdate", checkForUpdate);
   handle("installUpdate", (acknowledgedNoticeIds) => updater.install(acknowledgedNoticeIds));
   handle("openLatestRelease", () => shell.openExternal("https://github.com/zytact/tantalus/releases/latest"));
   handle("releaseNotes", () => updater.releaseNotes());
@@ -281,6 +300,9 @@ function registerHostLinkHandlers(
     if (typeof url !== "string") throw new Error("Unknown host setting.");
     return link.addRoute(url);
   });
+  handle("checkForHostUpdate", () => link.checkUpdate());
+  handle("installHostUpdate", (acknowledgedNoticeIds) => link.installUpdate(acknowledgedNoticeIds));
+  handle("hostReleaseNotes", () => link.releaseNotes());
   handle("disconnectHost", () => {
     link.disconnect();
     onLocal();
