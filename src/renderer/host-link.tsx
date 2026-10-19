@@ -10,7 +10,7 @@ import { HostUpdateCheck, UpdateNotice } from "./update-notice";
 
 /** The source switch, then the banner while the host is not delivering. The banner dates the usage
  * shown only while it is the host's. */
-export function FollowedHost({
+export function HostSourceBar({
   link,
   hostShown,
   snapshot,
@@ -218,8 +218,8 @@ export function ConnectRows() {
         <div className="setting-copy">
           <h2>Follow another Tantalus</h2>
           <p>
-            Show the usage another computer reads. This one polls its own sign-ins only while you switch the allowance
-            view to them.
+            Show the usage another computer reads. This one polls its own sign-ins only while the allowance view shows
+            them.
           </p>
         </div>
         <button disabled={connecting} onClick={() => setOpen((shown) => !shown)}>

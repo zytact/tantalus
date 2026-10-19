@@ -117,7 +117,7 @@ export type Commands = {
   renameDevice: (id: string, name: string) => RemoteDevices;
   /** Cuts the device off at once, including a stream it has open. */
   removeDevice: (id: string) => RemoteDevices;
-  /** Pairs with the host at `url` and follows its usage instead of reading this machine's. */
+  /** Pairs with the host at `url` and shows its usage. */
   connectHost: (url: string, code: string) => HostLink;
   /** Adds an address the followed host answers on, once it reports the same host ID. */
   addHostRoute: (url: string) => HostLink;
@@ -138,7 +138,7 @@ export type Events = HostUpdateEvents & {
   installProgress: InstallProgress | null;
   serverEpoch: number;
   remoteDevices: RemoteDevices;
-  /** Null while this machine reads its own usage. */
+  /** Null while this machine follows no host. */
   hostLink: HostLink | null;
   /** The saved choice, which only a machine following a host acts on. */
   usageSource: UsageSource;

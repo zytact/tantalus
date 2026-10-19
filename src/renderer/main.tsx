@@ -52,7 +52,7 @@ import {
   usageValueText,
   windowEntries,
 } from "./presentation";
-import { FollowedHost } from "./host-link";
+import { HostSourceBar } from "./host-link";
 import { PairPage } from "./pair-page";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
@@ -656,7 +656,7 @@ function App() {
             </div>
           </header>
 
-          {hostLink && <FollowedHost link={hostLink} hostShown={followed !== undefined} snapshot={snapshot} />}
+          {hostLink && <HostSourceBar link={hostLink} hostShown={followed !== undefined} snapshot={snapshot} />}
 
           <Notices host={host} snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
 
