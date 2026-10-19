@@ -16,7 +16,7 @@ One file covers each user-facing feature backed by `src/` and the README.
 - [sign-in-sources](sign-in-sources.md) - Windows and WSL sign-in switches, and one account per login found
 - [settings](settings.md) - every Settings row, version, and updates
 - [remote-access](remote-access.md) - the allowance page over the local network and Tailscale, device pairing, and checking for the host's update from the page
-- [host-link](host-link.md) - following another Tantalus's usage instead of reading this machine's, and checking for that host's update
+- [host-link](host-link.md) - following another Tantalus's usage, switching between it and this machine's own, and checking for that host's update
 - [tray-and-autorefresh](tray-and-autorefresh.md) - tray menu, polling, and token privacy
 - [updates](updates.md) - release update checks and installation, on this machine and on a host from a paired device, and the root helper that installs a deb or rpm without a password
 
