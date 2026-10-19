@@ -561,9 +561,9 @@ function useNow(useServerClock: boolean) {
 const remote = !("tantalus" in window);
 /** What a browser calls the host serving its page, whose machine name it never reads. */
 const BROWSER_HOST = "the host";
-/** The host whose usage this view shows, or undefined while the app shows its own. */
-const shownHost = (link: HostLink | null, source: UsageSource | null) =>
-  link && source !== "local" ? link.host : remote ? BROWSER_HOST : undefined;
+/** The followed host whose usage the app window shows, or undefined while it shows its own. */
+const followedHost = (link: HostLink | null, source: UsageSource | null) =>
+  link && source !== "local" ? link.host : undefined;
 
 /** When the shown usage was read, and on which followed host. */
 function RefreshStatus({
@@ -597,7 +597,8 @@ function App() {
   const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
   const [hostLink] = usePublishedState("hostLink");
   const [source] = usePublishedState("usageSource");
-  const host = shownHost(hostLink, source);
+  const followed = followedHost(hostLink, source);
+  const host = followed ?? (remote ? BROWSER_HOST : undefined);
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow(remote);
 
@@ -631,7 +632,7 @@ function App() {
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
           snapshot={snapshot}
           hostLink={hostLink}
-          hostShown={host !== undefined}
+          hostShown={followed !== undefined}
           onSnapshot={setSnapshot}
           onBack={() => setPage("allowance")}
         />
@@ -640,7 +641,7 @@ function App() {
           <header>
             <div>
               <h1>Allowance</h1>
-              <RefreshStatus snapshot={snapshot} failed={snapshotError} now={now} host={hostLink ? host : undefined} />
+              <RefreshStatus snapshot={snapshot} failed={snapshotError} now={now} host={followed} />
             </div>
             <div className="header-actions">
               {!remote && <button onClick={() => setPage("settings")}>Settings</button>}
@@ -655,7 +656,7 @@ function App() {
             </div>
           </header>
 
-          {hostLink && <FollowedHost link={hostLink} hostShown={host !== undefined} snapshot={snapshot} />}
+          {hostLink && <FollowedHost link={hostLink} hostShown={followed !== undefined} snapshot={snapshot} />}
 
           <Notices host={host} snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
 

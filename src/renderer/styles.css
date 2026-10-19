@@ -807,10 +807,10 @@ button.danger:hover:not(:disabled) {
   min-height: 30px;
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
   color: var(--text-muted);
 }
 .source-switch button:hover:not(:disabled) {
-  background: transparent;
   color: var(--ink);
   transform: none;
 }

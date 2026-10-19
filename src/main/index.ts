@@ -128,7 +128,7 @@ function start() {
     (config) => proxyHubs.read(config),
     (snapshot) => {
       // A read that was running when the host's usage came on screen is not shown.
-      if (source.hostShown()) return;
+      if (view.hostShown()) return;
       starter.observe(snapshot);
       snapshot.window_starts = starter.results();
       renderTray();
@@ -162,7 +162,7 @@ function start() {
     vault: tokenVault(),
     onSnapshot: (snapshot) => {
       // The host keeps streaming while this machine shows its own usage.
-      if (!source.hostShown()) return;
+      if (!view.hostShown()) return;
       renderTray();
       publish("usageSnapshot", snapshot);
     },
@@ -175,8 +175,8 @@ function start() {
       publish("hostLink", hostLink);
     },
   });
-  const source = usageSource(link, state, join(app.getPath("userData"), "usage-source.json"));
-  const { usage, tray: trayUsage, refresh, sameSource } = source;
+  const view = usageView(link, state, join(app.getPath("userData"), "usage-source.json"));
+  const { usage, tray: trayUsage, refresh, sameSource } = view;
   const polling = localPolling(state, starter);
   const updater = new Updater(
     updateHelper(identity).path,
@@ -207,7 +207,7 @@ function start() {
     tray,
     trayUsage,
     () => link.problem(),
-    () => source.hostShown() && link.problem() !== null,
+    () => view.hostShown() && link.problem() !== null,
   );
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
@@ -234,7 +234,7 @@ function start() {
     serverEpoch: nowEpoch,
     remoteDevices,
     hostLink: () => link.read(),
-    usageSource: source.selected,
+    usageSource: view.selected,
     hostUpdate: () => link.updates.hostUpdate,
     hostInstallProgress: () => link.updates.hostInstallProgress,
   };
@@ -282,38 +282,41 @@ function start() {
   /** Polls this machine's own providers only while their usage is on screen. Each side's usage
    * replaces the other's at once, so neither shows under the other's name. */
   const showUsage = () => {
-    if (source.hostShown()) polling.stop();
+    if (view.hostShown()) polling.stop();
     else polling.start();
-    publish("usageSource", source.selected());
+    publish("usageSource", view.selected());
     publish("usageSnapshot", usage());
     renderTray();
   };
-  registerHostLinkHandlers(link, remote, source.select, showUsage);
+  const showSource = (source: UsageSource) => {
+    view.select(source);
+    showUsage();
+  };
+  registerHostLinkHandlers(link, remote, showSource, showUsage);
 
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
   startBackgroundServices(link, remote, updater, updatesEnabled, showUsage);
 }
 
-/** `show` shows the usage of whichever side is now on screen, and polls this machine's when it is. */
+/** `show` shows the usage of whichever side is now on screen, and polls this machine's when it is.
+ * `showSource` saves the choice of side first. */
 function registerHostLinkHandlers(
   link: HostLinkClient,
   remote: RemoteAccessRoutes,
-  select: (source: UsageSource) => void,
+  showSource: (source: UsageSource) => void,
   show: () => void,
 ) {
   handle("connectHost", async (url, code) => {
     if (typeof url !== "string" || typeof code !== "string") throw new Error("Unknown host setting.");
     const hostLink = await link.connect(url, code);
-    select("host");
-    show();
+    showSource("host");
     await remote.stop();
     return hostLink;
   });
   handle("setUsageSource", (source) => {
     if (!usageSources.includes(source)) throw new Error("Unknown usage source.");
-    select(source);
-    show();
+    showSource(source);
   });
   handle("addHostRoute", (url) => {
     if (typeof url !== "string") throw new Error("Unknown host setting.");
@@ -389,7 +392,7 @@ function tokenVault(): TokenVault {
 /** What the tray and window show: the followed host's usage, or this machine's own. A follower shows
  * the host's unless the saved choice at `path` picks its own. `usage` is null until a followed host
  * publishes, and `tray` stands in an empty reading for the tray. */
-function usageSource(link: HostLinkClient, state: UsageState, path: string) {
+function usageView(link: HostLinkClient, state: UsageState, path: string) {
   let selected = loadUsageSource(path);
   const hostShown = () => link.active && selected === "host";
   const usage = () => (hostShown() ? link.snapshot : state.snapshot);
