@@ -1,15 +1,34 @@
 import { useState } from "react";
 import { hostLinkProblem } from "../shared/host-link";
 import { remoteRouteNames } from "../shared/ipc";
-import type { HostLink, HostLinkState, HostRoute } from "../shared/ipc";
+import type { HostLink, HostLinkState, HostRoute, UsageSource } from "../shared/ipc";
 import { refreshedEpoch } from "../shared/usage";
 import type { UsageSnapshot } from "../shared/usage";
 import { absoluteTime } from "./presentation";
 import { RouteIcon } from "./route-icon";
 import { HostUpdateCheck, UpdateNotice } from "./update-notice";
 
+/** The source switch, then the banner while the host is not delivering. The banner dates the usage
+ * shown only while it is the host's. */
+export function FollowedHost({
+  link,
+  hostShown,
+  snapshot,
+}: {
+  link: HostLink;
+  hostShown: boolean;
+  snapshot: UsageSnapshot | null;
+}) {
+  return (
+    <>
+      <SourceSwitch link={link} source={hostShown ? "host" : "local"} />
+      <HostBanner link={link} snapshot={hostShown ? snapshot : null} />
+    </>
+  );
+}
+
 /** Says why a followed host's usage is not live, and how old the usage shown is. */
-export function HostBanner({ link, snapshot }: { link: HostLink; snapshot: UsageSnapshot | null }) {
+function HostBanner({ link, snapshot }: { link: HostLink; snapshot: UsageSnapshot | null }) {
   const problem = hostLinkProblem(link);
   if (!problem) return null;
   const since = link.since === null ? "" : ` Since ${absoluteTime(link.since)}.`;
@@ -35,6 +54,31 @@ const states: Record<HostLinkState, { tone: "ok" | "warn" | "danger"; status: (l
   "update-host": { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
   "update-client": { tone: "danger", status: (link) => hostLinkProblem(link) ?? "" },
 };
+
+/** Switches the allowance view between the followed host's usage and this machine's own. The host's
+ * dot keeps its connection in sight while this machine's usage is shown. */
+function SourceSwitch({ link, source }: { link: HostLink; source: UsageSource }) {
+  const [error, setError] = useState<string | null>(null);
+  const choose = (next: UsageSource) => {
+    if (next === source) return;
+    setError(null);
+    void window.tantalus.invoke("setUsageSource", next).catch(() => setError("Could not switch usage."));
+  };
+  return (
+    <>
+      <div className="source-switch" role="group" aria-label="Usage shown">
+        <button aria-pressed={source === "host"} onClick={() => choose("host")}>
+          <span className={`status-dot ${states[link.state].tone}`} aria-hidden="true" />
+          <span className="source-name">{link.host}</span>
+        </button>
+        <button aria-pressed={source === "local"} onClick={() => choose("local")}>
+          This device
+        </button>
+      </div>
+      <Failure message={error} />
+    </>
+  );
+}
 
 /** Settings while following a host: where usage comes from, the routes to it, the host's update, and
  * the way back to this machine's own. */
@@ -173,7 +217,10 @@ export function ConnectRows() {
       <section className="setting-row">
         <div className="setting-copy">
           <h2>Follow another Tantalus</h2>
-          <p>Show the usage another computer reads, instead of signing in here. This one stops polling.</p>
+          <p>
+            Show the usage another computer reads. This one polls its own sign-ins only while you switch the allowance
+            view to them.
+          </p>
         </div>
         <button disabled={connecting} onClick={() => setOpen((shown) => !shown)}>
           {open ? "Cancel" : "Connect"}

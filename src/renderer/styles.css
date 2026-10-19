@@ -789,6 +789,42 @@ button.danger:hover:not(:disabled) {
 .status-dot.danger {
   --status: var(--danger);
 }
+.source-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin: 14px 0 0;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--track);
+}
+.source-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+.source-switch button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+  transform: none;
+}
+.source-switch button[aria-pressed="true"] {
+  border-color: var(--glass-border);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  color: var(--ink);
+}
+.source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .routes {
   padding: 2px 0 17px;
   border-bottom: 1px solid var(--hairline);

@@ -13,6 +13,7 @@ import {
   loadRemoteSettings,
   loadSettings,
   loadSignInSettings,
+  loadUsageSource,
   loadWindowStartSettings,
   noProviders,
   noRemoteAccess,
@@ -34,6 +35,17 @@ describe("sign-in settings", () => {
     expect(loadSignInSettings(file)).toEqual({ windows: true, wsl: true });
     saveSettings(file, { windows: false, wsl: true });
     expect(loadSignInSettings(file)).toEqual({ windows: false, wsl: true });
+  });
+});
+
+describe("usage source", () => {
+  it("shows the host until this device's own usage is chosen", () => {
+    const file = path();
+    expect(loadUsageSource(file)).toBe("host");
+    writeFileSync(file, '{"source":"elsewhere"}');
+    expect(loadUsageSource(file)).toBe("host");
+    saveSettings(file, { source: "local" });
+    expect(loadUsageSource(file)).toBe("local");
   });
 });
 
