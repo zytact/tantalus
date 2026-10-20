@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/zytact/tantalus/compare/v0.2.1...v0.2.2) (2026-10-20)
+
+
+### Features
+
+* **remote:** switch a follower between its host's usage and its own ([#137](https://github.com/zytact/tantalus/issues/137)) ([a4b9b4e](https://github.com/zytact/tantalus/commit/a4b9b4e33d303a2901a75c209b00534721a39aec))
+
 ## [0.2.1](https://github.com/zytact/tantalus/compare/v0.2.0...v0.2.1) (2026-10-11)
 
 
