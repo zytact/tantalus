@@ -95,6 +95,28 @@ export type UsageSnapshot = {
   window_starts?: Partial<Record<string, StartAttempt>>;
 };
 
+/** Finds a reading of an account by provider and `account_key`, or null when there is none. */
+export type ReadingLookup = (provider: ProviderId, key: string | null) => ProviderUsage | null;
+
+/** The reading in `snapshot` of `provider`'s account named `key`, direct or through a hub, while its last
+ * read succeeded. A hub keeps an account's email and plan beside its usage, so they are folded in. */
+export function liveReading(snapshot: UsageSnapshot | null, provider: ProviderId, key: string | null) {
+  if (!snapshot || key === null) return null;
+  const readings = [
+    ...snapshot.accounts.map((account) => ({ provider: account.provider, usage: account.usage })),
+    ...snapshot.proxy_hubs.flatMap((hub) =>
+      hub.accounts.map(({ provider, usage, email, plan }) => ({
+        provider,
+        usage: { ...usage, email: usage.email ?? email, plan: usage.plan ?? plan },
+      })),
+    ),
+  ];
+  const found = readings.find(
+    (reading) => reading.provider === provider && reading.usage.account_key === key && reading.usage.status === "ready",
+  );
+  return found?.usage ?? null;
+}
+
 /** How an account is named where accounts are listed side by side. The page blurs `email` until it is
  * revealed, and the tray never shows it. `label` tells accounts apart for screen readers while their
  * emails are hidden. */

@@ -10,10 +10,10 @@ import { CURRENT, TOAST_MILLISECONDS, remoteRoutes, usageSources } from "../shar
 import type { Commands, Events, ProxyHubInput, Reply, UsageSource } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
-import { nowEpoch, percent, providerIds, proxyHubManagementUrl, signInSources } from "../shared/usage";
-import type { UsageSnapshot } from "../shared/usage";
+import { liveReading, nowEpoch, percent, providerIds, proxyHubManagementUrl, signInSources } from "../shared/usage";
+import type { ProviderId, ReadingLookup, UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
-import { UsageApi } from "./api";
+import { accountKey, UsageApi } from "./api";
 import { findSignIns, readCredentials } from "./auth";
 import { asError } from "./failure";
 import { runCli, startCli } from "./cli";
@@ -122,10 +122,14 @@ function start() {
         (await findSignIns(provider, sources)).map(async ({ id, distribution, path }) => ({
           id,
           distribution,
-          usage: await readCredentials(provider, path).then((credentials) => api.fetch(provider, credentials), asError),
+          usage: await readCredentials(provider, path).then((credentials) => {
+            const email = credentials.email ?? lastEmail(provider, id);
+            const key = accountKey(credentials.accountId, email, credentials.accessToken);
+            return hostReading(provider, key) ?? api.fetch(provider, credentials);
+          }, asError),
         })),
       ),
-    (config) => proxyHubs.read(config),
+    (config) => proxyHubs.read(config, hostReading),
     (snapshot) => {
       // A read that was running when the host's usage came on screen is not shown.
       if (view.hostShown()) return;
@@ -142,6 +146,13 @@ function start() {
     ),
     notify,
   );
+  /** Claude's sign-in file has no email, so the last read of the same sign-in names its account. */
+  const lastEmail = (provider: ProviderId, id: string) =>
+    state.snapshot.accounts.find((account) => account.provider === provider && account.id === id)?.usage.email ?? null;
+  /** The followed host's live reading of an account this machine also signs in to, so the same account is
+   * not read twice. A host that is not delivering lends nothing, so this machine reads for itself. */
+  const hostReading: ReadingLookup = (provider, key) =>
+    link.problem() === null ? liveReading(link.snapshot, provider, key) : null;
   const starter = new WindowStarter(
     join(app.getPath("userData"), "window-start.json"),
     startCli,

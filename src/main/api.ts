@@ -43,7 +43,7 @@ export class UsageApi {
       opencode: () => this.fetchOpencode(credentials),
     };
     const usage = await reads[provider]();
-    return { ...usage, account_key: accountKey(credentials, usage.email) };
+    return { ...usage, account_key: accountKey(credentials.accountId, usage.email, credentials.accessToken) };
   }
 
   private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
@@ -119,13 +119,15 @@ export class UsageApi {
   }
 }
 
-function accountKey(credentials: Credentials, email: string | null): string {
-  const parts = credentials.accountId
-    ? ["account", credentials.accountId]
+/** Names an account the same way on every machine that reads it, directly or through a hub: by its
+ * account ID, else its email, else a hash of its `token`. Null when there is none of the three. */
+export function accountKey(accountId: string | null, email: string | null, token: string | null = null): string | null {
+  const parts = accountId
+    ? ["account", accountId]
     : email
       ? ["email", email.trim().toLowerCase()]
-      : ["credential", credentials.accessToken];
-  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+      : token && ["credential", token];
+  return parts ? createHash("sha256").update(JSON.stringify(parts)).digest("hex") : null;
 }
 
 function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {

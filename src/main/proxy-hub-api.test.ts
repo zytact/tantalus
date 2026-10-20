@@ -117,6 +117,18 @@ describe("CLIProxyAPI usage", () => {
     expect(claudeUsage?.header["User-Agent"]).toMatch(/^claude-cli\//);
   });
 
+  it("takes an account another reader already has live, without asking the hub to read it", async () => {
+    const [codex] = await fixture().api.read(config);
+    const test = fixture();
+    const accounts = await test.api.read(config, (provider, key) =>
+      provider === "codex" && key === codex?.usage.account_key ? codex.usage : null,
+    );
+
+    expect(accounts[0]?.usage).toBe(codex?.usage);
+    expect(test.calls.map((call) => call.auth_index)).not.toContain("codex-auth");
+    expect(accounts[1]?.usage.five_hour.used_percent).toBe(31);
+  });
+
   it("reads each Claude plan without letting a failed profile cost the usage reading", async () => {
     const request: typeof fetch = async (_input, init) => {
       if (init?.method === "GET") {
