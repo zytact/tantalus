@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { PairedDevice, RemoteSettings } from "../shared/ipc";
+import { usageSources } from "../shared/ipc";
+import type { PairedDevice, RemoteSettings, UsageSource } from "../shared/ipc";
 import { defaultPaceSettings, isPacePreset } from "../shared/pace";
 import type { PaceLog, PaceSample, PaceSettings, PaceTick } from "../shared/pace";
 import { noTrayUsage } from "../shared/tray-usage";
@@ -116,6 +117,16 @@ function savedRoute(value: unknown): SavedRoute | null {
   const url = field(value, "url");
   const found = field(value, "found");
   return typeof url === "string" && httpUrl(url) && typeof found === "boolean" ? { url, found } : null;
+}
+
+/** A follower shows its host's usage until someone switches to its own. */
+export function loadUsageSource(path: string): UsageSource {
+  return load(
+    path,
+    "host",
+    "host",
+    (value) => usageSources.find((source) => source === field(value, "source")) ?? null,
+  );
 }
 
 /** The random ID this machine answers to as a host, made on first use. */

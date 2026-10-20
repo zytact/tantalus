@@ -26,7 +26,7 @@ import type {
   UsageSnapshot,
   WindowUsage,
 } from "../shared/usage";
-import type { HostLink } from "../shared/ipc";
+import type { HostLink, UsageSource } from "../shared/ipc";
 import { windowStartKey } from "../shared/window-start";
 import type { StartAttempt } from "../shared/window-start";
 import { Email } from "./account-name";
@@ -52,7 +52,7 @@ import {
   usageValueText,
   windowEntries,
 } from "./presentation";
-import { HostBanner } from "./host-link";
+import { HostSourceBar } from "./host-link";
 import { PairPage } from "./pair-page";
 import { ProviderIcon } from "./provider-icon";
 import { usePublishedState } from "./published-state";
@@ -561,13 +561,44 @@ function useNow(useServerClock: boolean) {
 const remote = !("tantalus" in window);
 /** What a browser calls the host serving its page, whose machine name it never reads. */
 const BROWSER_HOST = "the host";
-/** The host whose usage this view shows, or undefined while the app reads its own. */
-const shownHost = (link: HostLink | null) => link?.host ?? (remote ? BROWSER_HOST : undefined);
+/** The followed host whose usage the app window shows, or undefined while it shows its own. */
+const followedHost = (link: HostLink | null, source: UsageSource | null) =>
+  link && source !== "local" ? link.host : undefined;
+
+/** When the shown usage was read, and on which followed host. */
+function RefreshStatus({
+  snapshot,
+  failed,
+  now,
+  host,
+}: {
+  snapshot: UsageSnapshot | null;
+  failed: boolean;
+  now: number;
+  host: string | undefined;
+}) {
+  return (
+    <p className="status">
+      {snapshot ? (
+        `${refreshedAgo(refreshedEpoch(snapshot), now)}${host ? ` on ${host}` : ""}`
+      ) : (
+        <PendingLabel
+          failed={failed}
+          failedLabel="Could not load provider settings"
+          pendingLabel="Loading provider settings"
+        />
+      )}
+    </p>
+  );
+}
 
 function App() {
   const [page, setPage] = useState<"allowance" | "settings">("allowance");
   const [snapshot, setSnapshot, snapshotError] = usePublishedState("usageSnapshot");
   const [hostLink] = usePublishedState("hostLink");
+  const [source] = usePublishedState("usageSource");
+  const followed = followedHost(hostLink, source);
+  const host = followed ?? (remote ? BROWSER_HOST : undefined);
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow(remote);
 
@@ -601,6 +632,7 @@ function App() {
           providers={snapshot?.enabled ?? (snapshotError ? "unavailable" : "loading")}
           snapshot={snapshot}
           hostLink={hostLink}
+          hostShown={followed !== undefined}
           onSnapshot={setSnapshot}
           onBack={() => setPage("allowance")}
         />
@@ -609,17 +641,7 @@ function App() {
           <header>
             <div>
               <h1>Allowance</h1>
-              <p className="status">
-                {snapshot ? (
-                  `${refreshedAgo(refreshedEpoch(snapshot), now)}${hostLink ? ` on ${hostLink.host}` : ""}`
-                ) : (
-                  <PendingLabel
-                    failed={snapshotError}
-                    failedLabel="Could not load provider settings"
-                    pendingLabel="Loading provider settings"
-                  />
-                )}
-              </p>
+              <RefreshStatus snapshot={snapshot} failed={snapshotError} now={now} host={followed} />
             </div>
             <div className="header-actions">
               {!remote && <button onClick={() => setPage("settings")}>Settings</button>}
@@ -634,14 +656,9 @@ function App() {
             </div>
           </header>
 
-          {hostLink && <HostBanner link={hostLink} snapshot={snapshot} />}
+          {hostLink && <HostSourceBar link={hostLink} hostShown={followed !== undefined} snapshot={snapshot} />}
 
-          <Notices
-            host={shownHost(hostLink)}
-            snapshot={snapshot}
-            onSnapshot={setSnapshot}
-            onSettings={() => setPage("settings")}
-          />
+          <Notices host={host} snapshot={snapshot} onSnapshot={setSnapshot} onSettings={() => setPage("settings")} />
 
           {snapshot && snapshot.accounts.length === 0 && snapshot.proxy_hubs.length === 0 && (
             <p className="empty">No providers are on. Turn one on in Settings.</p>
@@ -665,7 +682,7 @@ function App() {
               <HubSection
                 key={hub.id}
                 hub={hub}
-                managed={!remote && !hostLink}
+                managed={host === undefined}
                 now={now}
                 paces={snapshot.pace.windows}
                 starts={snapshot.window_starts}

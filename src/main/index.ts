@@ -6,12 +6,12 @@ import appIcon from "../../build/icons/icon.png";
 import previewAppIcon from "../../build/icons/preview/icon.png";
 import previewTrayIcon from "../../build/icons/preview/tray.png";
 import trayIcon from "../../build/icons/tray.png";
-import { CURRENT, TOAST_MILLISECONDS, remoteRoutes } from "../shared/ipc";
-import type { Commands, Events, ProxyHubInput, Reply } from "../shared/ipc";
+import { CURRENT, TOAST_MILLISECONDS, remoteRoutes, usageSources } from "../shared/ipc";
+import type { Commands, Events, ProxyHubInput, Reply, UsageSource } from "../shared/ipc";
 import { defaultPaceSettings } from "../shared/pace";
 import { trayUsageColors, trayUsageReading } from "../shared/tray-usage";
-import { nowEpoch, percent, providerIds, proxyHubManagementUrl, signInSources } from "../shared/usage";
-import type { UsageSnapshot } from "../shared/usage";
+import { liveReading, nowEpoch, percent, providerIds, proxyHubManagementUrl, signInSources } from "../shared/usage";
+import type { ReadingLookup, UsageSnapshot } from "../shared/usage";
 import { readActivity } from "./activity";
 import { UsageApi } from "./api";
 import { findSignIns, readCredentials } from "./auth";
@@ -26,6 +26,7 @@ import { Pairing } from "./pairing";
 import {
   loadHostId,
   loadTrayUsageSettings,
+  loadUsageSource,
   noProviders,
   paceSettings,
   saveSettings,
@@ -121,13 +122,16 @@ function start() {
         (await findSignIns(provider, sources)).map(async ({ id, distribution, path }) => ({
           id,
           distribution,
-          usage: await readCredentials(provider, path).then((credentials) => api.fetch(provider, credentials), asError),
+          usage: await readCredentials(provider, path).then(
+            (credentials) => api.read(provider, `${provider}:${id}`, credentials, hostReading),
+            asError,
+          ),
         })),
       ),
-    (config) => proxyHubs.read(config),
+    (config) => proxyHubs.read(config, hostReading),
     (snapshot) => {
-      // A read that was running when this machine started following a host is not shown.
-      if (link.active) return;
+      // A read that was running when the host's usage came on screen is not shown.
+      if (view.hostShown()) return;
       starter.observe(snapshot);
       snapshot.window_starts = starter.results();
       renderTray();
@@ -141,6 +145,10 @@ function start() {
     ),
     notify,
   );
+  /** The followed host's live reading of an account this machine also signs in to, so the same account is
+   * not read twice. A host that is not delivering lends nothing, so this machine reads for itself. */
+  const hostReading: ReadingLookup = (provider, key) =>
+    link.problem() === null ? liveReading(link.snapshot, provider, key) : null;
   const starter = new WindowStarter(
     join(app.getPath("userData"), "window-start.json"),
     startCli,
@@ -160,6 +168,8 @@ function start() {
     path: join(app.getPath("userData"), "host-link.json"),
     vault: tokenVault(),
     onSnapshot: (snapshot) => {
+      // The host keeps streaming while this machine shows its own usage.
+      if (!view.hostShown()) return;
       renderTray();
       publish("usageSnapshot", snapshot);
     },
@@ -172,7 +182,8 @@ function start() {
       publish("hostLink", hostLink);
     },
   });
-  const { usage, tray: trayUsage, refresh, sameSource } = usageSource(link, state);
+  const view = usageView(link, state, join(app.getPath("userData"), "usage-source.json"));
+  const { usage, tray: trayUsage, refresh, sameSource } = view;
   const polling = localPolling(state, starter);
   const updater = new Updater(
     updateHelper(identity).path,
@@ -199,7 +210,12 @@ function start() {
 
   const tray = new Tray(trayImage());
   bindTrayClick(tray);
-  const renderTrayIcon = trayUsageIcon(tray, trayUsage, () => link.problem());
+  const renderTrayIcon = trayUsageIcon(
+    tray,
+    trayUsage,
+    () => link.problem(),
+    () => view.hostShown() && link.problem() !== null,
+  );
   const trayActions: Record<TrayAction, () => void> = {
     show: showWindow,
     refresh: () => void refresh().catch(() => {}),
@@ -225,6 +241,7 @@ function start() {
     serverEpoch: nowEpoch,
     remoteDevices,
     hostLink: () => link.read(),
+    usageSource: view.selected,
     hostUpdate: () => link.updates.hostUpdate,
     hostInstallProgress: () => link.updates.hostInstallProgress,
   };
@@ -269,33 +286,44 @@ function start() {
     return remoteDevices();
   });
 
-  // Each side's usage replaces the other's at once, so neither shows under the other's name.
+  /** Polls this machine's own providers only while their usage is on screen. Each side's usage
+   * replaces the other's at once, so neither shows under the other's name. */
   const showUsage = () => {
+    if (view.hostShown()) polling.stop();
+    else polling.start();
+    publish("usageSource", view.selected());
     publish("usageSnapshot", usage());
     renderTray();
   };
-  registerHostLinkHandlers(link, polling, remote, showUsage, showUsage);
+  const showSource = (source: UsageSource) => {
+    view.select(source);
+    showUsage();
+  };
+  registerHostLinkHandlers(link, remote, showSource, showUsage);
 
   // Clicking the dock icon on macOS reopens the window.
   app.on("activate", showWindow);
-  startBackgroundServices(link, polling, remote, updater, updatesEnabled);
+  startBackgroundServices(link, remote, updater, updatesEnabled, showUsage);
 }
 
-/** `onFollow` and `onLocal` show the usage of whichever side now reads it. */
+/** `show` shows the usage of whichever side is now on screen, and polls this machine's when it is.
+ * `showSource` saves the choice of side first. */
 function registerHostLinkHandlers(
   link: HostLinkClient,
-  polling: ReturnType<typeof localPolling>,
   remote: RemoteAccessRoutes,
-  onFollow: () => void,
-  onLocal: () => void,
+  showSource: (source: UsageSource) => void,
+  show: () => void,
 ) {
   handle("connectHost", async (url, code) => {
     if (typeof url !== "string" || typeof code !== "string") throw new Error("Unknown host setting.");
     const hostLink = await link.connect(url, code);
-    polling.stop();
-    onFollow();
+    showSource("host");
     await remote.stop();
     return hostLink;
+  });
+  handle("setUsageSource", (source) => {
+    if (!usageSources.includes(source)) throw new Error("Unknown usage source.");
+    showSource(source);
   });
   handle("addHostRoute", (url) => {
     if (typeof url !== "string") throw new Error("Unknown host setting.");
@@ -306,29 +334,29 @@ function registerHostLinkHandlers(
   handle("hostReleaseNotes", () => link.releaseNotes());
   handle("disconnectHost", () => {
     link.disconnect();
-    onLocal();
-    polling.start();
+    show();
     void remote.start();
   });
 }
 
-/** A machine following a host reads nothing itself and serves nothing to other devices. */
+/** A machine following a host serves nothing to other devices, and reads its own usage only while it
+ * shows it. */
 function startBackgroundServices(
   link: HostLinkClient,
-  polling: ReturnType<typeof localPolling>,
   remote: RemoteAccessRoutes,
   updater: Updater,
   updatesEnabled: boolean,
+  show: () => void,
 ) {
   if (!launchedHidden()) showWindow();
   if (updatesEnabled) void updater.watch();
+  show();
   if (link.active) return link.start();
-  polling.start();
   void remote.start();
 }
 
 /** Polls this machine's own usage until stopped, and again once started. Stopping also pauses reads
- * and window starts already under way, so none continues while this machine follows a host. */
+ * and window starts already under way, so none continues while the followed host's usage is shown. */
 function localPolling(state: UsageState, starter: WindowStarter) {
   let running: AbortController | null = null;
   return {
@@ -368,22 +396,31 @@ function tokenVault(): TokenVault {
   };
 }
 
-/** What the tray and window show: the followed host's usage, or this machine's own. `usage` is null
- * until a followed host publishes, and `tray` stands in an empty reading for the tray. */
-function usageSource(link: HostLinkClient, state: UsageState) {
-  const usage = () => (link.active ? link.snapshot : state.snapshot);
-  /** Refuses a reply from the side that stopped reading while it ran, so it cannot replace the
-   * other side's usage in the window. */
+/** What the tray and window show: the followed host's usage, or this machine's own. A follower shows
+ * the host's unless the saved choice at `path` picks its own. `usage` is null until a followed host
+ * publishes, and `tray` stands in an empty reading for the tray. */
+function usageView(link: HostLinkClient, state: UsageState, path: string) {
+  let selected = loadUsageSource(path);
+  const hostShown = () => link.active && selected === "host";
+  const usage = () => (hostShown() ? link.snapshot : state.snapshot);
+  /** Refuses a reply from the side that went off screen while it ran, so it cannot replace the other
+   * side's usage in the window. */
   const sameSource = async <T>(run: () => T | Promise<T>): Promise<T> => {
-    const following = link.active;
+    const host = hostShown();
     const result = await run();
-    if (link.active !== following) throw new Error("Usage now comes from elsewhere.");
+    if (hostShown() !== host) throw new Error("Usage now comes from elsewhere.");
     return result;
   };
   return {
     usage,
+    hostShown,
+    selected: () => selected,
+    select: (source: UsageSource) => {
+      if (source !== selected) saveSettings(path, { source });
+      selected = source;
+    },
     tray: () => usage() ?? noUsage(),
-    refresh: () => sameSource(() => (link.active ? link.refresh() : state.refresh())),
+    refresh: () => sameSource(() => (hostShown() ? link.refresh() : state.refresh())),
     sameSource,
   };
 }
@@ -423,12 +460,19 @@ function bindTrayClick(tray: Tray) {
   if (process.platform !== "darwin") tray.on("click", showWindow);
 }
 
-/** A followed host that is not delivering usage leaves the number gray, and says why in the tooltip. */
+/** A followed host that is not delivering usage leaves its number gray, and says why in the tooltip. */
 const STALE_TRAY_COLOR = "#8e8e93";
 
 /** Keeps the tray icon and tooltip on the chosen account's usage while the setting is on, and serves
- * the setting to the window. Returns the render, which skips the redraw when nothing shown changed. */
-function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot, problem: () => string | null): () => void {
+ * the setting to the window. The tooltip says what is wrong with a followed host whichever usage is
+ * shown, and `stale` grays the number. Returns the render, which skips the redraw when nothing shown
+ * changed. */
+function trayUsageIcon(
+  tray: Tray,
+  snapshot: () => UsageSnapshot,
+  problem: () => string | null,
+  stale: () => boolean,
+): () => void {
   const path = join(app.getPath("userData"), "tray-usage.json");
   let settings = loadTrayUsageSettings(path);
   let shown: string | null = null;
@@ -441,15 +485,16 @@ function trayUsageIcon(tray: Tray, snapshot: () => UsageSnapshot, problem: () =>
   };
   const render = () => {
     const reading = trayUsageReading(snapshot(), settings, nowEpoch());
-    const stale = problem();
-    const title = stale ? `${identity.productName}\n${stale}` : identity.productName;
+    const line = problem();
+    const title = line ? `${identity.productName}\n${line}` : identity.productName;
     if (!reading) return show(title, null, trayImage);
     const text = trayPercent(reading.remaining, reading.limit);
     const of = reading.limit > 100 ? ` of ${reading.limit}%` : "";
+    const gray = stale();
     show(
       `${title}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)}${of} remaining`,
-      `${text}:${stale !== null}`,
-      () => usageTrayImage(text, stale ? STALE_TRAY_COLOR : trayUsageColors[reading.provider]),
+      `${text}:${gray}`,
+      () => usageTrayImage(text, gray ? STALE_TRAY_COLOR : trayUsageColors[reading.provider]),
     );
   };
   handle("trayUsage", () => settings);

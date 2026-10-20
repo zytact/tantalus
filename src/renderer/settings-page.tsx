@@ -352,17 +352,20 @@ function OpenAtLoginRow() {
   );
 }
 
-/** While following a host, only this machine's own settings show. The rest belong to the host. */
+/** While the followed host's usage is shown, only this machine's own settings show, and the rest belong
+ * to the host. Its usage settings come back while it shows its own usage. */
 export function SettingsPage({
   providers,
   snapshot,
   hostLink,
+  hostShown,
   onSnapshot,
   onBack,
 }: {
   providers: ProviderChoice;
   snapshot: UsageSnapshot | null;
   hostLink: HostLink | null;
+  hostShown: boolean;
   onSnapshot: (snapshot: UsageSnapshot) => void;
   onBack: () => void;
 }) {
@@ -374,9 +377,9 @@ export function SettingsPage({
       </header>
 
       <div className="settings-list">
-        {hostLink ? (
-          <HostRows link={hostLink} />
-        ) : (
+        {hostLink && <HostRows link={hostLink} />}
+
+        {!hostShown && (
           <>
             {providerIds.map((id) => (
               <ProviderRow key={id} id={id} choice={providers} onChange={onSnapshot} />

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { emptyProviderUsage, nowEpoch } from "../shared/usage";
-import type { ProviderId, ProviderUsage } from "../shared/usage";
+import type { ProviderId, ProviderUsage, ReadingLookup } from "../shared/usage";
 import type { Credentials } from "./auth";
 import { ReadFailure } from "./failure";
 import {
@@ -29,7 +29,27 @@ const TIMEOUT_MILLISECONDS = 12_000;
 /** The providers' usage APIs. A preview build can send every request to one fixture origin instead,
  * keeping each provider's own path. */
 export class UsageApi {
+  /** The email each direct sign-in's last own read found, with the token that read it. Claude's sign-in
+   * file names no account, so this names it until the sign-in changes. */
+  private readonly named = new Map<string, { token: string; email: string | null }>();
+
   constructor(private readonly originOverride: string | null = null) {}
+
+  /** Reads the direct sign-in `signIn`, unless `known` already has a live reading of its account. */
+  async read(
+    provider: ProviderId,
+    signIn: string,
+    credentials: Credentials,
+    known: ReadingLookup,
+  ): Promise<ProviderUsage> {
+    const named = this.named.get(signIn);
+    const email = credentials.email ?? (named?.token === credentials.accessToken ? named.email : null);
+    const reading = known(provider, accountKey(credentials.accountId, email, credentials.accessToken));
+    if (reading) return reading;
+    const usage = await this.fetch(provider, credentials);
+    this.named.set(signIn, { token: credentials.accessToken, email: usage.email });
+    return usage;
+  }
 
   url(endpoint: Endpoint): string {
     const { origin, path } = endpoints[endpoint];
@@ -43,7 +63,7 @@ export class UsageApi {
       opencode: () => this.fetchOpencode(credentials),
     };
     const usage = await reads[provider]();
-    return { ...usage, account_key: accountKey(credentials, usage.email) };
+    return { ...usage, account_key: accountKey(credentials.accountId, usage.email, credentials.accessToken) };
   }
 
   private async fetchCodex(credentials: Credentials): Promise<ProviderUsage> {
@@ -119,13 +139,16 @@ export class UsageApi {
   }
 }
 
-function accountKey(credentials: Credentials, email: string | null): string {
-  const parts = credentials.accountId
-    ? ["account", credentials.accountId]
+/** Names an account by its account ID, else its email, so a direct sign-in and a hub account of the same
+ * account get the same key on any machine. Without either, the key hashes `token`, which only an
+ * Opencode key shares between machines. Null when there is none of the three. */
+export function accountKey(accountId: string | null, email: string | null, token: string | null): string | null {
+  const parts = accountId
+    ? ["account", accountId]
     : email
       ? ["email", email.trim().toLowerCase()]
-      : ["credential", credentials.accessToken];
-  return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+      : token && ["credential", token];
+  return parts ? createHash("sha256").update(JSON.stringify(parts)).digest("hex") : null;
 }
 
 function identity(credentials: Credentials): Pick<ProviderUsage, "email" | "plan"> {

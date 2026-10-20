@@ -72,6 +72,10 @@ export type HostLink = {
   active: string | null;
 };
 
+/** What a device following a host shows: the host's usage, or the usage its own sign-ins read. */
+export const usageSources = ["host", "local"] as const;
+export type UsageSource = (typeof usageSources)[number];
+
 export type ProxyHubInput = { label: string; url: string; managementKey: string };
 
 /** Every request the window can make of the main process, keyed by channel. */
@@ -113,12 +117,14 @@ export type Commands = {
   renameDevice: (id: string, name: string) => RemoteDevices;
   /** Cuts the device off at once, including a stream it has open. */
   removeDevice: (id: string) => RemoteDevices;
-  /** Pairs with the host at `url` and follows its usage instead of reading this machine's. */
+  /** Pairs with the host at `url` and shows its usage. */
   connectHost: (url: string, code: string) => HostLink;
   /** Adds an address the followed host answers on, once it reports the same host ID. */
   addHostRoute: (url: string) => HostLink;
   /** Forgets the host and reads this machine's usage again. */
   disconnectHost: () => void;
+  /** Shows the followed host's usage or this machine's own, keeping the link either way. */
+  setUsageSource: (source: UsageSource) => void;
 };
 
 /** What the main process publishes to the window, keyed by channel. The window can also read the
@@ -132,8 +138,10 @@ export type Events = HostUpdateEvents & {
   installProgress: InstallProgress | null;
   serverEpoch: number;
   remoteDevices: RemoteDevices;
-  /** Null while this machine reads its own usage. */
+  /** Null while this machine follows no host. */
   hostLink: HostLink | null;
+  /** The saved choice, which only a machine following a host acts on. */
+  usageSource: UsageSource;
 };
 
 /** The channel that serves the latest value of an event. */

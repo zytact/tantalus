@@ -1,7 +1,13 @@
 import { emptyProviderUsage, nowEpoch, subscriptionName } from "../shared/usage";
-import type { ProviderUsage, ProxyHubAccount, ProxyHubConfig, ProxyHubProviderId } from "../shared/usage";
+import type {
+  ProviderUsage,
+  ProxyHubAccount,
+  ProxyHubConfig,
+  ProxyHubProviderId,
+  ReadingLookup,
+} from "../shared/usage";
 import { ReadFailure } from "./failure";
-import { claudeHeaders } from "./api";
+import { accountKey, claudeHeaders } from "./api";
 import {
   field,
   parseClaudeProfile,
@@ -42,9 +48,17 @@ export class ProxyHubApi {
 
   constructor(private readonly request: typeof fetch = fetch) {}
 
-  async read(config: ProxyHubConfig): Promise<ProxyHubAccount[]> {
+  /** Reads every account the hub pools. One `known` already has a live reading of is not read again. */
+  async read(config: ProxyHubConfig, known: ReadingLookup = () => null): Promise<ProxyHubAccount[]> {
     const accounts = await this.authFiles(config);
-    return Promise.all(accounts.map((account) => this.accountReads.run(() => this.readAccount(config, account))));
+    return Promise.all(
+      accounts.map(async (account) => {
+        const key = accountKey(account.accountId, account.email, null);
+        const usage = known(account.provider, key);
+        if (!usage) return this.accountReads.run(() => this.readAccount(config, account, key));
+        return { id: account.id, email: account.email, plan: usage.plan, provider: account.provider, usage };
+      }),
+    );
   }
 
   async runAccount(
@@ -102,7 +116,7 @@ export class ProxyHubApi {
     });
   }
 
-  private async readAccount(config: ProxyHubConfig, account: AuthFile): Promise<ProxyHubAccount> {
+  private async readAccount(config: ProxyHubConfig, account: AuthFile, key: string | null): Promise<ProxyHubAccount> {
     const [usage, plan] = await Promise.all([
       (account.provider === "codex" ? this.readCodex(config, account) : this.readClaude(config, account)).catch(
         (error: unknown): ProviderUsage => {
@@ -118,7 +132,13 @@ export class ProxyHubApi {
       ),
       this.readPlan(config, account),
     ]);
-    return { id: account.id, email: account.email, plan, provider: account.provider, usage };
+    return {
+      id: account.id,
+      email: account.email,
+      plan,
+      provider: account.provider,
+      usage: { ...usage, account_key: key },
+    };
   }
 
   /** The hub decodes a Codex account's ID token, plan included. A Claude account's plan needs a

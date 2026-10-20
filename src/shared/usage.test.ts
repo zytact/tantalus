@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { emptyProviderUsage, namedHubAccounts, remainingUsage } from "./usage";
-import type { ProxyHubProviderId } from "./usage";
+import { defaultPaceSettings } from "./pace";
+import { emptyProviderUsage, liveReading, namedHubAccounts, remainingUsage } from "./usage";
+import type { ProxyHubProviderId, UsageSnapshot } from "./usage";
 
 const account = (id: string, provider: ProxyHubProviderId, email: string | null = null) => ({
   id,
@@ -14,6 +15,41 @@ describe("remaining usage", () => {
   it("counts down to zero within the allowance", () => {
     expect([0, 12.7, 40, 100, 140, -5].map((used) => remainingUsage(used))).toEqual([100, 87.3, 60, 0, 0, 100]);
     expect(remainingUsage(350, 2000)).toBe(1650);
+  });
+});
+
+describe("liveReading", () => {
+  const hubAccount = (key: string, status: "ready" | "error") => ({
+    ...account("a.json", "claude", "a@example.com"),
+    plan: "Max 5x",
+    usage: { ...emptyProviderUsage(), account_key: key, status },
+  });
+  const snapshot = (status: "ready" | "error"): UsageSnapshot => ({
+    enabled: { codex: false, claude: false, opencode: false },
+    sign_ins: null,
+    accounts: [],
+    proxy_hubs: [
+      {
+        id: "hub",
+        url: "http://hub.test",
+        label: "Hub",
+        accounts: [hubAccount("key-a", status)],
+        last_successful_update_epoch: null,
+        status: "ready",
+        error_message: null,
+      },
+    ],
+    pace: { settings: defaultPaceSettings, windows: {} },
+  });
+
+  it("finds a hub's live reading by provider and key, with the email and plan the hub keeps beside it", () => {
+    expect(liveReading(snapshot("ready"), "claude", "key-a")).toMatchObject({ email: "a@example.com", plan: "Max 5x" });
+    expect(liveReading(snapshot("ready"), "codex", "key-a")).toBeNull();
+    expect(liveReading(snapshot("ready"), "claude", null)).toBeNull();
+  });
+
+  it("lends nothing for a reading that failed", () => {
+    expect(liveReading(snapshot("error"), "claude", "key-a")).toBeNull();
   });
 });
 
