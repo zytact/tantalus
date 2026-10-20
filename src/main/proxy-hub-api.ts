@@ -53,8 +53,9 @@ export class ProxyHubApi {
     const accounts = await this.authFiles(config);
     return Promise.all(
       accounts.map(async (account) => {
-        const usage = known(account.provider, accountKey(account.accountId, account.email));
-        if (!usage) return this.accountReads.run(() => this.readAccount(config, account));
+        const key = accountKey(account.accountId, account.email, null);
+        const usage = known(account.provider, key);
+        if (!usage) return this.accountReads.run(() => this.readAccount(config, account, key));
         return { id: account.id, email: account.email, plan: usage.plan, provider: account.provider, usage };
       }),
     );
@@ -115,7 +116,7 @@ export class ProxyHubApi {
     });
   }
 
-  private async readAccount(config: ProxyHubConfig, account: AuthFile): Promise<ProxyHubAccount> {
+  private async readAccount(config: ProxyHubConfig, account: AuthFile, key: string | null): Promise<ProxyHubAccount> {
     const [usage, plan] = await Promise.all([
       (account.provider === "codex" ? this.readCodex(config, account) : this.readClaude(config, account)).catch(
         (error: unknown): ProviderUsage => {
@@ -131,7 +132,6 @@ export class ProxyHubApi {
       ),
       this.readPlan(config, account),
     ]);
-    const key = accountKey(account.accountId, account.email);
     return {
       id: account.id,
       email: account.email,
