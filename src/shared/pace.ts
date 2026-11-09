@@ -4,10 +4,18 @@ import {
   monthlySeconds,
   namedDirectAccounts,
   namedHubAccounts,
-  pacedWindows,
   sevenDaySeconds,
+  windowSlots,
 } from "./usage";
-import type { AccountName, DirectAccount, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
+import type {
+  AccountName,
+  DirectAccount,
+  ProviderId,
+  ProviderUsage,
+  UsageSnapshot,
+  WindowSlot,
+  WindowUsage,
+} from "./usage";
 
 /** How far from the usual pace a window has to move before a creature shows. The same multiple sets
  * both thresholds: a dragon at `multiple` times the usual pace, a tortoise at one `multiple`th of it. */
@@ -76,14 +84,20 @@ const windowTuning = new Map([
   [monthlySeconds, { learnSeconds: 5 * 86_400, quietGap: 6 * 3600 }],
 ]);
 
+/** Names a window in pace keys. A window goes by its duration, as it did before Fable, so learned pace
+ * carries over. Fable shares 7 days with the Long window, so it goes by its own name. */
+export type WindowId = number | "fable";
+export const windowId = (slot: WindowSlot, duration: number): WindowId =>
+  slot === "fable_weekly" ? "fable" : duration;
+
 /** Which log a hub account's window belongs to. It is kept apart from a direct sign-in, even when both
  * are the same account. */
-export function paceKey(duration: number, provider: ProviderId, hub: { hubId: string; accountId: string }): string {
-  return `${hub.hubId}:${provider}:${hub.accountId}:${duration}`;
+export function paceKey(id: WindowId, provider: ProviderId, hub: { hubId: string; accountId: string }): string {
+  return `${hub.hubId}:${provider}:${hub.accountId}:${id}`;
 }
 
-export const directPaceKey = (duration: number, account: Pick<DirectAccount, "provider" | "id">): string =>
-  `${directAccountKey(account)}:${duration}`;
+export const directPaceKey = (id: WindowId, account: Pick<DirectAccount, "provider" | "id">): string =>
+  `${directAccountKey(account)}:${id}`;
 
 /** A window the allowance view shows with a percentage and a pace. `owner` names its provider, or its
  * hub account, for Settings. */
@@ -93,6 +107,7 @@ export type PaceWindow = {
   owner: AccountName;
   plan: string | null;
   identity: string | null;
+  slot: WindowSlot;
   duration: number;
   window: WindowUsage;
   epoch: number | null;
@@ -104,29 +119,29 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
     usage: ProviderUsage,
     provider: ProviderId,
     owner: AccountName,
-    keyOf: (duration: number) => string,
+    keyOf: (id: WindowId) => string,
     plan = usage.plan,
     identity = usage.account_key ?? usage.email,
   ) =>
-    pacedWindows
-      .map((slot) => usage[slot])
-      .flatMap((window) => {
-        const duration = window.limit_window_seconds;
-        if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
-        const epoch = usage.last_successful_update_epoch;
-        return [{ key: keyOf(duration), provider, owner, plan, identity, duration, window, epoch }];
-      });
+    windowSlots.flatMap((slot) => {
+      const window = usage[slot];
+      const duration = window.limit_window_seconds;
+      if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
+      const epoch = usage.last_successful_update_epoch;
+      const key = keyOf(windowId(slot, duration));
+      return [{ key, provider, owner, plan, identity, slot, duration, window, epoch }];
+    });
   return [
     ...namedDirectAccounts(snapshot.accounts).flatMap((account) =>
-      windows(account.usage, account.provider, account.name, (duration) => directPaceKey(duration, account)),
+      windows(account.usage, account.provider, account.name, (id) => directPaceKey(id, account)),
     ),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      namedHubAccounts(hub).flatMap(({ id, provider, usage, plan, email, name }) =>
+      namedHubAccounts(hub).flatMap(({ id: accountId, provider, usage, plan, email, name }) =>
         windows(
           usage,
           provider,
           name,
-          (duration) => paceKey(duration, provider, { hubId: hub.id, accountId: id }),
+          (id) => paceKey(id, provider, { hubId: hub.id, accountId }),
           plan,
           // A hub can swap the account behind an auth file, so the email keeps their pace apart.
           email?.trim().toLowerCase() ?? null,
@@ -136,15 +151,16 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
   ];
 }
 
-/** Keys a window's samples by account and its usual pace by provider, tier and window length. Without
- * a tier the account's own log is its usual pace. */
+/** Keys a window's samples by account and its usual pace by provider, tier and window. Without a tier
+ * the account's own log is its usual pace. */
 export function paceHistoryKeys({
   key,
   provider,
   plan,
+  slot,
   duration,
   identity,
-}: Pick<PaceWindow, "key" | "provider" | "plan" | "duration" | "identity">) {
+}: Pick<PaceWindow, "key" | "provider" | "plan" | "slot" | "duration" | "identity">) {
   const tier = plan?.trim().replace(/\s+/g, " ").toLowerCase() || null;
   if (!tier) {
     const account = JSON.stringify(["account", key, null, identity]);
@@ -152,7 +168,7 @@ export function paceHistoryKeys({
   }
   return {
     account: JSON.stringify(["current", key, tier, identity]),
-    usual: JSON.stringify(["usual", provider, tier, duration]),
+    usual: JSON.stringify(["usual", provider, tier, windowId(slot, duration)]),
   };
 }
 
@@ -160,26 +176,33 @@ export function paceHistoryKeys({
 export const currentPaceOnly = (key: string) => key.startsWith('["current",');
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
- * and duration that ticked last. An account nobody is using stays idle while another one is busy.
- * Returns when each claimed window was last worked on. */
+ * and window that ticked last. An account nobody is using stays idle while another one is busy.
+ * Returns when each claimed window was last worked on. Nor can activity say which model a session
+ * used, so the Fable window counts as worked on only while its own stretch is open, and never past its
+ * newest tick. Otherwise a session on another model would slow it into a tortoise. */
 export function claimActivity(
   windows: PaceWindow[],
   logs: ReadonlyMap<string, PaceLog>,
   activity: Activity,
+  now: number,
 ): Map<string, number> {
   const lastTick = (key: string) => {
     const stretch = logs.get(key)?.stretch;
     return stretch ? newest(stretch).epoch : 0;
   };
   const latest = new Map<string, number>();
-  for (const { key, provider, duration } of windows) {
-    const group = `${provider}:${duration}`;
-    latest.set(group, Math.max(latest.get(group) ?? 0, lastTick(key)));
+  const group = ({ provider, slot, duration }: PaceWindow) => `${provider}:${windowId(slot, duration)}`;
+  for (const window of windows) {
+    latest.set(group(window), Math.max(latest.get(group(window)) ?? 0, lastTick(window.key)));
   }
   return new Map(
-    windows.flatMap(({ key, provider, duration }) => {
-      const workedAt = activity[provider];
-      return workedAt !== null && lastTick(key) === latest.get(`${provider}:${duration}`) ? [[key, workedAt]] : [];
+    windows.flatMap((window): [string, number][] => {
+      const workedAt = activity[window.provider];
+      if (workedAt === null || lastTick(window.key) !== latest.get(group(window))) return [];
+      if (window.slot !== "fable_weekly") return [[window.key, workedAt]];
+      const log = logs.get(window.key);
+      const stretch = log && openStretch(log, window.duration, now);
+      return stretch ? [[window.key, newest(stretch).epoch]] : [];
     }),
   );
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seed a moving pace stretch so a dragon (Codex 5h, fast) and a tortoise
+# Seed moving pace stretches so a dragon (Codex 5h and Claude Fable, fast) and a tortoise
 # (Claude 5h, slow + recent local session) ride the allowance bars.
 # Mock mode only: it never touches a real pace log.
 # Run launch.sh --restart afterwards, since the preview reads the log once at startup.
@@ -26,7 +26,7 @@ def usual():
 
 log = {}
 for provider, tier, durations in [("codex", "plus", [18000, 604800]),
-                                  ("claude", "max 5x", [18000, 604800]),
+                                  ("claude", "max 5x", [18000, 604800, "fable"]),
                                   ("opencode", "go", [18000, 604800, 2592000])]:
     for duration in durations:
         log[json.dumps(["usual", provider, tier, duration], separators=(",", ":"))] = usual()
@@ -40,6 +40,15 @@ log[json.dumps(["current", "codex:18000", "plus", codex_id], separators=(",", ":
     "stretch": {"ticks": dragon_ticks, "pending": 0, "activeAt": None},
     "readings": []}
 
+# Dragon: Claude's Fable fixture sits at 20% used; a 10-point rise over ~28 min reads ~21 %/h.
+fable_ticks = [{"epoch": now - 1800, "used": 10}, {"epoch": now - 1200, "used": 13.3},
+               {"epoch": now - 600, "used": 16.6}, {"epoch": now - 120, "used": 20}]
+log[json.dumps(["current", "claude:fable", "max 5x", claude_id], separators=(",", ":"))] = {
+    "firstSeen": now - 30 * DAY,
+    "last": {"epoch": now - 120, "used": 20, "resetAt": now + 3 * DAY},
+    "stretch": {"ticks": fable_ticks, "pending": 0, "activeAt": None},
+    "readings": []}
+
 # Tortoise: Claude 5h fixture sits at 91% used; a 1.5-point rise over ~2 h reads ~0.75 %/h.
 # It also needs the provider in use (see the session file below).
 tortoise_ticks = [{"epoch": now - 7200, "used": 89.5}, {"epoch": now - 5400, "used": 89.9},
@@ -51,7 +60,7 @@ log[json.dumps(["current", "claude:18000", "max 5x", claude_id], separators=(","
     "readings": []}
 
 json.dump(log, open(sys.argv[1], "w"))
-print(f"Seeded dragon (codex 5h) + tortoise (claude 5h) stretches in {sys.argv[1]}")
+print(f"Seeded dragons (codex 5h, claude fable) + tortoise (claude 5h) stretches in {sys.argv[1]}")
 PY
 # Recent Claude session activity, so the slow Claude window reads as in use (tortoise),
 # not idle. Mirrors src/main/activity.ts: claude watches <CLAUDE_CONFIG_DIR>/projects/* files.

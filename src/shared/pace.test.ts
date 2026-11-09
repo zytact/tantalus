@@ -136,6 +136,7 @@ describe("local activity", () => {
       owner: { title: key, email: null, label: key },
       plan: null,
       identity: null,
+      slot: "five_hour",
       duration: fiveHourSeconds,
       window: { used_percent: 0, limit_window_seconds: fiveHourSeconds, reset_at_epoch: null },
       epoch: null,
@@ -145,9 +146,28 @@ describe("local activity", () => {
       ["hub", poll(steady(10, 4), { from: start + 3600 })],
     ]);
     const windows = [window("direct"), window("hub")];
-    expect(claimActivity(windows, logs, { codex: start, claude: null, opencode: null })).toEqual(
+    expect(claimActivity(windows, logs, { codex: start, claude: null, opencode: null }, start)).toEqual(
       new Map([["hub", start]]),
     );
-    expect(claimActivity(windows, logs, { codex: null, claude: null, opencode: null })).toEqual(new Map());
+    expect(claimActivity(windows, logs, { codex: null, claude: null, opencode: null }, start)).toEqual(new Map());
+  });
+
+  it("times the Fable window by its own ticks, since a session may be on another model", () => {
+    const fable: PaceWindow = {
+      key: "fable",
+      provider: "claude",
+      owner: { title: "Claude", email: null, label: "Claude" },
+      plan: null,
+      identity: null,
+      slot: "fable_weekly",
+      duration: sevenDaySeconds,
+      window: { used_percent: 0, limit_window_seconds: sevenDaySeconds, reset_at_epoch: null },
+      epoch: null,
+    };
+    const logs = new Map([["fable", poll(steady(10, 4))]]);
+    const lastTick = start + 2400;
+    const working = { codex: null, claude: lastTick + 3600, opencode: null };
+    expect(claimActivity([fable], logs, working, lastTick + 3600)).toEqual(new Map([["fable", lastTick]]));
+    expect(claimActivity([fable], logs, working, lastTick + 3 * 3600)).toEqual(new Map());
   });
 });

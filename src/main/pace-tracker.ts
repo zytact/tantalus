@@ -17,7 +17,7 @@ export const noActivity: Activity = { codex: null, claude: null, opencode: null 
 /** A current-pace log with no sample for this long belongs to a sign-in that is gone. */
 const FORGET_AFTER = 60 * 86_400;
 
-/** Learns usual pace by provider, tier and window length, while tracking each account's current
+/** Learns usual pace by provider, tier and window, while tracking each account's current
  * pace separately. It owns the log, just as `UsageState` owns the snapshot. */
 export class PaceTracker {
   settings: PaceSettings;
@@ -47,7 +47,7 @@ export class PaceTracker {
         return log ? [[window.key, log]] : [];
       }),
     );
-    this.active = claimActivity(windows, current, activity);
+    this.active = claimActivity(windows, current, activity, now);
     for (const window of windows) this.recordWindow(window);
     for (const [key, log] of this.logs) {
       if (currentPaceOnly(key) && now - log.last.epoch > FORGET_AFTER) this.logs.delete(key);

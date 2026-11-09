@@ -2,15 +2,23 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { emptyProviderUsage, emptyProxyHubSnapshot, fiveHourSeconds, homeSignIn, providerIds } from "../shared/usage";
+import {
+  emptyProviderUsage,
+  emptyProxyHubSnapshot,
+  fiveHourSeconds,
+  homeSignIn,
+  providerIds,
+  sevenDaySeconds,
+} from "../shared/usage";
 import type { ProviderId, ProxyHubProviderId, UsageSnapshot } from "../shared/usage";
 import { defaultPaceSettings, directPaceKey, paceKey } from "../shared/pace";
+import type { WindowId } from "../shared/pace";
 import { UsageApi } from "./api";
 import { parseCredentials } from "./auth";
 import { noActivity, PaceTracker } from "./pace-tracker";
 import { loadPaceLogs, saveSettings } from "./settings";
 
-const homeKey = (duration: number, provider: ProviderId) => directPaceKey(duration, { provider, id: homeSignIn });
+const homeKey = (id: WindowId, provider: ProviderId) => directPaceKey(id, { provider, id: homeSignIn });
 
 const directories: string[] = [];
 const trackers: PaceTracker[] = [];
@@ -282,6 +290,24 @@ it("shares the usual baseline when direct sign-ins change without reusing their 
     current: { kind: "idle" },
     creature: null,
   });
+});
+
+it("learns Fable apart from the Long window it shares 7 days with", () => {
+  const saved = tracker();
+  saveSettings(saved.path, {
+    [homeKey(sevenDaySeconds, "claude")]: {
+      firstSeen: epoch - 30 * 86_400,
+      last: { epoch: epoch - 300, used: 10, resetAt: null },
+      stretch: null,
+      readings: [2, 4],
+    },
+  });
+  const claude = snapshotFor("claude", "Pro");
+  const week = { used_percent: 10, limit_window_seconds: sevenDaySeconds, reset_at_epoch: null };
+  claude.accounts[0]!.usage = { ...claude.accounts[0]!.usage, seven_day: week, fable_weekly: week };
+  const windows = saved.create().track(claude, noActivity, epoch).pace.windows;
+  expect(windows[homeKey(sevenDaySeconds, "claude")]).toMatchObject({ status: "learned", usual_rate: 3 });
+  expect(windows[homeKey("fable", "claude")]?.status).toBe("learning");
 });
 
 it("keeps current pace apart when a hub swaps the account behind an auth file", () => {
