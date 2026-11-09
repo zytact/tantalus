@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Write a learned pace log for the mock preview's Codex and Claude windows, so the dragon and tortoise
+# Write a learned pace log for the mock preview's Codex, Claude (Fable included) and Opencode windows, so the dragon and tortoise
 # details and Reset learning have something to show. Mock mode only: it never touches a real pace log.
 # Run launch.sh --restart afterwards, since the preview reads the log once at startup.
 set -euo pipefail
@@ -15,7 +15,7 @@ learned = lambda used: {"firstSeen": now - 30 * 86_400, "last": {"epoch": now - 
 log = {}
 for provider, tier, durations in [
     ("codex", "plus", [18000, 604800]),
-    ("claude", "max 5x", [18000, 604800]),
+    ("claude", "max 5x", [18000, 604800, "fable"]),
     ("opencode", "go", [18000, 604800, 2592000]),
 ]:
     for duration in durations:
