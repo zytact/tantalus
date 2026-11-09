@@ -30,6 +30,7 @@ const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
   five_hour: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   seven_day: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   monthly: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
+  fable_weekly: { used_percent: null, limit_window_seconds: null, reset_at_epoch: null },
   allowed: null,
   limit_reached: null,
   reset_credits: [],

@@ -10,7 +10,7 @@ import type { ExtraUsage, ProviderUsage, ResetCredit, WindowUsage } from "../sha
 /** The part of a provider's reading its usage response carries. */
 export type ParsedUsage = Pick<
   ProviderUsage,
-  "five_hour" | "seven_day" | "monthly" | "allowed" | "limit_reached" | "extra_usage"
+  "five_hour" | "seven_day" | "monthly" | "fable_weekly" | "allowed" | "limit_reached" | "extra_usage"
 >;
 
 /** A key of a JSON object, or undefined for anything that is not one. */
@@ -44,6 +44,7 @@ export function parseCodexUsage(value: unknown, now: number): ParsedUsage {
     five_hour: window(fiveHourSeconds),
     seven_day: window(sevenDaySeconds),
     monthly: window(monthlySeconds),
+    fable_weekly: unreportedWindow(),
     allowed: bool(field(rateLimit, "allowed")),
     limit_reached: bool(field(rateLimit, "limit_reached")),
     extra_usage: null,
@@ -66,10 +67,23 @@ export function parseClaudeUsage(value: unknown): ParsedUsage {
     five_hour: namedWindow(field(value, "five_hour"), fiveHourSeconds, "utilization", "resets_at"),
     seven_day: namedWindow(field(value, "seven_day"), sevenDaySeconds, "utilization", "resets_at"),
     monthly: unreportedWindow(),
+    fable_weekly: fableWindow(field(value, "limits")),
     allowed: !locked,
     limit_reached: locked,
     extra_usage: extraUsage(field(value, "extra_usage")),
   };
+}
+
+/** Claude lists its per-model caps in `limits`, each naming its model in `scope`. Only Fable's is
+ * read. Spending it leaves other models usable, so it never marks the account as limit reached. */
+function fableWindow(limits: unknown): WindowUsage {
+  const fable = Array.isArray(limits)
+    ? limits.find(
+        (limit) =>
+          field(limit, "kind") === "weekly_scoped" && stringAt(limit, ["scope", "model", "display_name"]) === "Fable",
+      )
+    : undefined;
+  return namedWindow(fable, sevenDaySeconds, "percent", "resets_at");
 }
 
 export function parseClaudeProfile(value: unknown): Pick<ProviderUsage, "email" | "plan"> {
@@ -95,6 +109,7 @@ export function parseOpencodeUsage(value: unknown): ParsedUsage {
     five_hour: namedWindow(field(usage, "rolling"), fiveHourSeconds, "percent", "resetsAt"),
     seven_day: namedWindow(field(usage, "weekly"), sevenDaySeconds, "percent", "resetsAt"),
     monthly: namedWindow(field(usage, "monthly"), monthlySeconds, "percent", "resetsAt"),
+    fable_weekly: unreportedWindow(),
     allowed: !spent,
     limit_reached: spent,
     extra_usage: null,

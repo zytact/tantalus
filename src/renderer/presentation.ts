@@ -13,15 +13,18 @@ export const providerExtras = {
 
 /** Every window a provider can report, in the order they are shown. Which of them a reading
  * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
- * and OpenAI has switched the 5-hour one off for a plan before, so none of the three is assumed. */
+ * and OpenAI has switched the 5-hour one off for a plan before, so none of them is assumed. A
+ * window that is not `paced` gets no learned pace, since pace logs are keyed by duration and the
+ * Fable window shares its duration with the Long one. */
 export function windowEntries(provider: ProviderUsage) {
   return windowSlots.map(({ slot, ...entry }) => ({ ...entry, window: provider[slot] }));
 }
 
 const windowSlots = [
-  { label: "Short window", span: "5 hours", duration: fiveHourSeconds, slot: "five_hour" },
-  { label: "Long window", span: "7 days", duration: sevenDaySeconds, slot: "seven_day" },
-  { label: "Monthly window", span: "30 days", duration: monthlySeconds, slot: "monthly" },
+  { label: "Short window", span: "5 hours", duration: fiveHourSeconds, slot: "five_hour", paced: true },
+  { label: "Long window", span: "7 days", duration: sevenDaySeconds, slot: "seven_day", paced: true },
+  { label: "Fable window", span: "7 days", duration: sevenDaySeconds, slot: "fable_weekly", paced: false },
+  { label: "Monthly window", span: "30 days", duration: monthlySeconds, slot: "monthly", paced: true },
 ] as const;
 
 export const windowLabel = (duration: number) =>

@@ -29,6 +29,8 @@ export type ProviderUsage = {
   /** Opencode reports this alongside the other two, and it is the only window a Codex Go or free
    * account has. Claude leaves it unreported and the view skips it. */
   monthly: WindowUsage;
+  /** Claude's weekly cap on Fable alone, on plans that have one. Codex and Opencode leave it unreported. */
+  fable_weekly: WindowUsage;
   allowed: boolean | null;
   limit_reached: boolean | null;
   reset_credits: ResetCredit[];
@@ -191,6 +193,7 @@ export const emptyProviderUsage = (): ProviderUsage => ({
   five_hour: unreportedWindow(),
   seven_day: unreportedWindow(),
   monthly: unreportedWindow(),
+  fable_weekly: unreportedWindow(),
   allowed: null,
   limit_reached: null,
   reset_credits: [],

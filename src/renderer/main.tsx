@@ -277,14 +277,14 @@ function ProviderSection({
             </time>
           </p>
         )}
-      <LearningLine windows={reported} paceOf={paceOf} />
+      <LearningLine windows={reported.filter(({ paced }) => paced)} paceOf={paceOf} />
       {degraded && (
         <p className="notice" role="status">
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
       {entries.map((entry) => (
-        <Entry key={entry.label} {...entry} now={now} speed={paceOf(entry.duration)} />
+        <Entry key={entry.label} {...entry} now={now} speed={entry.paced ? paceOf(entry.duration) : undefined} />
       ))}
       {lastStart && <p className="subscription-date">{attemptStatus(lastStart)}</p>}
       <Extras id={id} provider={provider} />

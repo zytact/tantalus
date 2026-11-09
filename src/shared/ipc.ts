@@ -48,7 +48,7 @@ export type PairingCode = { code: string; expiresAt: number };
 export type RemoteDevices = { devices: PairedDevice[]; pairing: PairingCode | null };
 /** The wire format a host serves to another Tantalus. It changes only when that format breaks, and a
  * client refuses a host on any other. */
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 /** What a host says about itself before a client pairs or follows it. `id` is random and saved on
  * the host, so a client can tell it from another Tantalus at the same address. A host from before
  * routes has none. */
