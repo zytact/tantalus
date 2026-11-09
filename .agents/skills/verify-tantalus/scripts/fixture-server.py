@@ -28,6 +28,18 @@ def claude_window(used, resets_in, locked=False):
     return window
 
 
+def claude_fable(used, resets_in):
+    return [{
+        "kind": "weekly_scoped",
+        "group": "weekly",
+        "percent": used,
+        "severity": "normal",
+        "resets_at": rfc3339(time.time() + resets_in),
+        "scope": {"model": {"id": None, "display_name": "Fable"}, "surface": None},
+        "is_active": False,
+    }]
+
+
 def claude_resets(*days_left):
     grants = [{"id": f"fixture-grant-{index}", "resets_left": 1, "ends_at": rfc3339(time.time() + days * DAY)}
               for index, days in enumerate(days_left)]
@@ -59,6 +71,7 @@ def ready():
         "claude_usage": {
             "five_hour": claude_window(91, 1 * HOUR),
             "seven_day": claude_window(55, 3 * DAY),
+            "limits": claude_fable(20, 3 * DAY),
             "cedar_ember": claude_resets(30),
             "extra_usage": {"is_enabled": True, "used_credits": 1250, "monthly_limit": 5000, "currency": "USD", "decimal_places": 2},
         },
@@ -128,6 +141,12 @@ def idle():
     return fixture
 
 
+def fable_spent():
+    fixture = ready()
+    fixture["claude_usage"]["limits"] = claude_fable(100, 3 * DAY)
+    return fixture
+
+
 def no_windows():
     return {
         "codex_subscription": {"active_until": None},
@@ -146,6 +165,7 @@ SCENARIOS = {
     "ready": ready,
     "monthly-only": monthly_only,
     "blocked": blocked,
+    "fable-spent": fable_spent,
     "idle": idle,
     "hub-multiple-idle": idle,
     "hub-multiple": ready,

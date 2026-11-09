@@ -4,6 +4,7 @@ import {
   monthlySeconds,
   namedDirectAccounts,
   namedHubAccounts,
+  pacedWindows,
   sevenDaySeconds,
 } from "./usage";
 import type { AccountName, DirectAccount, ProviderId, ProviderUsage, UsageSnapshot, WindowUsage } from "./usage";
@@ -107,12 +108,14 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
     plan = usage.plan,
     identity = usage.account_key ?? usage.email,
   ) =>
-    [usage.five_hour, usage.seven_day, usage.monthly].flatMap((window) => {
-      const duration = window.limit_window_seconds;
-      if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
-      const epoch = usage.last_successful_update_epoch;
-      return [{ key: keyOf(duration), provider, owner, plan, identity, duration, window, epoch }];
-    });
+    pacedWindows
+      .map((slot) => usage[slot])
+      .flatMap((window) => {
+        const duration = window.limit_window_seconds;
+        if (duration === null || window.used_percent === null || !windowTuning.has(duration)) return [];
+        const epoch = usage.last_successful_update_epoch;
+        return [{ key: keyOf(duration), provider, owner, plan, identity, duration, window, epoch }];
+      });
   return [
     ...namedDirectAccounts(snapshot.accounts).flatMap((account) =>
       windows(account.usage, account.provider, account.name, (duration) => directPaceKey(duration, account)),

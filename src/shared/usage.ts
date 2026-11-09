@@ -29,6 +29,8 @@ export type ProviderUsage = {
   /** Opencode reports this alongside the other two, and it is the only window a Codex Go or free
    * account has. Claude leaves it unreported and the view skips it. */
   monthly: WindowUsage;
+  /** Claude's weekly cap on Fable alone, on plans that have one. Codex and Opencode leave it unreported. */
+  fable_weekly: WindowUsage;
   allowed: boolean | null;
   limit_reached: boolean | null;
   reset_credits: ResetCredit[];
@@ -176,6 +178,11 @@ export const sevenDaySeconds = 604_800;
  * duration that identifies it. */
 export const monthlySeconds = 2_592_000;
 
+/** The windows pace learns from. Pace logs are keyed by duration, so the Fable window, which shares
+ * 7 days with `seven_day`, is left out. */
+export const pacedWindows = ["five_hour", "seven_day", "monthly"] as const satisfies readonly (keyof ProviderUsage)[];
+export const isPaced = (slot: keyof ProviderUsage) => pacedWindows.some((paced) => paced === slot);
+
 export const unreportedWindow = (): WindowUsage => ({
   used_percent: null,
   limit_window_seconds: null,
@@ -191,6 +198,7 @@ export const emptyProviderUsage = (): ProviderUsage => ({
   five_hour: unreportedWindow(),
   seven_day: unreportedWindow(),
   monthly: unreportedWindow(),
+  fable_weekly: unreportedWindow(),
   allowed: null,
   limit_reached: null,
   reset_credits: [],

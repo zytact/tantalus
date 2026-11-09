@@ -66,6 +66,14 @@ function fixture(
     } else if (call.auth_index === "claude-auth") {
       body = {
         five_hour: { utilization: 31, resets_at: "2099-01-01T00:00:00Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            percent: 12,
+            resets_at: "2099-01-01T00:00:00Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
         cedar_ember: { eligible: true, grants: [{ resets_left: 1, ends_at: "2099-01-01T00:00:00Z" }] },
       };
     } else {
@@ -103,6 +111,7 @@ describe("CLIProxyAPI usage", () => {
     expect(accounts[0]?.usage.subscription_active_until_epoch).toBe(4_073_587_200);
     expect(accounts[1]?.usage.five_hour.used_percent).toBe(31);
     expect(accounts[1]?.usage.reset_credit_count).toBe(1);
+    expect(accounts[1]?.usage.fable_weekly.used_percent).toBe(12);
     expect(test.calls.map((call) => call.auth_index).sort()).toEqual([
       "claude-auth",
       "claude-auth",

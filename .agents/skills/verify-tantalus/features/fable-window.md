@@ -1,0 +1,9 @@
+# Fable window (7 days)
+
+Some Claude plans cap Fable on its own each week. The main process reads the entry in the usage response's `limits` array whose `kind` is `weekly_scoped` and whose `scope.model.display_name` is `Fable`, and maps its `percent` and `resets_at` into the Fable window. A scoped cap on any other model is ignored. Claude hub accounts read the same endpoint and use the same mapping. Codex and Opencode have no Fable cap.
+
+The Claude card shows it after the Long window as `Fable window`, `7 days`, with the remaining headline, a progressbar named `Fable window remaining`, the time-based pace label and marker, Resets in, At, and Used. It gets no dragon or tortoise and no learning line, because pace logs are keyed by duration and Fable shares 7 days with the Long window. The tray has no Fable row and the tray number ignores it. A spent Fable window leaves the status `Live`, since other models still work. An account without a Fable cap shows no Fable window.
+
+## Preview proof
+
+In Tantalus Preview on `--mock` `ready`, Refresh and confirm Claude shows `Fable window` with 80% remaining, Used 20%, and 3 days left, after the Long window. Capture the Claude card in both schemes. Add the fixture hub per `proxy-hubs.md` and confirm hub Claude shows the same Fable window. Switch to `fable-spent`, Refresh, and confirm Fable reads 0% remaining while the Claude status stays `Live`. In real mode, confirm a Fable window appears only when the account's live response carries a Fable entry, and that its figures match it.

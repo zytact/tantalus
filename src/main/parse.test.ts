@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { monthlySeconds } from "../shared/usage";
+import { monthlySeconds, sevenDaySeconds } from "../shared/usage";
 import {
   parseClaudeProfile,
   parseClaudeResets,
@@ -172,6 +172,40 @@ describe("claude usage", () => {
     const ineligible = { eligible: false, ineligible_reason: "cli_version", grants: [] };
     expect(parseClaudeResets({ cedar_ember: ineligible }).reset_credit_count).toBeNull();
     expect(parseClaudeResets({ cedar_ember: null }).reset_credit_count).toBeNull();
+  });
+
+  it("reads the Fable cap from the scoped limits without blocking the account", () => {
+    const spent = parseClaudeUsage({
+      limits: [
+        { kind: "weekly_all", percent: 5, resets_at: null, scope: null },
+        {
+          kind: "weekly_scoped",
+          percent: 100,
+          resets_at: "2026-11-16T02:00:00+00:00",
+          scope: { model: { id: null, display_name: "Fable" }, surface: null },
+        },
+      ],
+    });
+    expect(spent.fable_weekly).toEqual({
+      used_percent: 100,
+      limit_window_seconds: sevenDaySeconds,
+      reset_at_epoch: 1_794_794_400,
+    });
+    expect(spent.limit_reached).toBe(false);
+  });
+
+  it("leaves the Fable window unreported without a Fable cap", () => {
+    const fable = (value: object) => parseClaudeUsage(value).fable_weekly.limit_window_seconds;
+    const scoped = (display_name: string | null) => ({
+      kind: "weekly_scoped",
+      percent: 40,
+      scope: { model: { id: null, display_name } },
+    });
+    expect(fable({ limits: [scoped("Opus")] })).toBeNull();
+    expect(fable({ limits: [scoped(null)] })).toBeNull();
+    expect(fable({ limits: [{ kind: "session", percent: 25, scope: null }] })).toBeNull();
+    expect(fable({ limits: null })).toBeNull();
+    expect(fable({})).toBeNull();
   });
 
   it("reports a locked window as the limit reached", () => {
