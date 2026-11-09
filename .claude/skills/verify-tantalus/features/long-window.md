@@ -1,6 +1,6 @@
 # Long window (7 days)
 
-The main process maps Codex's exact 604,800-second window, Claude's `seven_day`, and Opencode's `usage.weekly` into the Long window. Codex and Claude hub accounts use the same mapping; Opencode is direct-only. Reported windows stay in Short, Long, Monthly order, but Long is not always second because absent windows are omitted.
+The main process maps Codex's exact 604,800-second window, Claude's `seven_day`, and Opencode's `usage.weekly` into the Long window. Codex and Claude hub accounts use the same mapping; Opencode is direct-only. Reported windows stay in Short, Long, Fable, Monthly order, but Long is not always second because absent windows are omitted.
 
 It shows remaining allowance as the headline, a progressbar named `Long window remaining`, optional pace, Resets in, At, and Used. The bar and its accessible value count down toward 0. A missing Long window does not own an unavailable placeholder. The single generic placeholder appears only when the account has no recognized windows.
 

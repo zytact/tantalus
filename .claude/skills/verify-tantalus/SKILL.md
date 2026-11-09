@@ -59,8 +59,9 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 .agents/skills/verify-tantalus/scripts/mock-scenario.sh ready
 ```
 
-- `ready`: Codex 5h and 7d with two credits, Claude 5h and 7d with one banked reset and extra usage, Opencode 5h, 7d, and 30d. Windows sit below, at, and above the elapsed share, so every pace label the build has appears.
+- `ready`: Codex 5h and 7d with two credits, Claude 5h, 7d, and Fable with one banked reset and extra usage, Opencode 5h, 7d, and 30d. Windows sit below, at, and above the elapsed share, so every pace label the build has appears.
 - `monthly-only`: Codex reports only a 30-day window and an empty credit list.
+- `fable-spent`: like `ready`, but Claude's Fable window is at 100%.
 - `blocked`: Codex limit reached, Claude locked with no banked resets, Opencode rolling window at 100%.
 - `idle`: like `ready`, but the Codex and Claude 5-hour windows are idle. Codex reports 0% with its reset a full window away, and Claude reports 0% with no reset.
 - `no-windows`: every provider answers with no recognized window.
@@ -141,7 +142,7 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 - Enable the provider needed for the account in Settings.
 - Return to Allowance and activate Refresh.
 - Capture the busy state when practical, then the completed state.
-- Confirm every reported Short, Long, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response.
+- Confirm every reported Short, Long, Fable, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response.
 - Accounts expose different windows. An absent plan-specific window is valid; do not invent an unavailable row when another recognized window exists.
 
 4. Exercise Settings:
