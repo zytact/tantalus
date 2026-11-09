@@ -178,10 +178,13 @@ export const sevenDaySeconds = 604_800;
  * duration that identifies it. */
 export const monthlySeconds = 2_592_000;
 
-/** The windows pace learns from. Pace logs are keyed by duration, so the Fable window, which shares
- * 7 days with `seven_day`, is left out. */
-export const pacedWindows = ["five_hour", "seven_day", "monthly"] as const satisfies readonly (keyof ProviderUsage)[];
-export const isPaced = (slot: keyof ProviderUsage) => pacedWindows.some((paced) => paced === slot);
+export const windowSlots = [
+  "five_hour",
+  "seven_day",
+  "fable_weekly",
+  "monthly",
+] as const satisfies readonly (keyof ProviderUsage)[];
+export type WindowSlot = (typeof windowSlots)[number];
 
 export const unreportedWindow = (): WindowUsage => ({
   used_percent: null,

@@ -3,8 +3,8 @@ import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { directPaceKey, firstRider, paceKey, riderOf } from "../shared/pace";
-import type { Creature, PaceSnapshot, Rider, WindowPace } from "../shared/pace";
+import { directPaceKey, firstRider, paceKey, riderOf, windowId } from "../shared/pace";
+import type { Creature, PaceSnapshot, Rider, WindowId, WindowPace } from "../shared/pace";
 import {
   clockEpoch,
   directAccountKey,
@@ -24,6 +24,7 @@ import type {
   ProxyHubSnapshot,
   ProxyHubStatus,
   UsageSnapshot,
+  WindowSlot,
   WindowUsage,
 } from "../shared/usage";
 import type { HostLink, UsageSource } from "../shared/ipc";
@@ -245,7 +246,7 @@ function ProviderSection({
   provider: ProviderUsage;
   now: number;
   account?: { email: string | null; plan: string | null; label?: string };
-  paceOf: (duration: number) => WindowPace | undefined;
+  paceOf: (id: WindowId) => WindowPace | undefined;
   lastStart?: StartAttempt;
 }) {
   const name = providerNames[id];
@@ -277,14 +278,14 @@ function ProviderSection({
             </time>
           </p>
         )}
-      <LearningLine windows={reported.filter(({ paced }) => paced)} paceOf={paceOf} />
+      <LearningLine windows={reported} paceOf={paceOf} />
       {degraded && (
         <p className="notice" role="status">
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
-      {entries.map(({ paced, ...entry }) => (
-        <Entry key={entry.label} {...entry} now={now} speed={paced ? paceOf(entry.duration) : undefined} />
+      {entries.map(({ slot, ...entry }) => (
+        <Entry key={entry.label} {...entry} now={now} speed={paceOf(windowId(slot, entry.duration))} />
       ))}
       {lastStart && <p className="subscription-date">{attemptStatus(lastStart)}</p>}
       <Extras id={id} provider={provider} />
@@ -297,11 +298,11 @@ function LearningLine({
   windows,
   paceOf,
 }: {
-  windows: { label: string; duration: number }[];
-  paceOf: (duration: number) => WindowPace | undefined;
+  windows: { label: string; slot: WindowSlot; duration: number }[];
+  paceOf: (id: WindowId) => WindowPace | undefined;
 }) {
-  const learning = windows.flatMap(({ label, duration }) => {
-    const pace = paceOf(duration);
+  const learning = windows.flatMap(({ label, slot, duration }) => {
+    const pace = paceOf(windowId(slot, duration));
     return pace?.status === "learning" ? [{ label, until: pace.until }] : [];
   });
   if (learning.length === 0) return null;
@@ -446,7 +447,7 @@ function HubAccounts({
         plan: account.plan,
         label: account.name.label,
       }}
-      paceOf={(duration) => paces[paceKey(duration, account.provider, { hubId: hub.id, accountId: account.id })]}
+      paceOf={(id) => paces[paceKey(id, account.provider, { hubId: hub.id, accountId: account.id })]}
     />
   ));
 }
@@ -673,7 +674,7 @@ function App() {
                 lastStart={snapshot.window_starts?.[directAccountKey(account)]}
                 now={now}
                 account={{ email: account.usage.email, plan: account.usage.plan, label: account.name.label }}
-                paceOf={(duration) => snapshot.pace.windows[directPaceKey(duration, account)]}
+                paceOf={(id) => snapshot.pace.windows[directPaceKey(id, account)]}
               />
             ))}
 

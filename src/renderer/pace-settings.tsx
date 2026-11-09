@@ -258,7 +258,7 @@ function Learned({
 /** Every window with a pace, named after its provider or hub account. */
 function titledPaces(snapshot: UsageSnapshot): TitledPace[] {
   return paceWindows(snapshot).flatMap((window) => {
-    const { key, owner, duration, plan } = window;
+    const { key, owner, slot, plan } = window;
     const pace = snapshot.pace.windows[key];
     return pace
       ? [
@@ -268,7 +268,7 @@ function titledPaces(snapshot: UsageSnapshot): TitledPace[] {
             title: (
               <span>
                 <AccountName name={owner} />
-                {plan ? ` · ${plan}` : ""} · {windowLabel(duration)}
+                {plan ? ` · ${plan}` : ""} · {windowLabel(slot)}
               </span>
             ),
             pace,

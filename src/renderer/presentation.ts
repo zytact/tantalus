@@ -1,7 +1,7 @@
 import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
-import { fiveHourSeconds, isPaced, monthlySeconds, percent, remainingUsage, sevenDaySeconds } from "../shared/usage";
-import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage } from "../shared/usage";
+import { fiveHourSeconds, monthlySeconds, percent, remainingUsage, sevenDaySeconds } from "../shared/usage";
+import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage, WindowSlot } from "../shared/usage";
 import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 
 /** What a provider banks beyond its windows, in the order shown. Opencode reports neither. */
@@ -15,19 +15,17 @@ export const providerExtras = {
  * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
  * and OpenAI has switched the 5-hour one off for a plan before, so none of them is assumed. */
 export function windowEntries(provider: ProviderUsage) {
-  return windowSlots.map(({ slot, ...entry }) => ({ ...entry, paced: isPaced(slot), window: provider[slot] }));
+  return windowRows.map((entry) => ({ ...entry, window: provider[entry.slot] }));
 }
 
-const windowSlots = [
+const windowRows = [
   { label: "Short window", span: "5 hours", duration: fiveHourSeconds, slot: "five_hour" },
   { label: "Long window", span: "7 days", duration: sevenDaySeconds, slot: "seven_day" },
   { label: "Fable window", span: "7 days", duration: sevenDaySeconds, slot: "fable_weekly" },
   { label: "Monthly window", span: "30 days", duration: monthlySeconds, slot: "monthly" },
 ] as const;
 
-/** Names a paced window by its duration, which is unique among paced windows. */
-export const windowLabel = (duration: number) =>
-  windowSlots.find(({ slot, duration: own }) => isPaced(slot) && own === duration)?.label ?? "Window";
+export const windowLabel = (slot: WindowSlot) => windowRows.find((row) => row.slot === slot)?.label ?? "Window";
 
 /** The update strip's wording while an install runs. `percent` is null when the stage cannot be measured. */
 export function installStatus(version: string, progress: InstallProgress) {

@@ -136,6 +136,7 @@ describe("local activity", () => {
       owner: { title: key, email: null, label: key },
       plan: null,
       identity: null,
+      slot: "five_hour",
       duration: fiveHourSeconds,
       window: { used_percent: 0, limit_window_seconds: fiveHourSeconds, reset_at_epoch: null },
       epoch: null,
