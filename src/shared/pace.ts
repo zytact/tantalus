@@ -178,7 +178,7 @@ export const currentPaceOnly = (key: string) => key.startsWith('["current",');
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
  * and window that ticked last. An account nobody is using stays idle while another one is busy.
  * Returns when each claimed window was last worked on. Nor can activity say which model a session
- * used, so the Fable window counts as worked on only while its own stretch is open, and only as of its
+ * used, so the Fable window counts as worked on only while its own stretch is open, and never past its
  * newest tick. Otherwise a session on another model would slow it into a tortoise. */
 export function claimActivity(
   windows: PaceWindow[],
