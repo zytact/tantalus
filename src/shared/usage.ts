@@ -178,6 +178,7 @@ export const sevenDaySeconds = 604_800;
  * duration that identifies it. */
 export const monthlySeconds = 2_592_000;
 
+/** Every window a reading can carry, in the order they are shown. */
 export const windowSlots = [
   "five_hour",
   "seven_day",

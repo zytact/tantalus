@@ -136,12 +136,12 @@ export function paceWindows(snapshot: UsageSnapshot): PaceWindow[] {
       windows(account.usage, account.provider, account.name, (id) => directPaceKey(id, account)),
     ),
     ...snapshot.proxy_hubs.flatMap((hub) =>
-      namedHubAccounts(hub).flatMap(({ id, provider, usage, plan, email, name }) =>
+      namedHubAccounts(hub).flatMap(({ id: accountId, provider, usage, plan, email, name }) =>
         windows(
           usage,
           provider,
           name,
-          (windowName) => paceKey(windowName, provider, { hubId: hub.id, accountId: id }),
+          (id) => paceKey(id, provider, { hubId: hub.id, accountId }),
           plan,
           // A hub can swap the account behind an auth file, so the email keeps their pace apart.
           email?.trim().toLowerCase() ?? null,
@@ -177,11 +177,14 @@ export const currentPaceOnly = (key: string) => key.startsWith('["current",');
 
 /** Local activity cannot say which account a session used, so it goes to the windows of that provider
  * and window that ticked last. An account nobody is using stays idle while another one is busy.
- * Returns when each claimed window was last worked on. */
+ * Returns when each claimed window was last worked on. Nor can activity say which model a session
+ * used, so the Fable window counts as worked on only while its own stretch is open, and only up to its
+ * newest tick. Otherwise a session on another model would slow it into a tortoise. */
 export function claimActivity(
   windows: PaceWindow[],
   logs: ReadonlyMap<string, PaceLog>,
   activity: Activity,
+  now: number,
 ): Map<string, number> {
   const lastTick = (key: string) => {
     const stretch = logs.get(key)?.stretch;
@@ -193,9 +196,13 @@ export function claimActivity(
     latest.set(group(window), Math.max(latest.get(group(window)) ?? 0, lastTick(window.key)));
   }
   return new Map(
-    windows.flatMap((window) => {
+    windows.flatMap((window): [string, number][] => {
       const workedAt = activity[window.provider];
-      return workedAt !== null && lastTick(window.key) === latest.get(group(window)) ? [[window.key, workedAt]] : [];
+      if (workedAt === null || lastTick(window.key) !== latest.get(group(window))) return [];
+      if (window.slot !== "fable_weekly") return [[window.key, workedAt]];
+      const log = logs.get(window.key);
+      const stretch = log && openStretch(log, window.duration, now);
+      return stretch ? [[window.key, Math.min(workedAt, newest(stretch).epoch)]] : [];
     }),
   );
 }

@@ -302,7 +302,7 @@ it("learns Fable apart from the Long window it shares 7 days with", () => {
       readings: [2, 4],
     },
   });
-  const claude = snapshotFor("claude", null);
+  const claude = snapshotFor("claude", "Pro");
   const week = { used_percent: 10, limit_window_seconds: sevenDaySeconds, reset_at_epoch: null };
   claude.accounts[0]!.usage = { ...claude.accounts[0]!.usage, seven_day: week, fable_weekly: week };
   const windows = saved.create().track(claude, noActivity, epoch).pace.windows;

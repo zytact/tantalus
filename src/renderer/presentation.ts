@@ -1,6 +1,13 @@
 import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
-import { fiveHourSeconds, monthlySeconds, percent, remainingUsage, sevenDaySeconds } from "../shared/usage";
+import {
+  fiveHourSeconds,
+  monthlySeconds,
+  percent,
+  remainingUsage,
+  sevenDaySeconds,
+  windowSlots,
+} from "../shared/usage";
 import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage, WindowSlot } from "../shared/usage";
 import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 
@@ -15,17 +22,17 @@ export const providerExtras = {
  * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
  * and OpenAI has switched the 5-hour one off for a plan before, so none of them is assumed. */
 export function windowEntries(provider: ProviderUsage) {
-  return windowRows.map((entry) => ({ ...entry, window: provider[entry.slot] }));
+  return windowSlots.map((slot) => ({ ...windowRows[slot], slot, window: provider[slot] }));
 }
 
-const windowRows = [
-  { label: "Short window", span: "5 hours", duration: fiveHourSeconds, slot: "five_hour" },
-  { label: "Long window", span: "7 days", duration: sevenDaySeconds, slot: "seven_day" },
-  { label: "Fable window", span: "7 days", duration: sevenDaySeconds, slot: "fable_weekly" },
-  { label: "Monthly window", span: "30 days", duration: monthlySeconds, slot: "monthly" },
-] as const;
+const windowRows = {
+  five_hour: { label: "Short window", span: "5 hours", duration: fiveHourSeconds },
+  seven_day: { label: "Long window", span: "7 days", duration: sevenDaySeconds },
+  fable_weekly: { label: "Fable window", span: "7 days", duration: sevenDaySeconds },
+  monthly: { label: "Monthly window", span: "30 days", duration: monthlySeconds },
+} as const satisfies Record<WindowSlot, { label: string; span: string; duration: number }>;
 
-export const windowLabel = (slot: WindowSlot) => windowRows.find((row) => row.slot === slot)?.label ?? "Window";
+export const windowLabel = (slot: WindowSlot) => windowRows[slot].label;
 
 /** The update strip's wording while an install runs. `percent` is null when the stage cannot be measured. */
 export function installStatus(version: string, progress: InstallProgress) {
