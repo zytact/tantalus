@@ -283,8 +283,8 @@ function ProviderSection({
           {provider.error_message ?? "The last successful reading remains visible."}
         </p>
       )}
-      {entries.map((entry) => (
-        <Entry key={entry.label} {...entry} now={now} speed={entry.paced ? paceOf(entry.duration) : undefined} />
+      {entries.map(({ paced, ...entry }) => (
+        <Entry key={entry.label} {...entry} now={now} speed={paced ? paceOf(entry.duration) : undefined} />
       ))}
       {lastStart && <p className="subscription-date">{attemptStatus(lastStart)}</p>}
       <Extras id={id} provider={provider} />

@@ -77,12 +77,11 @@ export function parseClaudeUsage(value: unknown): ParsedUsage {
 /** Claude lists its per-model caps in `limits`, each naming its model in `scope`. Only Fable's is
  * read. Spending it leaves other models usable, so it never marks the account as limit reached. */
 function fableWindow(limits: unknown): WindowUsage {
-  const fable = Array.isArray(limits)
-    ? limits.find(
-        (limit) =>
-          field(limit, "kind") === "weekly_scoped" && stringAt(limit, ["scope", "model", "display_name"]) === "Fable",
-      )
-    : undefined;
+  const listed: unknown[] = Array.isArray(limits) ? limits : [];
+  const fable = listed.find(
+    (limit) =>
+      field(limit, "kind") === "weekly_scoped" && stringAt(limit, ["scope", "model", "display_name"]) === "Fable",
+  );
   return namedWindow(fable, sevenDaySeconds, "percent", "resets_at");
 }
 
