@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/zytact/tantalus/compare/v0.2.2...v0.3.0) (2026-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **claude:** show the weekly Fable limit so it never runs out unseen ([#140](https://github.com/zytact/tantalus/issues/140))
+
+### Features
+
+* **claude:** show the weekly Fable limit so it never runs out unseen ([#140](https://github.com/zytact/tantalus/issues/140)) ([c4371b7](https://github.com/zytact/tantalus/commit/c4371b7d04d65c55c1d3fdc350722f1953917554))
+* **pace:** give the Fable window its own dragon and tortoise ([#143](https://github.com/zytact/tantalus/issues/143)) ([cd68e05](https://github.com/zytact/tantalus/commit/cd68e05b3d4ebc12e9c368f3d0ec5cfb095aa497))
+
 ## [0.2.2](https://github.com/zytact/tantalus/compare/v0.2.1...v0.2.2) (2026-10-20)
 
 
