@@ -489,11 +489,10 @@ function trayUsageIcon(
     const line = problem();
     const title = line ? `${identity.productName}\n${line}` : identity.productName;
     if (!reading) return show(title, null, trayImage);
-    const text = trayPercent(reading.remaining, reading.limit);
-    const of = reading.limit > 100 ? ` of ${reading.limit}%` : "";
+    const text = trayPercent(reading.remaining);
     const gray = stale();
     show(
-      `${title}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)}${of} remaining`,
+      `${title}\n${reading.name.label} ${reading.span} ${percent(reading.remaining)} remaining`,
       `${text}:${gray}`,
       () => usageTrayImage(text, gray ? STALE_TRAY_COLOR : trayUsageColors[reading.provider]),
     );

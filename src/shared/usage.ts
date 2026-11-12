@@ -187,6 +187,13 @@ export const windowSlots = [
 ] as const satisfies readonly (keyof ProviderUsage)[];
 export type WindowSlot = (typeof windowSlots)[number];
 
+export const windowDurations = {
+  five_hour: fiveHourSeconds,
+  seven_day: sevenDaySeconds,
+  fable_weekly: sevenDaySeconds,
+  monthly: monthlySeconds,
+} as const satisfies Record<WindowSlot, number>;
+
 export const unreportedWindow = (): WindowUsage => ({
   used_percent: null,
   limit_window_seconds: null,
@@ -273,14 +280,13 @@ export type UsagePace = {
 export function usagePace(window: WindowUsage, now: number): UsagePace | null {
   const { used_percent: used, limit_window_seconds: duration, reset_at_epoch: reset } = window;
   if (used === null || duration === null || reset === null || duration <= 0) return null;
-  const expectedPercent = Math.min(100, Math.max(0, ((now - (reset - duration)) / duration) * 100));
-  const status = paceStatus(used, expectedPercent);
-  return { expectedPercent, status, label: paceLabels[status] };
+  return paceAt(used, Math.min(100, Math.max(0, ((now - (reset - duration)) / duration) * 100)));
 }
 
-function paceStatus(used: number, expectedPercent: number): UsagePace["status"] {
-  if (Math.abs(used - expectedPercent) <= PACE_TOLERANCE) return "on";
-  return used < expectedPercent ? "under" : "ahead";
+/** How `used` compares with `expectedPercent`, the share of the window that has elapsed. */
+export function paceAt(used: number, expectedPercent: number): UsagePace {
+  const status = Math.abs(used - expectedPercent) <= PACE_TOLERANCE ? "on" : used < expectedPercent ? "under" : "ahead";
+  return { expectedPercent, status, label: paceLabels[status] };
 }
 
 /** The newest successful reading among the direct sign-ins and hubs. */

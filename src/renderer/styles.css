@@ -346,16 +346,6 @@ button.danger:hover:not(:disabled) {
   padding: 12px 1px 13px;
   border-bottom: 1px solid var(--hairline);
 }
-.subscription-date {
-  margin: 0;
-  padding: 8px 1px 8px 33px;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-}
-.subscription-date time {
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
 .provider-icon {
   flex: none;
   width: 20px;
@@ -367,15 +357,6 @@ button.danger:hover:not(:disabled) {
   font-family: Newsreader, Georgia, serif;
   font-size: 1.26rem;
   font-weight: 500;
-}
-.account-detail {
-  display: block;
-  margin-top: 2px;
-  font-family: "Inter Tight Variable", ui-sans-serif, system-ui, sans-serif;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  font-weight: 450;
-  overflow-wrap: anywhere;
 }
 .visually-hidden {
   position: absolute;
@@ -443,11 +424,13 @@ button.danger:hover:not(:disabled) {
   font-size: 1.2rem;
   font-weight: 500;
 }
-.hub .provider {
+/* A hub's own row sits under the pools, where its message has room without a section of accounts. */
+.hub > .management-link,
+.hub > .empty,
+.hub > .notice {
   margin: 10px 0;
 }
 .provider-status,
-.facts dt,
 .release-date,
 .release-group h3 {
   font-size: 0.68rem;
@@ -1151,6 +1134,15 @@ button.danger:hover:not(:disabled) {
 .creature:focus-visible .creature-tip {
   opacity: 1;
 }
+/* A segment is a share of the full bar, so its rider is drawn smaller to stay clear of its neighbours. */
+.segments[data-many="true"] .creature[data-kind="dragon"] {
+  width: 22px;
+  height: 22px;
+}
+.segments[data-many="true"] .creature[data-kind="tortoise"] {
+  width: 24px;
+  height: 24px;
+}
 .inline-creature {
   width: 18px;
   height: 18px;
@@ -1242,6 +1234,114 @@ button.danger:hover:not(:disabled) {
   background: var(--text-faint);
 }
 
+.chip {
+  flex: none;
+  min-width: 1.9em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--track);
+  color: var(--ink);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+/* Tinted per email, so two accounts sharing initials still differ. The pair keeps its contrast in both schemes. */
+.chip[style] {
+  background: oklch(0.89 0.07 var(--chip-hue));
+  color: oklch(0.3 0.09 var(--chip-hue));
+}
+
+.pool-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 6px 1px;
+  border-bottom: 1px solid var(--hairline);
+}
+.pool-accounts li {
+  padding: 4px 0;
+}
+.pool-account {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pool-who {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+.pool-note {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.pool-accounts .pool-note {
+  padding-left: calc(1.9em + 8px);
+}
+.provider > .pool-note {
+  padding: 8px 1px;
+  border-bottom: 1px solid var(--hairline);
+}
+.pool-note time {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pool-next {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.segments {
+  display: grid;
+  gap: 10px 8px;
+  margin: 12px 0 8px;
+}
+.segment {
+  min-width: 0;
+}
+.segment .rule {
+  margin: 0 0 9px;
+}
+.segment-gap {
+  display: block;
+  height: 0;
+  margin: 4px 0 13px;
+  border-top: 1px dashed var(--hairline-soft);
+}
+.segment-caption {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.segment-caption > b:not(.chip) {
+  color: var(--ink);
+  font-weight: 600;
+}
+.segment-credits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.segment-credits li,
+p.segment-credits {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dotted var(--hairline-soft);
+}
+
 .provider-status[data-tone="ok"] {
   color: var(--ok);
 }
@@ -1250,18 +1350,6 @@ button.danger:hover:not(:disabled) {
 }
 .provider-status[data-tone="warn"] {
   color: var(--warn);
-}
-
-.facts {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin: 0;
-}
-.facts dd {
-  margin: 3px 0 0;
-  font-size: 0.86rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .credits {
@@ -1308,9 +1396,6 @@ footer {
   }
   .header-actions button {
     padding: 0 10px;
-  }
-  .facts {
-    grid-template-columns: 1fr 1fr;
   }
   .setting-row {
     gap: 16px;

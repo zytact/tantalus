@@ -1,344 +1,26 @@
 import "@fontsource-variable/inter-tight/wght.css";
 import "@fontsource/newsreader/latin-400.css";
 import "@fontsource/newsreader/latin-500.css";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { directPaceKey, firstRider, paceKey, riderOf, windowId } from "../shared/pace";
-import type { Creature, PaceSnapshot, Rider, WindowId, WindowPace } from "../shared/pace";
-import {
-  clockEpoch,
-  directAccountKey,
-  namedDirectAccounts,
-  namedHubAccounts,
-  providerNames,
-  proxyHubManagementUrl,
-  refreshedAgo,
-  refreshedEpoch,
-  remainingUsage,
-  usagePace,
-} from "../shared/usage";
-import type {
-  ExtraUsage,
-  ProviderId,
-  ProviderUsage,
-  ProxyHubSnapshot,
-  ProxyHubStatus,
-  UsageSnapshot,
-  WindowSlot,
-  WindowUsage,
-} from "../shared/usage";
+import { firstRider } from "../shared/pace";
+import type { Creature, PaceSnapshot } from "../shared/pace";
+import { providerPools } from "../shared/pool";
+import { clockEpoch, proxyHubManagementUrl, refreshedAgo, refreshedEpoch } from "../shared/usage";
+import type { ProxyHubSnapshot, ProxyHubStatus, UsageSnapshot } from "../shared/usage";
 import type { HostLink, UsageSource } from "../shared/ipc";
-import { windowStartKey } from "../shared/window-start";
-import type { StartAttempt } from "../shared/window-start";
-import { Email } from "./account-name";
 import { BusyButton, PendingLabel } from "./busy";
 import { CreatureIcon } from "./creature-icon";
-import {
-  absoluteTime,
-  attemptStatus,
-  countdown,
-  creatureTip,
-  learningByUse,
-  creditAmount,
-  creditExpiry,
-  isRefreshShortcut,
-  providerExtras,
-  remainingCredits,
-  remainingPercent,
-  statusLine,
-  statusTone,
-  subscriptionDate,
-  usagePercent,
-  usageTier,
-  usageValueText,
-  windowEntries,
-} from "./presentation";
+import { isRefreshShortcut } from "./presentation";
 import { HostSourceBar } from "./host-link";
 import { PairPage } from "./pair-page";
-import { ProviderIcon } from "./provider-icon";
+import { PoolSection } from "./pool-section";
 import { usePublishedState } from "./published-state";
 import { SettingsPage } from "./settings-page";
 import { Toast } from "./toast";
 import { HostUpdateCheck, UpdateNotice } from "./update-notice";
 import { webBridge } from "./web-bridge";
 import "./styles.css";
-
-/** One window as a ledger entry: remaining figure and bar, then the supporting facts. */
-function Entry({
-  label,
-  span,
-  duration,
-  now,
-  window: usage,
-  speed,
-}: {
-  label: string;
-  span: string;
-  duration: number;
-  now: number;
-  window: WindowUsage;
-  speed: WindowPace | undefined;
-}) {
-  const reported = usage.limit_window_seconds === duration;
-  const used = reported ? usage.used_percent : null;
-  const remaining = used === null ? null : remainingUsage(used);
-  const pace = reported ? usagePace(usage, now) : null;
-  const rider = riderOf(speed);
-  const entryLabel = reported ? label : "Window unavailable";
-  return (
-    <section className="entry" aria-label={entryLabel} data-reported={reported}>
-      <div className="entry-head">
-        <div className="entry-title">
-          <h3>
-            {entryLabel}
-            <i>{reported ? span : "unrecognized duration"}</i>
-          </h3>
-          {pace && (
-            <span className="pace" data-pace={pace.status}>
-              {pace.label}
-            </span>
-          )}
-        </div>
-        <strong className="figure" aria-label={used === null ? "Unavailable" : `${remainingPercent(used)} remaining`}>
-          {remainingPercent(used)}
-        </strong>
-      </div>
-      <div
-        className="rule"
-        data-tier={usageTier(used)}
-        role="progressbar"
-        aria-label={`${entryLabel} remaining`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={remaining ?? undefined}
-        aria-valuetext={usageValueText(used, pace, rider)}
-      >
-        <span className="rule-fill" style={{ width: `${remaining ?? 0}%` }} />
-        {pace && (
-          <span
-            className="pace-marker"
-            style={{ left: `${remainingUsage(pace.expectedPercent)}%` }}
-            aria-hidden="true"
-          />
-        )}
-        <CreatureRider rider={rider} used={used} resetAt={usage.reset_at_epoch} now={now} />
-      </div>
-      <dl className="facts">
-        <div>
-          <dt>Resets in</dt>
-          <dd>{countdown(reported ? usage.reset_at_epoch : null, now)}</dd>
-        </div>
-        <div>
-          <dt>At</dt>
-          <dd>{absoluteTime(reported ? usage.reset_at_epoch : null)}</dd>
-        </div>
-        <div>
-          <dt>Used</dt>
-          <dd>{usagePercent(used)}</dd>
-        </div>
-      </dl>
-    </section>
-  );
-}
-
-const creatureNames = { dragon: "Dragon", tortoise: "Tortoise" } satisfies Record<Creature, string>;
-
-/** Rides the bar at the fill head. The tooltip opens on hover and on focus, and slides along with the
- * head so it stays over the bar at either end. */
-function CreatureRider({
-  rider,
-  used,
-  resetAt,
-  now,
-}: {
-  rider: Rider | null;
-  used: number | null;
-  resetAt: number | null;
-  now: number;
-}) {
-  if (!rider || used === null) return null;
-  const head = remainingUsage(used);
-  const tip = creatureTip(rider, used, resetAt, now);
-  return (
-    <span
-      className="creature"
-      data-kind={rider.kind}
-      style={{ left: `${head}%` }}
-      tabIndex={0}
-      role="img"
-      aria-label={`${creatureNames[rider.kind]}: ${tip}`}
-    >
-      <CreatureIcon kind={rider.kind} />
-      <span className="creature-tip" style={{ transform: `translateX(-${head}%)` }} aria-hidden="true">
-        {tip}
-      </span>
-    </span>
-  );
-}
-
-/** Claude bills overflow against a monthly allowance. */
-function Spend({ extra }: { extra: ExtraUsage }) {
-  return (
-    <section className="entry" aria-label="Extra usage">
-      <div className="entry-head">
-        <h3>
-          Extra usage<i>{extra.enabled ? "remaining" : "off"}</i>
-        </h3>
-        <strong className="figure">{creditAmount(remainingCredits(extra), extra)}</strong>
-      </div>
-      <ol className="credits">
-        <li>
-          <span>Monthly limit</span>
-          <span className="credit-value">{creditAmount(extra.monthly_limit, extra)}</span>
-        </li>
-      </ol>
-    </section>
-  );
-}
-
-/** Codex and Claude bank credits that reset a spent window early. */
-function Credits({ provider }: { provider: ProviderUsage }) {
-  return (
-    <section className="entry" aria-label="Reset credits">
-      <div className="entry-head">
-        <h3>
-          Reset credits<i>banked</i>
-        </h3>
-        <strong className="figure">{provider.reset_credit_count ?? "Unavailable"}</strong>
-      </div>
-      {provider.reset_credits.length > 0 ? (
-        <ol className="credits">
-          {provider.reset_credits.map((credit, index) => (
-            <li key={index}>
-              <span>Credit {index + 1}</span>
-              <span className="credit-value">{creditExpiry(credit.expires_at_epoch)}</span>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="empty">No credit details available.</p>
-      )}
-    </section>
-  );
-}
-
-/** Which extras a provider has is fixed per provider, not inferred from what the last read held. */
-function Extras({ id, provider }: { id: ProviderId; provider: ProviderUsage }) {
-  return providerExtras[id].map((extra) => {
-    switch (extra) {
-      case "spend":
-        return provider.extra_usage && <Spend key={extra} extra={provider.extra_usage} />;
-      case "credits":
-        return <Credits key={extra} provider={provider} />;
-    }
-  });
-}
-
-function ProviderSection({
-  id,
-  provider,
-  now,
-  account,
-  paceOf,
-  lastStart,
-}: {
-  id: ProviderId;
-  provider: ProviderUsage;
-  now: number;
-  account?: { email: string | null; plan: string | null; label?: string };
-  paceOf: (id: WindowId) => WindowPace | undefined;
-  lastStart?: StartAttempt;
-}) {
-  const name = providerNames[id];
-  const degraded = provider.status === "auth_missing" || provider.status === "error" || provider.status === "stale";
-  const windows = windowEntries(provider);
-  const reported = windows.filter(({ duration, window }) => window.limit_window_seconds === duration);
-  // A reading that came back with no window at all still has to say so, in one placeholder rather
-  // than one per window the account might have had.
-  const entries = reported.length > 0 ? reported : windows.slice(0, 1);
-  return (
-    <div className="provider">
-      <div className="provider-row">
-        <ProviderIcon id={id} />
-        <h2 className="provider-name">
-          {name}
-          {account && <AccountDetail {...account} label={account.label ?? name} />}
-        </h2>
-        <span className="provider-status" data-tone={statusTone(provider)}>
-          {statusLine(provider)}
-        </span>
-      </div>
-      {id === "codex" &&
-        provider.subscription_active_until_epoch !== null &&
-        provider.subscription_active_until_epoch > now && (
-          <p className="subscription-date">
-            Subscription period ends{" "}
-            <time dateTime={new Date(provider.subscription_active_until_epoch * 1000).toISOString()}>
-              {subscriptionDate(provider.subscription_active_until_epoch)}
-            </time>
-          </p>
-        )}
-      <LearningLine windows={reported} paceOf={paceOf} />
-      {degraded && (
-        <p className="notice" role="status">
-          {provider.error_message ?? "The last successful reading remains visible."}
-        </p>
-      )}
-      {entries.map(({ slot, ...entry }) => (
-        <Entry key={entry.label} {...entry} now={now} speed={paceOf(windowId(slot, entry.duration))} />
-      ))}
-      {lastStart && <p className="subscription-date">{attemptStatus(lastStart)}</p>}
-      <Extras id={id} provider={provider} />
-    </div>
-  );
-}
-
-/** One sentence per window still learning its usual pace, saying when it is done. */
-function LearningLine({
-  windows,
-  paceOf,
-}: {
-  windows: { label: string; slot: WindowSlot; duration: number }[];
-  paceOf: (id: WindowId) => WindowPace | undefined;
-}) {
-  const learning = windows.flatMap(({ label, slot, duration }) => {
-    const pace = paceOf(windowId(slot, duration));
-    return pace?.status === "learning" ? [{ label, until: pace.until }] : [];
-  });
-  if (learning.length === 0) return null;
-  return (
-    <p className="subscription-date">
-      Learning your usual pace.
-      {learning.map(({ label, until }) => (
-        <Fragment key={label}>
-          {" "}
-          The {label.toLowerCase()}{" "}
-          {until.kind === "time" ? (
-            <>
-              is done <time dateTime={new Date(until.epoch * 1000).toISOString()}>{absoluteTime(until.epoch)}</time>
-            </>
-          ) : (
-            learningByUse(until.in_use)
-          )}
-          .
-        </Fragment>
-      ))}
-    </p>
-  );
-}
-
-function AccountDetail({ email, plan, label }: { email: string | null; plan: string | null; label: string }) {
-  const separator = email !== null && plan !== null ? " · " : "";
-  return (
-    <small className="account-detail">
-      {email === null ? null : <Email email={email} label={label} />}
-      <span className="account-plan">
-        {separator}
-        {plan}
-      </span>
-    </small>
-  );
-}
 
 const hubStatusLabels = {
   loading: "Loading",
@@ -356,22 +38,12 @@ const hubStatusTones = {
   rejected: "danger",
 } satisfies Record<ProxyHubStatus, "ok" | "warn" | "danger">;
 
-/** `managed` hubs belong to this machine, so their management page can open from here. */
-function HubSection({
-  hub,
-  managed,
-  now,
-  paces,
-  starts,
-}: {
-  hub: ProxyHubSnapshot;
-  managed: boolean;
-  now: number;
-  paces: PaceSnapshot["windows"];
-  starts: UsageSnapshot["window_starts"];
-}) {
+/** A hub's own state: whether it was read, the way to its management page, and what went wrong. Its
+ * accounts sit in their providers' pools. `managed` hubs belong to this machine, so their management
+ * page can open from here. */
+function HubSection({ hub, managed }: { hub: ProxyHubSnapshot; managed: boolean }) {
   return (
-    <section className="hub">
+    <section className="hub" aria-label={hub.label}>
       <div className="hub-row">
         <h2>{hub.label}</h2>
         <span className="provider-status" data-tone={hubStatusTones[hub.status]}>
@@ -395,7 +67,6 @@ function HubSection({
         </a>
       )}
       <HubMessage hub={hub} />
-      <HubAccounts hub={hub} now={now} paces={paces} starts={starts} />
     </section>
   );
 }
@@ -422,34 +93,6 @@ function HubMessage({ hub }: { hub: ProxyHubSnapshot }) {
     ),
   } satisfies Record<ProxyHubStatus, React.ReactNode>;
   return messages[hub.status];
-}
-
-function HubAccounts({
-  hub,
-  now,
-  paces,
-  starts,
-}: {
-  hub: ProxyHubSnapshot;
-  now: number;
-  paces: PaceSnapshot["windows"];
-  starts: UsageSnapshot["window_starts"];
-}) {
-  return namedHubAccounts(hub).map((account) => (
-    <ProviderSection
-      key={`${account.provider}:${account.id}`}
-      id={account.provider}
-      provider={account.usage}
-      lastStart={starts?.[windowStartKey(account.provider, { hubId: hub.id, accountId: account.id })]}
-      now={now}
-      account={{
-        email: account.email,
-        plan: account.plan,
-        label: account.name.label,
-      }}
-      paceOf={(id) => paces[paceKey(id, account.provider, { hubId: hub.id, accountId: account.id })]}
-    />
-  ));
 }
 
 /** The strips above the providers. A view of a host's usage shows only that host's update, and the
@@ -666,29 +309,18 @@ function App() {
           )}
 
           {snapshot &&
-            namedDirectAccounts(snapshot.accounts).map((account) => (
-              <ProviderSection
-                key={directAccountKey(account)}
-                id={account.provider}
-                provider={account.usage}
-                lastStart={snapshot.window_starts?.[directAccountKey(account)]}
-                now={now}
-                account={{ email: account.usage.email, plan: account.usage.plan, label: account.name.label }}
-                paceOf={(id) => snapshot.pace.windows[directPaceKey(id, account)]}
-              />
-            ))}
-
-          {snapshot &&
-            snapshot.proxy_hubs.map((hub) => (
-              <HubSection
-                key={hub.id}
-                hub={hub}
-                managed={host === undefined}
+            providerPools(snapshot).map((pool) => (
+              <PoolSection
+                key={pool.provider}
+                pool={pool}
                 now={now}
                 paces={snapshot.pace.windows}
                 starts={snapshot.window_starts}
               />
             ))}
+
+          {snapshot &&
+            snapshot.proxy_hubs.map((hub) => <HubSection key={hub.id} hub={hub} managed={host === undefined} />)}
 
           {remote && (
             <HostUpdateCheck host={BROWSER_HOST} onFound={() => window.scrollTo({ top: 0, behavior: "smooth" })} />

@@ -4,6 +4,11 @@ import { clockEpoch, homeSignIn, refreshedAgo, refreshedEpoch, usagePace } from 
 import type { ProviderUsage, UsageSnapshot } from "../shared/usage";
 import { windowStartKey } from "../shared/window-start";
 import {
+  accountChips,
+  accountSpend,
+  creditCount,
+  isDegraded,
+  spendTotal,
   absoluteTime,
   countdown,
   creatureTip,
@@ -15,7 +20,6 @@ import {
   startStatus,
   statusLine,
   statusTone,
-  usagePercent,
   usageTier,
   usageValueText,
 } from "./presentation";
@@ -45,8 +49,6 @@ const provider = (fields: Partial<ProviderUsage> = {}): ProviderUsage => ({
 
 describe("display contract", () => {
   it("keeps unavailable usage distinct from zero", () => {
-    expect(usagePercent(null)).toBe("Unavailable");
-    expect(usagePercent(0)).toBe("0%");
     expect(remainingPercent(null)).toBe("Unavailable");
     expect(remainingPercent(100)).toBe("0%");
     expect(remainingPercent(0)).toBe("100%");
@@ -54,9 +56,8 @@ describe("display contract", () => {
   });
 
   it("keeps a fractional reading instead of rounding it away", () => {
-    expect(usagePercent(12.74)).toBe("12.7%");
     expect(remainingPercent(12.7)).toBe("87.3%");
-    expect(usagePercent(42)).toBe("42%");
+    expect(remainingPercent(58)).toBe("42%");
   });
 
   it("counts down Claude's extra budget only when its limit and spend are known", () => {
@@ -65,6 +66,35 @@ describe("display contract", () => {
     expect(remainingCredits({ ...extra, used_credits: 60 })).toBe(0);
     expect(remainingCredits({ ...extra, used_credits: null })).toBeNull();
     expect(remainingCredits({ ...extra, monthly_limit: null })).toBeNull();
+  });
+
+  it("stands an account's email in as two letters and a tint of its own, or its place in the pool", () => {
+    const chips = accountChips(["Someone@Example.com", "sam@example.com", null]);
+    expect(chips.map(({ text }) => text)).toEqual(["SE", "SE", "#3"]);
+    expect(chips[0]?.hue).not.toBe(chips[1]?.hue);
+    expect(chips[2]?.hue).toBeNull();
+  });
+
+  it("adds up a pool's extra usage per currency, and says when it is off or unknown", () => {
+    const extra = { enabled: true, used_credits: 12.5, monthly_limit: 50, currency: "USD", decimal_places: 2 };
+    expect(accountSpend(extra)).toEqual({ state: "on", left: "37.50 USD", limit: "50.00 USD", share: 75 });
+    expect(accountSpend({ ...extra, enabled: false })).toEqual({ state: "off" });
+    expect(accountSpend(null)).toEqual({ state: "unreported" });
+    expect(accountSpend({ ...extra, used_credits: null })).toMatchObject({ left: "Unavailable", share: null });
+    expect(spendTotal([extra, { ...extra, used_credits: 40 }, null, { ...extra, enabled: false }])).toBe("47.50 USD");
+    expect(spendTotal([extra, { ...extra, currency: "EUR" }])).toBe("37.50 USD + 37.50 EUR");
+    expect(spendTotal([{ ...extra, enabled: false }, null])).toBe("Off");
+    expect(spendTotal([{ ...extra, used_credits: null }])).toBe("Unavailable");
+  });
+
+  it("says how many reset credits are banked, in words without a number", () => {
+    expect([null, 0, 2].map(creditCount)).toEqual(["Unavailable", "None", "2"]);
+  });
+
+  it("needs a line for a reading that failed or went stale", () => {
+    expect(
+      (["ready", "loading", "stale", "error", "auth_missing"] as const).map((status) => isDegraded({ status })),
+    ).toEqual([false, false, true, true, true]);
   });
 
   it("keeps an unknown reset distinct from an imminent one", () => {

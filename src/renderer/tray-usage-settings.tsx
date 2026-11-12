@@ -49,8 +49,8 @@ export function TrayUsageRows({ snapshot }: { snapshot: UsageSnapshot | null }) 
           <h2>Usage in tray</h2>
           <p>
             Shows one account&apos;s remaining 5-hour allowance beside the tray icon, in its provider&apos;s color.
-            Codex Go and free accounts show their monthly window instead. A pooled option adds up a provider&apos;s
-            accounts, so three accounts start at 300% and count down to 0. On Windows the number replaces the icon.
+            Codex Go and free accounts show their monthly window instead. A pooled option averages a provider&apos;s
+            accounts, so two accounts with 80% and 20% left show 50. On Windows the number replaces the icon.
           </p>
         </div>
         <TrayUsageToggle settings={settings} saving={saving} onSave={(next) => void save(next)} />
