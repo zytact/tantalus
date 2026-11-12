@@ -35,6 +35,8 @@ mkdir -p "$EVIDENCE"
 
 Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts. Pass `--restart` to quit and relaunch only the preview, keeping the display, usage mode, fixture server, and saved settings, which is how a proof shows that something survives a restart. Run doctor again after it.
 
+Start the preview only through `launch.sh`. Never run the built executable yourself, with any arguments: outside the harness it opens a visible window and reads the installed preview's settings and real accounts. When a launch fails, report the error it printed rather than trying another way to start the app.
+
 `build-preview.sh` refuses while a harness preview is running, since replacing the binary under it leaves a process the harness no longer recognizes. Run `cleanup.sh` before rebuilding, then launch again.
 
 If `build-preview.sh` fails with `The specified electronDist does not exist`, the install skipped Electron's download, which happens in a fresh worktree. Run `node node_modules/electron/install.js` and build again.
@@ -189,7 +191,7 @@ All helpers in `scripts/` are executable or run with `node`:
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)
 - `seed-pace.sh` writes a learned pace log into the mock settings directory, and refuses outside mock mode; run `launch.sh --restart` after it
-- `seed-creatures.sh` writes a moving pace stretch into the mock settings directory, with dragons on Codex 5h and Claude Fable and a tortoise on Claude 5h plus recent session activity, and refuses outside mock mode; run `launch.sh --restart` after it
+- `seed-creatures.sh` writes a moving pace stretch into the mock settings directory, with dragons on Codex 5h and Claude Fable and a tortoise on Claude 5h plus recent session activity, and a dragon on a saved fixture hub's first Codex account, and refuses outside mock mode; run `launch.sh --restart` after it
 - `signed-preview-rpm.sh RELEASE` builds a preview rpm that trusts a throwaway key in the run directory and signs it, for the root update helper proof (see `features/updates.md`)
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
