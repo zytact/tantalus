@@ -13,8 +13,18 @@ else
   fail=1
 fi
 
+# Succeeds when the recorded pid is alive and runs the executable recorded beside it.
+owned() {
+  local pid
+  pid="$(cat "$RUN_DIR/$1.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
+    [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/$1.exe" 2>/dev/null)" ]
+}
+
 preview_pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
-if [ -n "$preview_pid" ] && kill -0 "$preview_pid" 2>/dev/null &&
+if [ "$WINDOWS" = 1 ] && windows_owned "$preview_pid"; then
+  echo "OK Windows pid $preview_pid is the harness copy of the built preview, $(wslpath -w "$APP")"
+elif [ "$WINDOWS" = 0 ] && [ -n "$preview_pid" ] && kill -0 "$preview_pid" 2>/dev/null &&
   [ "$(readlink -f "/proc/$preview_pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]; then
   echo "OK pid $preview_pid is the built preview binary"
 else
@@ -22,13 +32,15 @@ else
   fail=1
 fi
 
-xvfb_pid="$(cat "$RUN_DIR/xvfb.pid" 2>/dev/null || true)"
-xvfb_exe="$(cat "$RUN_DIR/xvfb.exe" 2>/dev/null || true)"
-display="$(cat "$RUN_DIR/run.display" 2>/dev/null || true)"
-if [ -n "$xvfb_pid" ] && [ -n "$xvfb_exe" ] && kill -0 "$xvfb_pid" 2>/dev/null &&
-  [ "$(readlink -f "/proc/$xvfb_pid/exe" 2>/dev/null)" = "$xvfb_exe" ] &&
-  DISPLAY="$display" xprop -root >/dev/null 2>&1; then
-  echo "OK isolated display $display belongs to harness Xvfb pid $xvfb_pid"
+if [ "$WINDOWS" = 1 ]; then
+  if [ "$(cat "$RUN_DIR/run.display" 2>/dev/null)" = "$DESKTOP" ] && owned cdp-relay && owned web-relay; then
+    echo "OK hidden desktop $DESKTOP, with harness relays for DevTools and web port 4748 (local $(cat "$RUN_DIR/run.web"))"
+  else
+    echo "FAIL hidden desktop or relays are missing"
+    fail=1
+  fi
+elif display="$(cat "$RUN_DIR/run.display" 2>/dev/null)" && owned xvfb && DISPLAY="$display" xprop -root >/dev/null 2>&1; then
+  echo "OK isolated display $display belongs to harness Xvfb pid $(cat "$RUN_DIR/xvfb.pid")"
 else
   echo "FAIL isolated display is missing or foreign"
   fail=1
@@ -47,8 +59,7 @@ fi
 mode="$(cat "$RUN_DIR/run.mode" 2>/dev/null || echo real)"
 fixture_pid="$(cat "$RUN_DIR/fixture.pid" 2>/dev/null || true)"
 fixture_alive=0
-[ -n "$fixture_pid" ] && kill -0 "$fixture_pid" 2>/dev/null &&
-  [ "$(readlink -f "/proc/$fixture_pid/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/fixture.exe" 2>/dev/null)" ] && fixture_alive=1
+owned fixture && fixture_alive=1
 if [ "$mode" = mock ]; then
   if [ "$fixture_alive" = 1 ] && grep -q "GET /" "$RUN_DIR/fixture-requests.log" 2>/dev/null; then
     echo "OK mock usage: harness fixture pid $fixture_pid has served the preview's reads"

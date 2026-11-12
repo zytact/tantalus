@@ -1,17 +1,20 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { build } from "electron-builder";
+import { build, Platform } from "electron-builder";
 import { identities, updateHelper } from "../src/main/identity.ts";
 import type { Identity } from "../src/main/identity.ts";
 
 /** Bundles the app for the platform it runs on from `dist/` and `dist-electron/`, which `vp build` and
- * `vp pack` write. `--preview` bundles the preview identity, and `--dir` stops at the unpacked app. */
+ * `vp pack` write. `--preview` bundles the preview identity, `--dir` stops at the unpacked app, and
+ * `--windows` bundles for Windows from any platform. */
 const identity = process.argv.includes("--preview") ? identities.preview : identities.release;
 const unpacked = process.argv.includes("--dir");
+const windows = process.argv.includes("--windows");
 
 const output = `release/${identity.executableName}`;
 
 await build({
+  targets: windows ? Platform.WINDOWS.createTarget() : undefined,
   publish: "never",
   config: {
     appId: identity.appId,
@@ -24,7 +27,8 @@ await build({
       homepage: "https://github.com/zytact/tantalus",
     },
     directories: { output, buildResources: "build" },
-    electronDist: "node_modules/electron/dist",
+    // The installed Electron is this platform's, so a Windows bundle downloads Windows Electron instead.
+    electronDist: windows ? undefined : "node_modules/electron/dist",
     files: ["dist/**", "dist-electron/**", "package.json"],
     // Never published by the builder. It is set so the Linux packages record their format in
     // `resources/package-type`, which the updater reads to pick its download.
