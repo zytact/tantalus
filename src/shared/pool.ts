@@ -62,14 +62,16 @@ export function poolAccounts(snapshot: UsageSnapshot): PoolAccount[] {
 }
 
 /** One pool per provider that has an account, in provider order. An account read twice, such as through
- * two hubs or from two sign-ins, has one allowance, so it counts once, by its newest reading. */
+ * two hubs or from two sign-ins, has one allowance, so it counts once, by its newest reading. Members of
+ * one ChatGPT workspace share an account ID but not an allowance, so the email has to match as well. */
 export function providerPools(snapshot: UsageSnapshot): Pool[] {
   const accounts = poolAccounts(snapshot);
   return providerIds.flatMap((provider) => {
     const members = new Map<string, PoolAccount>();
     for (const account of accounts) {
       if (account.provider !== provider) continue;
-      const key = account.usage.account_key ?? account.key;
+      const { account_key, email } = account.usage;
+      const key = account_key === null ? account.key : JSON.stringify([account_key, email?.trim().toLowerCase()]);
       const seen = members.get(key);
       if (!seen || readEpoch(account) > readEpoch(seen)) members.set(key, account);
     }

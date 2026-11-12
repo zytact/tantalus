@@ -61,11 +61,13 @@ describe("provider pools", () => {
       [
         [
           hubAccount("a", { account_key: "same", last_successful_update_epoch: 20 }),
-          hubAccount("b", { account_key: "other" }),
+          hubAccount("b", { account_key: "same" }),
         ],
+        [hubAccount("a", { account_key: "same", last_successful_update_epoch: 30 })],
       ],
     );
-    expect(pool.accounts.map(({ key }) => key)).toEqual(["hub0:claude:a", "hub0:claude:b"]);
+    // `b` shares the account ID as a member of the same workspace, but has an allowance of its own.
+    expect(pool.accounts.map(({ key }) => key)).toEqual(["claude:home", "hub1:claude:a", "hub0:claude:b"]);
   });
 });
 
