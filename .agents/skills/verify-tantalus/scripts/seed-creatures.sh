@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Seed moving pace stretches so a dragon (Codex 5h and Claude Fable, fast) and a tortoise
-# (Claude 5h, slow + recent local session) ride the allowance bars.
+# (Claude 5h, slow + recent local session) ride the allowance bars. With the fixture hub saved, its
+# `hub-codex.json` account gets the Codex dragon too, so a creature can be seen in a pool of several accounts.
 # Mock mode only: it never touches a real pace log.
 # Run launch.sh --restart afterwards, since the preview reads the log once at startup.
 set -euo pipefail
@@ -9,7 +10,7 @@ LOG="$MOCK_HOME/config/dev.arnab.tantalus.preview/pace-log.json"
 [ "$(cat "$RUN_DIR/run.mode" 2>/dev/null)" = mock ] || { echo "Refusing: seed-creatures.sh needs a mock launch." >&2; exit 1; }
 mkdir -p "$(dirname "$LOG")"
 python3 - "$LOG" <<'PY'
-import hashlib, json, sys, time
+import hashlib, json, os, sys, time
 now = int(time.time())
 DAY = 86_400
 
@@ -59,12 +60,26 @@ log[json.dumps(["current", "claude:18000", "max 5x", claude_id], separators=(","
     "stretch": {"ticks": tortoise_ticks, "pending": 0, "activeAt": now - 30},
     "readings": []}
 
+# A saved fixture hub hides the direct accounts above, so its `hub-codex.json` account (Pro) gets the dragon.
+try:
+    hubs = json.load(open(os.path.join(os.path.dirname(sys.argv[1]), "proxy-hubs.json")))
+except FileNotFoundError:
+    hubs = []
+for hub in hubs:
+    log[json.dumps(["usual", "codex", "pro", 18000], separators=(",", ":"))] = usual()
+    key = f"{hub['id']}:codex:hub-codex.json:18000"
+    log[json.dumps(["current", key, "pro", "codex@hub.test"], separators=(",", ":"))] = {
+        "firstSeen": now - 30 * DAY,
+        "last": {"epoch": now - 120, "used": 40, "resetAt": now + 3 * 3600},
+        "stretch": {"ticks": dragon_ticks, "pending": 0, "activeAt": None},
+        "readings": []}
+
 json.dump(log, open(sys.argv[1], "w"))
 print(f"Seeded dragons (codex 5h, claude fable) + tortoise (claude 5h) stretches in {sys.argv[1]}")
 PY
 # Recent Claude session activity, so the slow Claude window reads as in use (tortoise),
 # not idle. Mirrors src/main/activity.ts: claude watches <CLAUDE_CONFIG_DIR>/projects/* files.
-SESSION_DIR="$RUN_DIR/mock-home/claude/projects/fixture-session"
+SESSION_DIR="$MOCK_HOME/claude/projects/fixture-session"
 mkdir -p "$SESSION_DIR"
 echo '{"type":"session","provider":"claude"}' >"$SESSION_DIR/session.jsonl"
 touch "$SESSION_DIR/session.jsonl"

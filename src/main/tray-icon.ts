@@ -16,13 +16,13 @@ const glyphs: Record<string, string[]> = {
 };
 const GLYPH_HEIGHT = 5;
 
-/** The remaining percentage as the tray draws it: whole, and within 0 to `limit`. */
-export function trayPercent(remaining: number, limit: number): string {
-  return String(Math.round(Math.min(limit, Math.max(0, remaining))));
+/** The remaining percentage as the tray draws it: whole, and within 0 to 100. */
+export function trayPercent(remaining: number): string {
+  return String(Math.round(Math.min(100, Math.max(0, remaining))));
 }
 
 /** Draws `text` in `color` beside `mark`, or alone and centered in a square when there is no mark. A
- * pooled number too wide for the square widens it instead, and the tray scales it down to fit. The
+ * number too wide for the square widens it instead, and the tray scales it down to fit. The
  * digits take the largest whole pixel scale that fits, so they stay sharp. */
 export function usageBitmap({
   text,

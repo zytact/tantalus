@@ -35,6 +35,8 @@ mkdir -p "$EVIDENCE"
 
 Pass `--mock [SCENARIO]` to `launch.sh` for fixture usage (see Usage modes). Without it the preview reads real accounts. Pass `--restart` to quit and relaunch only the preview, keeping the display, usage mode, fixture server, and saved settings, which is how a proof shows that something survives a restart. Run doctor again after it.
 
+Start the preview only through `launch.sh`. Never run the built executable yourself, with any arguments: outside the harness it opens a visible window and reads the installed preview's settings and real accounts. When a launch fails, report the error it printed rather than trying another way to start the app.
+
 `build-preview.sh` refuses while a harness preview is running, since replacing the binary under it leaves a process the harness no longer recognizes. Run `cleanup.sh` before rebuilding, then launch again.
 
 If `build-preview.sh` fails with `The specified electronDist does not exist`, the install skipped Electron's download, which happens in a fresh worktree. Run `node node_modules/electron/install.js` and build again.
@@ -67,7 +69,7 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
 - `hub-multiple-idle`: like `idle`, but the fixture hub pools two Codex and two Claude accounts.
-- `hub-multiple`: like `ready`, but the fixture hub pools two Codex and two Claude accounts with the same readings, so a pool reads twice one account.
+- `hub-multiple`: like `ready`, but the fixture hub pools two Codex and two Claude accounts with the same readings, so a pool reads the same as one account.
 - `hub-codex-only` and `hub-claude-only`: like `ready`, but the fixture hub pools only that provider's account.
 - `hub-rejected`: like `ready`, but the hub's Claude account answers 401 until its sign-in is renewed through the hub.
 - `hub-slow`: like `ready`, but every hub account request takes 6 seconds. Direct reads answer at once.
@@ -104,7 +106,7 @@ node .agents/skills/verify-tantalus/scripts/drive.ts click button Refresh then w
 When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. Take a fresh snapshot before targeting a creature because its name includes a changing projection. Use `focus ROLE NAME` to open its tooltip and pause its animation before `hover ROLE NAME` or `scroll ROLE NAME`, which wait for a stable element. Capture the same scheme to inspect its text and position.
 
 ```sh
-node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll progressbar "Short window remaining"
+node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll button "Show email for Fixture hub · Codex 1"
 node .agents/skills/verify-tantalus/scripts/drive.ts focus img "<exact creature name from snapshot>"
 node .agents/skills/verify-tantalus/scripts/drive.ts hover img "<exact creature name from snapshot>"
 ```
@@ -142,7 +144,7 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 - Enable the provider needed for the account in Settings.
 - Return to Allowance and activate Refresh.
 - Capture the busy state when practical, then the completed state.
-- Confirm every reported Short, Long, Fable, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response.
+- Confirm every reported Short, Long, Fable, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response. Each provider's accounts share one section (see `features/pooled-allowance.md`).
 - Accounts expose different windows. An absent plan-specific window is valid; do not invent an unavailable row when another recognized window exists.
 
 4. Exercise Settings:
@@ -189,7 +191,7 @@ All helpers in `scripts/` are executable or run with `node`:
 - `mock-scenario.sh <NAME>` switches the running fixture scenario
 - `tray-icon.sh <dest.png> [preview-pid]` exports the preview's tray icon from its `IconThemePath` directory (see `features/tray-usage.md`)
 - `seed-pace.sh` writes a learned pace log into the mock settings directory, and refuses outside mock mode; run `launch.sh --restart` after it
-- `seed-creatures.sh` writes a moving pace stretch into the mock settings directory, with dragons on Codex 5h and Claude Fable and a tortoise on Claude 5h plus recent session activity, and refuses outside mock mode; run `launch.sh --restart` after it
+- `seed-creatures.sh` writes a moving pace stretch into the mock settings directory, with dragons on Codex 5h and Claude Fable and a tortoise on Claude 5h plus recent session activity, and a dragon on a saved fixture hub's first Codex account, and refuses outside mock mode; run `launch.sh --restart` after it
 - `signed-preview-rpm.sh RELEASE` builds a preview rpm that trusts a throwaway key in the run directory and signs it, for the root update helper proof (see `features/updates.md`)
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence

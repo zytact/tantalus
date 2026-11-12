@@ -1,13 +1,6 @@
 import type { InstallProgress } from "../shared/ipc";
 import type { Creature, Rider } from "../shared/pace";
-import {
-  fiveHourSeconds,
-  monthlySeconds,
-  percent,
-  remainingUsage,
-  sevenDaySeconds,
-  windowSlots,
-} from "../shared/usage";
+import { percent, remainingUsage } from "../shared/usage";
 import type { UsagePace, ExtraUsage, ProviderId, ProviderUsage, WindowSlot } from "../shared/usage";
 import type { StartAttempt, StartProviderId, WindowStart } from "../shared/window-start";
 
@@ -18,21 +11,15 @@ export const providerExtras = {
   opencode: [],
 } as const satisfies Record<ProviderId, readonly ("credits" | "spend")[]>;
 
-/** Every window a provider can report, in the order they are shown. Which of them a reading
- * actually carries depends on the plan: a Codex Go or free account has only the monthly window,
- * and OpenAI has switched the 5-hour one off for a plan before, so none of them is assumed. */
-export function windowEntries(provider: ProviderUsage) {
-  return windowSlots.map((slot) => ({ ...windowRows[slot], slot, window: provider[slot] }));
-}
-
 const windowRows = {
-  five_hour: { label: "Short window", span: "5 hours", duration: fiveHourSeconds },
-  seven_day: { label: "Long window", span: "7 days", duration: sevenDaySeconds },
-  fable_weekly: { label: "Fable window", span: "7 days", duration: sevenDaySeconds },
-  monthly: { label: "Monthly window", span: "30 days", duration: monthlySeconds },
-} as const satisfies Record<WindowSlot, { label: string; span: string; duration: number }>;
+  five_hour: { label: "Short window", span: "5 hours" },
+  seven_day: { label: "Long window", span: "7 days" },
+  fable_weekly: { label: "Fable window", span: "7 days" },
+  monthly: { label: "Monthly window", span: "30 days" },
+} as const satisfies Record<WindowSlot, { label: string; span: string }>;
 
 export const windowLabel = (slot: WindowSlot) => windowRows[slot].label;
+export const windowSpan = (slot: WindowSlot) => windowRows[slot].span;
 
 /** The update strip's wording while an install runs. `percent` is null when the stage cannot be measured. */
 export function installStatus(version: string, progress: InstallProgress) {
@@ -46,6 +33,22 @@ export function installStatus(version: string, progress: InstallProgress) {
 }
 
 const megabytes = (bytes: number) => (bytes / 1e6).toFixed(1);
+
+/** What stands for an account beside its bars. `hue` tints the chip per email, and is null without one. */
+export type AccountChip = { text: string; hue: number | null };
+
+/** `someone@example.com` becomes `SE`: enough to tell accounts apart, too little to identify one. An
+ * account without an email is numbered by its place in the pool. */
+export function accountChips(emails: (string | null)[]): AccountChip[] {
+  return emails.map((email, index) => {
+    if (email === null) return { text: `#${index + 1}`, hue: null };
+    const address = email.trim().toLowerCase();
+    const [local = "", domain = ""] = address.split("@");
+    let hue = 0;
+    for (let at = 0; at < address.length; at++) hue = (hue * 31 + address.charCodeAt(at)) % 360;
+    return { text: `${local.charAt(0)}${domain.charAt(0)}`.toUpperCase() || `#${index + 1}`, hue };
+  });
+}
 
 export function statusLine(provider: ProviderUsage): string {
   switch (provider.status) {
@@ -62,10 +65,6 @@ export function statusLine(provider: ProviderUsage): string {
   }
 }
 
-export function usagePercent(value: number | null): string {
-  return value === null ? "Unavailable" : percent(value);
-}
-
 export function remainingPercent(value: number | null): string {
   return value === null ? "Unavailable" : percent(remainingUsage(value));
 }
@@ -74,6 +73,39 @@ export function remainingCredits(extra: ExtraUsage): number | null {
   return extra.used_credits === null || extra.monthly_limit === null
     ? null
     : remainingUsage(extra.used_credits, extra.monthly_limit);
+}
+
+/** One account's extra usage as its segment shows it. `leftPercent` is the part of the monthly limit left, and null when either figure is unknown. */
+export type AccountSpend =
+  | { state: "unreported" | "off" }
+  | { state: "on"; left: string; limit: string; leftPercent: number | null };
+
+export function accountSpend(extra: ExtraUsage | null): AccountSpend {
+  if (!extra) return { state: "unreported" };
+  if (!extra.enabled) return { state: "off" };
+  const left = remainingCredits(extra);
+  return {
+    state: "on",
+    left: creditAmount(left, extra),
+    limit: creditAmount(extra.monthly_limit, extra),
+    leftPercent: left !== null && extra.monthly_limit ? (left / extra.monthly_limit) * 100 : null,
+  };
+}
+
+/** What a pool's accounts have left of their extra usage, added up per currency. `Off` when none has it
+ * switched on, and `Unavailable` when none of those reports a balance. */
+export function spendTotal(extras: (ExtraUsage | null)[]): string {
+  const on = extras.flatMap((extra) => (extra?.enabled ? [extra] : []));
+  if (on.length === 0) return "Off";
+  const totals = new Map<string, { sum: number; extra: ExtraUsage }>();
+  for (const extra of on) {
+    const left = remainingCredits(extra);
+    if (left === null) continue;
+    const key = `${extra.currency}:${extra.decimal_places}`;
+    totals.set(key, { sum: (totals.get(key)?.sum ?? 0) + left, extra });
+  }
+  if (totals.size === 0) return "Unavailable";
+  return [...totals.values()].map(({ sum, extra }) => creditAmount(sum, extra)).join(" + ");
 }
 
 /** Time left until an epoch, coarse on purpose: "3h 29m", "4d 20h". */
@@ -115,6 +147,12 @@ export function wakeStatus({ lastWake }: Pick<WindowStart, "lastWake">): string 
   return "When Claude's sign-in expires or the usage service rejects it, Tantalus sends a one-word prompt through the Claude CLI, then refreshes. It tries at most once an hour.";
 }
 
+/** How many reset credits an account has banked, in words where there is no number to show. */
+export function creditCount(count: number | null): string {
+  if (count === null) return "Unavailable";
+  return count === 0 ? "None" : String(count);
+}
+
 /** Credits expire weeks out, so a weekday alone would not say which week. */
 export function creditExpiry(epoch: number | null): string {
   if (epoch === null) return "No expiry reported";
@@ -131,7 +169,7 @@ export function subscriptionDate(epoch: number): string {
   return new Date(epoch * 1000).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function creditAmount(
+function creditAmount(
   value: number | null,
   { currency, decimal_places }: Pick<ExtraUsage, "currency" | "decimal_places">,
 ): string {
@@ -200,6 +238,10 @@ export function usageTier(value: number | null): "normal" | "warn" | "danger" {
   if (value >= 90) return "danger";
   return value >= 75 ? "warn" : "normal";
 }
+
+/** A reading that failed, or is older than the last refresh, and so needs a line saying why. */
+export const isDegraded = ({ status }: Pick<ProviderUsage, "status">) =>
+  status === "auth_missing" || status === "error" || status === "stale";
 
 export function statusTone(provider: ProviderUsage): "ok" | "warn" | "danger" {
   switch (provider.status) {

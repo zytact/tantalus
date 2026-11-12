@@ -7,6 +7,17 @@ STATE_DIR="$(wslpath "$(cd /mnt/c && cmd.exe /d /c 'echo %LOCALAPPDATA%' | tr -d
 APP="$STATE_DIR/app/tantalus-preview.exe"
 DESKTOP="tantalus-verify-$(basename "$RUN_DIR")"
 
+# Replaces the built exe at $1 with the stock Electron exe the builder downloaded. The builder writes the
+# app bundle's hash into its exe, so every code change makes an exe Windows has never seen, which Smart
+# App Control blocks. The stock exe is the same for every build and loads the same resources/app.asar.
+stock_electron() {
+  local version zip
+  version="$(node -p "require('$ROOT/node_modules/electron/package.json').version")"
+  zip="$(find "${ELECTRON_CACHE:-$HOME/.cache/electron}" -name "electron-v$version-win32-x64.zip" 2>/dev/null | head -n 1 || true)"
+  [ -n "$zip" ] || { echo "No Windows Electron $version download to take the stock exe from." >&2; return 1; }
+  python3 -c 'import sys, zipfile; open(sys.argv[2], "wb").write(zipfile.ZipFile(sys.argv[1]).read("electron.exe"))' "$zip" "$1"
+}
+
 # Windows tools warn or fail when their working directory is inside WSL.
 powershell() { (cd /mnt/c && powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "$@" | tr -d '\r'); }
 

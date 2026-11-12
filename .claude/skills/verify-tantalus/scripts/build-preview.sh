@@ -30,6 +30,7 @@ if [ "$WINDOWS" = 1 ]; then
   rm -rf "$(dirname "$APP")"
   mkdir -p "$STATE_DIR"
   cp -r "$(dirname "$BIN")" "$(dirname "$APP")"
+  stock_electron "$APP"
   echo "PREVIEW-BUILD: pass ($BIN, copied to $(wslpath -w "$APP"))"
 else
   echo "PREVIEW-BUILD: pass ($BIN)"
