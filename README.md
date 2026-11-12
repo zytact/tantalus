@@ -73,7 +73,7 @@ vp run package
 
 `vp check` verifies formatting with Oxfmt, lints with Oxlint, and type checks. Add `--fix` to rewrite instead of report. A pre-commit hook runs `vp staged`, which applies `vp check --fix` to the staged files.
 
-`vp run package` builds the page and the main process, then `scripts/package.ts` runs electron-builder into `release/tantalus/`: a deb and an rpm on Linux, a dmg and an updater tarball on macOS, and an NSIS installer on Windows. Build each platform's bundles on that platform. Add `-- --dir` to stop at the unpacked app. Assembling the Linux packages needs `rpmbuild`, and electron-builder's bundled fpm needs `libcrypt.so.1`, which Fedora ships as `libxcrypt-compat`.
+`vp run package` builds the page and the main process, then `scripts/package.ts` runs electron-builder into `release/tantalus/`: a deb and an rpm on Linux, a dmg and an updater tarball on macOS, and an NSIS installer on Windows. Build each platform's bundles on that platform, except that `-- --windows` bundles for Windows from Linux, which the verification harness uses on WSL. Add `-- --dir` to stop at the unpacked app. Assembling the Linux packages needs `rpmbuild`, and electron-builder's bundled fpm needs `libcrypt.so.1`, which Fedora ships as `libxcrypt-compat`.
 
 ## Preview builds
 

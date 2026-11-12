@@ -28,7 +28,7 @@ stop_owned() {
 
 if [ "$WINDOWS" = 1 ]; then
   pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
-  if windows_owned "$pid"; then
+  if preview_owned "$pid"; then
     echo "Stopping Windows preview pid $pid..."
     windows_stop "$pid" || echo "Windows preview pid $pid is still running"
   elif [ -n "$pid" ]; then

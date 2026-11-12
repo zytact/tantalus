@@ -22,10 +22,7 @@ owned() {
 }
 
 preview_pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
-if [ "$WINDOWS" = 1 ] && windows_owned "$preview_pid"; then
-  echo "OK Windows pid $preview_pid is the harness copy of the built preview, $(wslpath -w "$APP")"
-elif [ "$WINDOWS" = 0 ] && [ -n "$preview_pid" ] && kill -0 "$preview_pid" 2>/dev/null &&
-  [ "$(readlink -f "/proc/$preview_pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]; then
+if preview_owned "$preview_pid"; then
   echo "OK pid $preview_pid is the built preview binary"
 else
   echo "FAIL preview process is missing or foreign"

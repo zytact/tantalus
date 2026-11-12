@@ -11,9 +11,7 @@ esac
 source "$(dirname "$0")/run-dir.sh"
 
 # Replacing the binary under a running preview leaves a process the harness no longer recognizes as its own.
-pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
-if { [ "$WINDOWS" = 1 ] && windows_owned "$pid"; } ||
-  { [ -n "$pid" ] && [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]; }; then
+if preview_owned "$(cat "$RUN_DIR/run.pid" 2>/dev/null)"; then
   echo "Refusing: a harness preview is running. Run cleanup.sh first." >&2
   exit 1
 fi
@@ -37,5 +35,9 @@ else
   echo "PREVIEW-BUILD: pass ($BIN)"
 fi
 if [ "${#target[@]}" -eq 0 ]; then
-  ls "$ROOT"/release/tantalus-preview/*.{deb,rpm,exe} 2>/dev/null
+  if [ "$WINDOWS" = 1 ]; then
+    ls "$ROOT"/release/tantalus-preview/*.exe
+  else
+    ls "$ROOT"/release/tantalus-preview/*.{deb,rpm}
+  fi
 fi

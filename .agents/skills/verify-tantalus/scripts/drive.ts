@@ -19,11 +19,12 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import type { AddressInfo } from "node:net";
 import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
-import type { Page } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 
 // Matches run-dir.sh, so this drives the preview launched from the same checkout.
 const ROOT = realpathSync(fileURLToPath(new URL("../../../..", import.meta.url)));
@@ -71,13 +72,23 @@ async function linuxWeb(): Promise<Session> {
 /** A headless Edge on Windows, where the preview's web port is, reached through windows-relay.mjs. Its
  * profile lives beside the preview's state under %LOCALAPPDATA%, since a profile on WSL's disk fails. */
 async function windowsWeb(): Promise<Session> {
-  const windowsPath = (path: string) => execFileSync("wslpath", [path], { encoding: "utf8" }).trim();
+  const wslpath = (...args: string[]) => execFileSync("wslpath", args, { encoding: "utf8" }).trim();
   const localAppData = execFileSync("cmd.exe", ["/d", "/c", "echo %LOCALAPPDATA%"], { cwd: "/mnt/c", encoding: "utf8" });
-  const profile = join(windowsPath(localAppData.trim()), "tantalus-verify", basename(RUN_DIR), "web-profile");
+  const profile = join(wslpath(localAppData.trim()), "tantalus-verify", basename(RUN_DIR), "web-profile");
+  const windowsProfile = wslpath("-w", profile);
   const portFile = join(profile, "DevToolsActivePort");
+  // An Edge left on this profile by a failed run would take the new launch over without a fresh port.
+  execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-Command",
+      `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ? CommandLine -like '*${windowsProfile}*' | % { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ],
+    { cwd: "/mnt/c" },
+  );
   rmSync(portFile, { force: true });
   const edge = process.env.TANTALUS_CHROME ?? "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
-  const windowsProfile = execFileSync("wslpath", ["-w", profile], { encoding: "utf8" }).trim();
   spawn(edge, [`--user-data-dir=${windowsProfile}`, "--headless", "--no-first-run", "--remote-debugging-port=0"], {
     cwd: "/mnt/c",
     stdio: "ignore",
@@ -86,15 +97,20 @@ async function windowsWeb(): Promise<Session> {
   const windowsPort = readFileSync(portFile, "utf8").split("\n")[0].trim();
   const localPort = await new Promise<number>((resolve) => {
     const server = createServer().listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as { port: number };
+      const { port } = server.address() as AddressInfo;
       server.close(() => resolve(port));
     });
   });
   const relay = spawn(process.execPath, [join(import.meta.dirname, "windows-relay.mjs"), windowsPort, String(localPort)], {
     stdio: "ignore",
   });
-  await sleep(500);
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${localPort}`);
+  const connect = async (tries: number): Promise<Browser> =>
+    chromium.connectOverCDP(`http://127.0.0.1:${localPort}`).catch(async (error: unknown) => {
+      if (tries === 0) throw error;
+      await sleep(250);
+      return connect(tries - 1);
+    });
+  const browser = await connect(20);
   const page = await browser.contexts()[0].newPage();
   await page.setViewportSize(phone);
   return {

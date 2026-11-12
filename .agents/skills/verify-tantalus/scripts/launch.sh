@@ -25,16 +25,9 @@ else
   [ -x "$XVFB" ] || { echo "Xvfb is required. Install it or set TANTALUS_XVFB." >&2; exit 1; }
 fi
 
-preview_running() {
-  local pid
-  pid="$(cat "$RUN_DIR/run.pid" 2>/dev/null || true)"
-  if [ "$WINDOWS" = 1 ]; then
-    windows_owned "$pid"
-  else
-    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
-      [ "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]
-  fi
-}
+preview_running() { preview_owned "$(cat "$RUN_DIR/run.pid" 2>/dev/null)"; }
+
+free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
 
 # The preview reads paths in its own platform's form.
 preview_path() { if [ "$WINDOWS" = 1 ]; then wslpath -w "$1"; else printf %s "$1"; fi; }
@@ -42,7 +35,7 @@ preview_path() { if [ "$WINDOWS" = 1 ]; then wslpath -w "$1"; else printf %s "$1
 # Starts a relay from a free local port to a Windows port and prints the local port.
 start_relay() {
   local name="$1" windows_port="$2" local_port
-  local_port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+  local_port="$(free_port)"
   setsid node "$SCRIPT_DIR/windows-relay.mjs" "$windows_port" "$local_port" >"$RUN_DIR/$name.log" 2>&1 &
   echo $! >"$RUN_DIR/$name.pid"
   # The node on PATH can be a version manager shim that execs the real one.
@@ -54,7 +47,8 @@ if [ "$RESTART" = 1 ]; then
   [ -s "$RUN_DIR/run.display" ] || { echo "Nothing to restart. Run launch.sh first." >&2; exit 1; }
   if [ "$WINDOWS" = 1 ]; then
     windows_stop "$(cat "$RUN_DIR/run.pid" 2>/dev/null)" || true
-    kill "$(cat "$RUN_DIR/cdp-relay.pid" 2>/dev/null)" 2>/dev/null || true
+    relay="$(cat "$RUN_DIR/cdp-relay.pid" 2>/dev/null)"
+    [ -n "$relay" ] && [ "$(readlink -f "/proc/$relay/exe" 2>/dev/null)" = "$(cat "$RUN_DIR/cdp-relay.exe")" ] && kill "$relay"
   elif preview_running; then
     kill "$(cat "$RUN_DIR/run.pid")"
     for _ in $(seq 1 10); do
@@ -151,14 +145,15 @@ if [ "$WINDOWS" = 1 ]; then
   rm -f "$devtools_file"
   preview_pid="$(windows_launch "${preview_vars[@]}" TANTALUS_APP_DATA="$(wslpath -w "$config")" -- --remote-debugging-port=0)"
   echo "$preview_pid" >"$RUN_DIR/run.pid"
-  for _ in $(seq 1 30); do
+  # The first launch of a fresh copy waits while Windows scans it.
+  for _ in $(seq 1 60); do
     [ -s "$devtools_file" ] && break
     sleep 1
   done
   [ -s "$devtools_file" ] || { echo "The preview did not open its DevTools port." >&2; exit 1; }
   cdp_port="$(start_relay cdp-relay "$(head -n 1 "$devtools_file" | tr -d '\r')")"
 else
-  cdp_port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+  cdp_port="$(free_port)"
   # A shell inside another Electron app can carry ELECTRON_RUN_AS_NODE, which starts a bare Node instead.
   env -u TANTALUS_USAGE_BASE_URL -u ELECTRON_RUN_AS_NODE DISPLAY="$display" XDG_CONFIG_HOME="$config" "${preview_vars[@]}" \
     setsid "$BIN" --ozone-platform=x11 --remote-debugging-port="$cdp_port" </dev/null >"$RUN_DIR/preview.log" 2>&1 &
@@ -168,6 +163,8 @@ fi
 echo "$cdp_port" >"$RUN_DIR/run.cdp"
 
 for _ in $(seq 1 30); do
+  # The recorded pid becomes the preview only once env and setsid exec it.
+  sleep 1
   preview_running || {
     echo "Preview exited early." >&2
     [ -f "$RUN_DIR/preview.log" ] && tail -n 20 "$RUN_DIR/preview.log" >&2
@@ -177,7 +174,6 @@ for _ in $(seq 1 30); do
     echo "Ready: Tantalus Preview ($MODE usage) on isolated display $display (pid $preview_pid, DevTools port $cdp_port, run directory $RUN_DIR)"
     exit 0
   fi
-  sleep 1
 done
 
 echo "Timed out waiting for the preview window." >&2

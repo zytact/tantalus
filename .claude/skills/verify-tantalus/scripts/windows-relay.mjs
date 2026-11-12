@@ -27,6 +27,9 @@ createServer((socket) => {
     ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
     { cwd: "/mnt/c", stdio: ["pipe", "pipe", "ignore"] }
   );
+  // A Windows port that closes mid-stream must not take the relay down with it.
+  powershell.stdin.on("error", () => socket.destroy());
+  powershell.on("error", () => socket.destroy());
   socket.pipe(powershell.stdin);
   powershell.stdout.pipe(socket);
   socket.on("error", () => powershell.kill());

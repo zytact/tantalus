@@ -10,6 +10,10 @@ else
   WINDOWS=0
   BIN="$ROOT/release/tantalus-preview/linux-unpacked/tantalus-preview"
   STATE_DIR="$RUN_DIR"
+  # Succeeds when the process ID runs the built preview.
+  preview_owned() {
+    [ -n "$1" ] && kill -0 "$1" 2>/dev/null && [ "$(readlink -f "/proc/$1/exe" 2>/dev/null)" = "$(readlink -f "$BIN")" ]
+  }
 fi
 MOCK_HOME="$STATE_DIR/mock-home"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

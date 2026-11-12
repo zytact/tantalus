@@ -176,7 +176,7 @@ A screenshot proves the rendered page. Pair it with the relevant interaction and
 .agents/skills/verify-tantalus/scripts/cleanup.sh
 ```
 
-The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home`, `mock-home` and `web-profile` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
+The helper kills only the preview, fixture server, Xvfb and relay PIDs started by `launch.sh`, removes the `coverage-home`, `mock-home` and `web-profile` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
 
 ## Helpers
 
@@ -195,8 +195,8 @@ All helpers in `scripts/` are executable or run with `node`:
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
 - `wsl.sh`, `windows-relay.mjs` and `hidden-desktop.ps1` carry the WSL route, and the other scripts use them on their own (see `wsl.md`)
 
+The feature map is in `features/`. Read the relevant file before driving that feature.
+
 ## Machines
 
 Proven on Linux and on WSL, which drives the Windows preview (see `wsl.md`).
-
-The feature map is in `features/`. Read the relevant file before driving that feature.
