@@ -2,6 +2,7 @@
 
 One file covers each user-facing feature backed by `src/` and the README.
 
+- [pooled-allowance](pooled-allowance.md) - one section per provider pooling its direct and hub accounts, with a bar per account
 - [short-window](short-window.md) - 5-hour remaining allowance
 - [long-window](long-window.md) - 7-day remaining allowance
 - [monthly-window](monthly-window.md) - 30-day remaining allowance

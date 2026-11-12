@@ -67,7 +67,7 @@ The launch serves `ready` unless a scenario follows `--mock`. Switch scenarios w
 - `no-windows`: every provider answers with no recognized window.
 - `error`: every usage request returns 500. Before any success this reads `Could not refresh`; after one it reads `Cached`.
 - `hub-multiple-idle`: like `idle`, but the fixture hub pools two Codex and two Claude accounts.
-- `hub-multiple`: like `ready`, but the fixture hub pools two Codex and two Claude accounts with the same readings, so a pool reads twice one account.
+- `hub-multiple`: like `ready`, but the fixture hub pools two Codex and two Claude accounts with the same readings, so a pool reads the same as one account.
 - `hub-codex-only` and `hub-claude-only`: like `ready`, but the fixture hub pools only that provider's account.
 - `hub-rejected`: like `ready`, but the hub's Claude account answers 401 until its sign-in is renewed through the hub.
 - `hub-slow`: like `ready`, but every hub account request takes 6 seconds. Direct reads answer at once.
@@ -104,7 +104,7 @@ node .agents/skills/verify-tantalus/scripts/drive.ts click button Refresh then w
 When several accounts have the same accessible name, add `--nth INDEX` before the command to select a zero-based match in snapshot order. The default keeps requiring a unique match. Put options in `--web`, `--scheme`, `--nth` order when combining them. Take a fresh snapshot before targeting a creature because its name includes a changing projection. Use `focus ROLE NAME` to open its tooltip and pause its animation before `hover ROLE NAME` or `scroll ROLE NAME`, which wait for a stable element. Capture the same scheme to inspect its text and position.
 
 ```sh
-node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll progressbar "Short window remaining"
+node .agents/skills/verify-tantalus/scripts/drive.ts --nth 1 scroll button "Show email for Fixture hub · Codex 1"
 node .agents/skills/verify-tantalus/scripts/drive.ts focus img "<exact creature name from snapshot>"
 node .agents/skills/verify-tantalus/scripts/drive.ts hover img "<exact creature name from snapshot>"
 ```
@@ -142,7 +142,7 @@ vp test 2>&1 | tee "$EVIDENCE/vitest.log"
 - Enable the provider needed for the account in Settings.
 - Return to Allowance and activate Refresh.
 - Capture the busy state when practical, then the completed state.
-- Confirm every reported Short, Long, Fable, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response.
+- Confirm every reported Short, Long, Fable, and Monthly window, Reset credits or Extra usage, status word, refresh timestamp, and remaining figure against the account response. Each provider's accounts share one section (see `features/pooled-allowance.md`).
 - Accounts expose different windows. An absent plan-specific window is valid; do not invent an unavailable row when another recognized window exists.
 
 4. Exercise Settings:
