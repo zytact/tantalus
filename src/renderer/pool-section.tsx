@@ -98,8 +98,8 @@ export function PoolSection({
 }
 
 /** Two letters from the account's email, tinted per email so accounts sharing initials stay apart. `label`
- * names the account for screen readers where nothing beside the chip already does. */
-function Chip({ chip, label }: { chip: AccountChip; label?: string }) {
+ * names the account for screen readers, and is null where something beside the chip already does. */
+function Chip({ chip, label }: { chip: AccountChip; label: string | null }) {
   return (
     <b className="chip" style={chip.hue === null ? undefined : ({ "--chip-hue": chip.hue } as React.CSSProperties)}>
       <span aria-hidden="true">{chip.text}</span>
@@ -113,7 +113,7 @@ function AccountRow({ account, chip, now, lastStart }: Member & { now: number; l
   return (
     <li>
       <div className="pool-account">
-        <Chip chip={chip} />
+        <Chip chip={chip} label={null} />
         <AccountIdentity account={account} />
         <span className="provider-status" data-tone={statusTone(usage)}>
           {statusLine(usage)}
@@ -295,7 +295,7 @@ function Bar({ account, chip, label, usage, speed, now, start, share }: SegmentP
   const used = usage.used_percent;
   const remaining = used === null ? undefined : remainingUsage(used);
   const pace = usagePace(usage, now);
-  const rider = riderOf(speed);
+  const rider = movingRider(usage, speed);
   return (
     <div className="segment">
       <div
@@ -319,13 +319,17 @@ function Bar({ account, chip, label, usage, speed, now, start, share }: SegmentP
         <CreatureRider rider={rider} used={used} resetAt={usage.reset_at_epoch} now={now} start={start} share={share} />
       </div>
       <p className="segment-caption">
-        <Chip chip={chip} />
+        <Chip chip={chip} label={null} />
         <b>{remainingPercent(used)}</b>
         <Reset usage={usage} now={now} />
       </p>
     </div>
   );
 }
+
+/** A window that has reset since it was read is full, and its pace still describes the spent one. */
+const movingRider = (usage: WindowUsage, speed: WindowPace | undefined) =>
+  usage.used_percent === 0 ? null : riderOf(speed);
 
 /** Where an account has nothing to draw a bar for. */
 function Gap({ account, chip, text }: Member & { text: string }) {

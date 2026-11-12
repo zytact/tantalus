@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Seed moving pace stretches so a dragon (Codex 5h and Claude Fable, fast) and a tortoise
-# (Claude 5h, slow + recent local session) ride the allowance bars. With a hub saved, the hub's first
-# Codex account gets the Codex dragon too, so a creature can be seen in a pool of several accounts.
+# (Claude 5h, slow + recent local session) ride the allowance bars. With the fixture hub saved, its
+# `hub-codex.json` account gets the Codex dragon too, so a creature can be seen in a pool of several accounts.
 # Mock mode only: it never touches a real pace log.
 # Run launch.sh --restart afterwards, since the preview reads the log once at startup.
 set -euo pipefail
@@ -60,7 +60,7 @@ log[json.dumps(["current", "claude:18000", "max 5x", claude_id], separators=(","
     "stretch": {"ticks": tortoise_ticks, "pending": 0, "activeAt": now - 30},
     "readings": []}
 
-# A saved fixture hub hides the direct accounts above, so its first Codex account (Pro) gets the dragon.
+# A saved fixture hub hides the direct accounts above, so its `hub-codex.json` account (Pro) gets the dragon.
 try:
     hubs = json.load(open(os.path.join(os.path.dirname(sys.argv[1]), "proxy-hubs.json")))
 except FileNotFoundError:

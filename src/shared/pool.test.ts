@@ -66,8 +66,9 @@ describe("provider pools", () => {
         [hubAccount("a", { account_key: "same", last_successful_update_epoch: 30 })],
       ],
     );
-    // `b` shares the account ID as a member of the same workspace, but has an allowance of its own.
-    expect(pool.accounts.map(({ key }) => key)).toEqual(["claude:home", "hub1:claude:a", "hub0:claude:b"]);
+    // The direct sign-in has no email, so it is the same account as `a`. `b` shares the account ID as a
+    // member of the same workspace, but has an allowance of its own.
+    expect(pool.accounts.map(({ key }) => key)).toEqual(["hub1:claude:a", "hub0:claude:b"]);
   });
 });
 

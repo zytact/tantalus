@@ -63,20 +63,24 @@ export function poolAccounts(snapshot: UsageSnapshot): PoolAccount[] {
 
 /** One pool per provider that has an account, in provider order. An account read twice, such as through
  * two hubs or from two sign-ins, has one allowance, so it counts once, by its newest reading. Members of
- * one ChatGPT workspace share an account ID but not an allowance, so the email has to match as well. */
+ * one ChatGPT workspace share an account ID but not an allowance, so two different emails stay apart. */
 export function providerPools(snapshot: UsageSnapshot): Pool[] {
   const accounts = poolAccounts(snapshot);
   return providerIds.flatMap((provider) => {
-    const members = new Map<string, PoolAccount>();
+    const members: PoolAccount[] = [];
     for (const account of accounts) {
       if (account.provider !== provider) continue;
-      const { account_key, email } = account.usage;
-      const key = account_key === null ? account.key : JSON.stringify([account_key, email?.trim().toLowerCase()]);
-      const seen = members.get(key);
-      if (!seen || readEpoch(account) > readEpoch(seen)) members.set(key, account);
+      const twin = members.findIndex((member) => sameAccount(member, account));
+      if (twin === -1) members.push(account);
+      else if (readEpoch(account) > readEpoch(members[twin]!)) members[twin] = account;
     }
-    return members.size > 0 ? [{ provider, accounts: [...members.values()] }] : [];
+    return members.length > 0 ? [{ provider, accounts: members }] : [];
   });
+}
+
+function sameAccount({ usage: a }: PoolAccount, { usage: b }: PoolAccount): boolean {
+  if (a.account_key === null || a.account_key !== b.account_key) return false;
+  return a.email === null || b.email === null || a.email.trim().toLowerCase() === b.email.trim().toLowerCase();
 }
 
 const readEpoch = ({ usage }: PoolAccount) => usage.last_successful_update_epoch ?? 0;

@@ -13,7 +13,7 @@ DESKTOP="tantalus-verify-$(basename "$RUN_DIR")"
 stock_electron() {
   local version zip
   version="$(node -p "require('$ROOT/node_modules/electron/package.json').version")"
-  zip="$(find "${ELECTRON_CACHE:-$HOME/.cache/electron}" -name "electron-v$version-win32-x64.zip" 2>/dev/null | head -n 1)"
+  zip="$(find "${ELECTRON_CACHE:-$HOME/.cache/electron}" -name "electron-v$version-win32-x64.zip" 2>/dev/null | head -n 1 || true)"
   [ -n "$zip" ] || { echo "No Windows Electron $version download to take the stock exe from." >&2; return 1; }
   python3 -c 'import sys, zipfile; open(sys.argv[2], "wb").write(zipfile.ZipFile(sys.argv[1]).read("electron.exe"))' "$zip" "$1"
 }
