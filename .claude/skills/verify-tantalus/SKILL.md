@@ -1,6 +1,6 @@
 ---
 name: verify-tantalus
-description: Build and drive the isolated Tantalus Preview Electron app against real accounts or fixture usage, capture window screenshots, inspect the tray menu, and run the test suite. Use when verifying allowance windows, refresh, provider settings, remote access over the local network or Tailscale, updates, tray behavior, or usage parsing.
+description: Build and drive the isolated Tantalus Preview Electron app, on Linux or on Windows from WSL, against real accounts or fixture usage, capture window screenshots, inspect the tray menu, and run the test suite. Use when verifying allowance windows, refresh, provider settings, remote access over the local network or Tailscale, updates, tray behavior, or usage parsing.
 ---
 
 # Verify Tantalus
@@ -23,7 +23,7 @@ That identity keeps the preview's settings directory, open-at-login entry, singl
 
 ## Launch
 
-Run from the repo root. The launch needs Xvfb, `curl`, and `python3`.
+Run from the repo root. The launch needs Xvfb, `curl`, and `python3`. On WSL the same commands build and drive the Windows preview on a hidden desktop instead. Read `wsl.md` when a WSL launch, sign-in or cleanup fails, a step needs a visible window, or a feature step names something only Linux has.
 
 ```sh
 EVIDENCE=$(.agents/skills/verify-tantalus/scripts/run-dir.sh)/evidence/$(date +%Y%m%d-%H%M%S)
@@ -176,7 +176,7 @@ A screenshot proves the rendered page. Pair it with the relevant interaction and
 .agents/skills/verify-tantalus/scripts/cleanup.sh
 ```
 
-The helper kills only the preview, fixture server, and Xvfb PIDs started by `launch.sh`, removes the `coverage-home`, `mock-home` and `web-profile` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
+The helper kills only the preview, fixture server, Xvfb and relay PIDs started by `launch.sh`, removes the `coverage-home`, `mock-home` and `web-profile` scaffolding, and preserves evidence. Tailscale keeps the preview's route in its own config after the app quits, so cleanup also runs `tailscale serve --https=8444 off`, but only while that route still points at `127.0.0.1:4748`. Never use `pkill`, `killall`, or release-app process names. After cleanup, confirm the evidence directory still exists.
 
 ## Helpers
 
@@ -193,5 +193,10 @@ All helpers in `scripts/` are executable or run with `node`:
 - `signed-preview-rpm.sh RELEASE` builds a preview rpm that trusts a throwaway key in the run directory and signs it, for the root update helper proof (see `features/updates.md`)
 - `doctor.sh` checks the preview identity, processes, display, DevTools port, and usage mode without changing state
 - `cleanup.sh` stops only the harness-owned preview, fixture server, and display, removes the preview's Tailscale route, and preserves evidence
+- `wsl.sh`, `windows-relay.mjs` and `hidden-desktop.ps1` carry the WSL route, and the other scripts use them on their own (see `wsl.md`)
 
 The feature map is in `features/`. Read the relevant file before driving that feature.
+
+## Machines
+
+Proven on Linux and on WSL, which drives the Windows preview (see `wsl.md`).

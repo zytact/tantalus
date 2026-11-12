@@ -5,7 +5,7 @@
 # Run launch.sh --restart afterwards, since the preview reads the log once at startup.
 set -euo pipefail
 source "$(dirname "$0")/run-dir.sh"
-LOG="$RUN_DIR/mock-home/config/dev.arnab.tantalus.preview/pace-log.json"
+LOG="$MOCK_HOME/config/dev.arnab.tantalus.preview/pace-log.json"
 [ "$(cat "$RUN_DIR/run.mode" 2>/dev/null)" = mock ] || { echo "Refusing: seed-creatures.sh needs a mock launch." >&2; exit 1; }
 mkdir -p "$(dirname "$LOG")"
 python3 - "$LOG" <<'PY'

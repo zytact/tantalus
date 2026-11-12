@@ -47,8 +47,9 @@ const identity = app.getName() === identities.preview.productName ? identities.p
 const preview = identity === identities.preview;
 
 // Settings and the single-instance lock live under the user data directory, so keying it by the
-// identifier keeps a preview's apart from the release's.
-app.setPath("userData", join(app.getPath("appData"), identity.appId));
+// identifier keeps a preview's apart from the release's. Windows ignores the environment for it, so a
+// preview also honors TANTALUS_APP_DATA, which the verification harness sets.
+app.setPath("userData", join((preview && process.env.TANTALUS_APP_DATA) || app.getPath("appData"), identity.appId));
 
 /** The window shell paints before the page does, so it carries the same canvas color the stylesheet
  * uses. Without it a dark desktop gets a cream flash on every open. */

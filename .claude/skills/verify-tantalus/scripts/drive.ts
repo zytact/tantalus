@@ -10,15 +10,21 @@
 // Join commands with `then` to run them in order on one page, e.g. `click button Refresh then snapshot`.
 // A --web page lives only for one invocation, so this is how to read what a click on it did.
 // Prefix any command with `--web <url>` to run it against the remote access page instead, in a
-// headless Chrome at phone size. Its profile lives in the run directory, so a pairing carries over
-// from one --web command to the next until cleanup. TANTALUS_CHROME overrides the Chrome executable.
+// headless Chrome at phone size, or a headless Windows Edge on WSL. Its profile lives in the run directory,
+// so a pairing carries over from one --web command to the next until cleanup. TANTALUS_CHROME overrides
+// the browser executable.
 // Prefix any command with `--scheme light` or `--scheme dark` to render the page in that color scheme
 // while the command runs. Without it the page follows the display's scheme. --nth INDEX selects a zero-based match.
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
+import type { AddressInfo } from "node:net";
 import { basename, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 
 // Matches run-dir.sh, so this drives the preview launched from the same checkout.
 const ROOT = realpathSync(fileURLToPath(new URL("../../../..", import.meta.url)));
@@ -37,17 +43,88 @@ const steps = argv.reduce<string[][]>(
   (list, word) => (word === "then" ? [...list, []] : [...list.slice(0, -1), [...list.at(-1)!, word]]),
   [[]],
 );
-const browser = webUrl
-  ? await chromium.launchPersistentContext(join(RUN_DIR, "web-profile"), {
-      executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome",
-      viewport: { width: 390, height: 844 },
-    })
-  : await chromium.connectOverCDP(`http://127.0.0.1:${readFileSync(join(RUN_DIR, "run.cdp"), "utf8").trim()}`);
+const phone = { width: 390, height: 844 };
+// Matches run-dir.sh: on WSL the preview runs on Windows (see wsl.md).
+const windows = Boolean(process.env.WSL_DISTRO_NAME) && !process.env.TANTALUS_VERIFY_LINUX;
+
+/** The page to drive, and how to let it go. */
+type Session = { page: Page; close: () => Promise<void> };
+
+/** The preview's window over the DevTools port launch.sh recorded. Closing only disconnects. */
+async function previewWindow(): Promise<Session> {
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${readFileSync(join(RUN_DIR, "run.cdp"), "utf8").trim()}`);
+  const page = browser.contexts().flatMap((context) => context.pages())[0];
+  if (!page) {
+    await browser.close();
+    throw new Error("The preview has no open window. Open it from the tray or relaunch.");
+  }
+  return { page, close: () => browser.close() };
+}
+
+async function linuxWeb(): Promise<Session> {
+  const context = await chromium.launchPersistentContext(join(RUN_DIR, "web-profile"), {
+    executablePath: process.env.TANTALUS_CHROME ?? "/usr/bin/google-chrome",
+    viewport: phone,
+  });
+  return { page: await context.newPage(), close: () => context.close() };
+}
+
+/** A headless Edge on Windows, where the preview's web port is, reached through windows-relay.mjs. Its
+ * profile lives beside the preview's state under %LOCALAPPDATA%, since a profile on WSL's disk fails. */
+async function windowsWeb(): Promise<Session> {
+  const wslpath = (...args: string[]) => execFileSync("wslpath", args, { encoding: "utf8" }).trim();
+  const localAppData = execFileSync("cmd.exe", ["/d", "/c", "echo %LOCALAPPDATA%"], { cwd: "/mnt/c", encoding: "utf8" });
+  const profile = join(wslpath(localAppData.trim()), "tantalus-verify", basename(RUN_DIR), "web-profile");
+  const windowsProfile = wslpath("-w", profile);
+  const portFile = join(profile, "DevToolsActivePort");
+  // An Edge left on this profile by a failed run would take the new launch over without a fresh port.
+  execFileSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-Command",
+      `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ? CommandLine -like '*${windowsProfile}*' | % { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ],
+    { cwd: "/mnt/c" },
+  );
+  rmSync(portFile, { force: true });
+  const edge = process.env.TANTALUS_CHROME ?? "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+  spawn(edge, [`--user-data-dir=${windowsProfile}`, "--headless", "--no-first-run", "--remote-debugging-port=0"], {
+    cwd: "/mnt/c",
+    stdio: "ignore",
+  }).unref();
+  for (let tries = 0; !existsSync(portFile) && tries < 30; tries++) await sleep(500);
+  const windowsPort = readFileSync(portFile, "utf8").split("\n")[0].trim();
+  const localPort = await new Promise<number>((resolve) => {
+    const server = createServer().listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
+  });
+  const relay = spawn(process.execPath, [join(import.meta.dirname, "windows-relay.mjs"), windowsPort, String(localPort)], {
+    stdio: "ignore",
+  });
+  const connect = async (tries: number): Promise<Browser> =>
+    chromium.connectOverCDP(`http://127.0.0.1:${localPort}`).catch(async (error: unknown) => {
+      if (tries === 0) throw error;
+      await sleep(250);
+      return connect(tries - 1);
+    });
+  const browser = await connect(20);
+  const page = await browser.contexts()[0].newPage();
+  await page.setViewportSize(phone);
+  return {
+    page,
+    close: async () => {
+      // Disconnecting would leave Edge running, so ask it to quit.
+      await (await browser.newBrowserCDPSession()).send("Browser.close").catch(() => {});
+      relay.kill();
+    },
+  };
+}
+
+const { page, close } = await (webUrl ? (windows ? windowsWeb() : linuxWeb()) : previewWindow());
 try {
-  const page = webUrl
-    ? await browser.newPage()
-    : browser.contexts().flatMap((context) => context.pages())[0];
-  if (!page) throw new Error("The preview has no open window. Open it from the tray or relaunch.");
   if (webUrl) {
     const response = await page.goto(webUrl);
     if (!response?.ok()) throw new Error(`The remote page answered ${response?.status() ?? "nothing"}.`);
@@ -124,6 +201,5 @@ try {
       );
   }
 } finally {
-  // Disconnects without closing the preview, or closes the headless Chrome a --web run launched.
-  await browser.close();
+  await close();
 }
