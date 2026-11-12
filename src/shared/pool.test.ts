@@ -55,20 +55,32 @@ describe("provider pools", () => {
     ]);
   });
 
-  it("counts an account read twice once, by its newest reading", () => {
+  it("counts an account read twice once, by its newest reading, keeping the email either reading knows", () => {
     const { pool } = pooled(
-      [direct({ account_key: "same", last_successful_update_epoch: 10 })],
-      [
-        [
-          hubAccount("a", { account_key: "same", last_successful_update_epoch: 20 }),
-          hubAccount("b", { account_key: "same" }),
-        ],
-        [hubAccount("a", { account_key: "same", last_successful_update_epoch: 30 })],
-      ],
+      [direct({ account_key: "same", last_successful_update_epoch: 30 })],
+      [[hubAccount("a", { account_key: "same", last_successful_update_epoch: 20 })], [hubAccount("c", {})]],
     );
-    // The direct sign-in has no email, so it is the same account as `a`. `b` shares the account ID as a
-    // member of the same workspace, but has an allowance of its own.
-    expect(pool.accounts.map(({ key }) => key)).toEqual(["hub1:claude:a", "hub0:claude:b"]);
+    expect(pool.accounts.map(({ key, usage }) => [key, usage.email])).toEqual([
+      ["claude:home", "a@example.com"],
+      ["hub1:claude:c", "c@example.com"],
+    ]);
+  });
+
+  it("keeps workspace members sharing an account ID apart, whatever order and age their readings have", () => {
+    const members = (epoch: number) =>
+      pooled(
+        [direct({ account_key: "same", last_successful_update_epoch: epoch })],
+        [
+          [
+            hubAccount("a", { account_key: "same", last_successful_update_epoch: 20 }),
+            hubAccount("b", { account_key: "same", last_successful_update_epoch: 10 }),
+          ],
+          [hubAccount("a", { account_key: "same", last_successful_update_epoch: 30 })],
+        ],
+      ).pool.accounts.map(({ key }) => key);
+    // The direct sign-in names no email, so it could be either member and stays apart.
+    const expected = ["claude:home", "hub1:claude:a", "hub0:claude:b"];
+    expect([members(5), members(25), members(40)]).toEqual([expected, expected, expected]);
   });
 });
 

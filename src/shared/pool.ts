@@ -62,25 +62,51 @@ export function poolAccounts(snapshot: UsageSnapshot): PoolAccount[] {
 }
 
 /** One pool per provider that has an account, in provider order. An account read twice, such as through
- * two hubs or from two sign-ins, has one allowance, so it counts once, by its newest reading. Members of
- * one ChatGPT workspace share an account ID but not an allowance, so two different emails stay apart. */
+ * two hubs or from two sign-ins, has one allowance, so it counts once, by its newest reading. */
 export function providerPools(snapshot: UsageSnapshot): Pool[] {
   const accounts = poolAccounts(snapshot);
   return providerIds.flatMap((provider) => {
-    const members: PoolAccount[] = [];
-    for (const account of accounts) {
-      if (account.provider !== provider) continue;
-      const twin = members.findIndex((member) => sameAccount(member, account));
-      if (twin === -1) members.push(account);
-      else if (readEpoch(account) > readEpoch(members[twin]!)) members[twin] = account;
+    const own = accounts.filter((account) => account.provider === provider);
+    const identify = identities(own);
+    const members = new Map<string, PoolAccount>();
+    for (const account of own) {
+      const identity = identify(account);
+      const seen = members.get(identity);
+      if (!seen) members.set(identity, account);
+      else members.set(identity, newest(seen, account));
     }
-    return members.length > 0 ? [{ provider, accounts: members }] : [];
+    return members.size > 0 ? [{ provider, accounts: [...members.values()] }] : [];
   });
 }
 
-function sameAccount({ usage: a }: PoolAccount, { usage: b }: PoolAccount): boolean {
-  if (a.account_key === null || a.account_key !== b.account_key) return false;
-  return a.email === null || b.email === null || a.email.trim().toLowerCase() === b.email.trim().toLowerCase();
+const emailOf = ({ usage }: PoolAccount) => usage.email?.trim().toLowerCase() ?? null;
+
+/** Names the account behind each reading. Members of one ChatGPT workspace share an account ID but not
+ * an allowance, so under one `account_key` each email is an account of its own. A reading without an
+ * email joins the others only while they all name one email. Among several it could be any of them, so
+ * it stays apart, as does a reading without a key. */
+function identities(accounts: PoolAccount[]): (account: PoolAccount) => string {
+  const emails = new Map<string, Set<string>>();
+  for (const account of accounts) {
+    const key = account.usage.account_key;
+    const email = emailOf(account);
+    if (key !== null && email !== null) emails.set(key, (emails.get(key) ?? new Set()).add(email));
+  }
+  return (account) => {
+    const key = account.usage.account_key;
+    if (key === null) return JSON.stringify([account.key]);
+    const known = emails.get(key);
+    if (!known || known.size === 1) return JSON.stringify([key]);
+    const email = emailOf(account);
+    return email === null ? JSON.stringify([key, null, account.key]) : JSON.stringify([key, email]);
+  };
+}
+
+/** The newer of two readings of one account, with the email and plan whichever of them knows. */
+function newest(a: PoolAccount, b: PoolAccount): PoolAccount {
+  const [winner, other] = readEpoch(b) > readEpoch(a) ? [b, a] : [a, b];
+  const { email, plan } = winner.usage;
+  return { ...winner, usage: { ...winner.usage, email: email ?? other.usage.email, plan: plan ?? other.usage.plan } };
 }
 
 const readEpoch = ({ usage }: PoolAccount) => usage.last_successful_update_epoch ?? 0;
