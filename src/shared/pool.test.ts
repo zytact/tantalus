@@ -55,18 +55,18 @@ describe("provider pools", () => {
     ]);
   });
 
-  it("counts an account read twice once, by its newest reading, keeping the email either reading knows", () => {
+  it("counts an account read twice once, by its newest reading, keeping the email and plan either knows", () => {
     const { pool } = pooled(
       [direct({ account_key: "same", last_successful_update_epoch: 30 })],
       [[hubAccount("a", { account_key: "same", last_successful_update_epoch: 20 })], [hubAccount("c", {})]],
     );
-    expect(pool.accounts.map(({ key, usage }) => [key, usage.email])).toEqual([
-      ["claude:home", "a@example.com"],
-      ["hub1:claude:c", "c@example.com"],
+    expect(pool.accounts.map(({ key, usage }) => [key, usage.email, usage.plan])).toEqual([
+      ["claude:home", "a@example.com", "Max 5x"],
+      ["hub1:claude:c", "c@example.com", "Max 5x"],
     ]);
   });
 
-  it("keeps workspace members sharing an account ID apart, whatever order and age their readings have", () => {
+  it("keeps workspace members sharing an account ID apart, however old each reading is", () => {
     const members = (epoch: number) =>
       pooled(
         [direct({ account_key: "same", last_successful_update_epoch: epoch })],
