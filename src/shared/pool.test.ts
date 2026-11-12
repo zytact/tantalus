@@ -84,12 +84,22 @@ describe("pool windows", () => {
     expect(windows[1]?.columns.map((column) => column !== null)).toEqual([true, false, false]);
   });
 
-  it("counts a window that has reset since it was read as full, and has no figure before a reading", () => {
+  it("shows a window that has reset since it was read as full and unstarted, and has no figure before a reading", () => {
     const { windows } = pooled([
       direct({ five_hour: window(fiveHourSeconds, 80, now - 1), seven_day: window(sevenDaySeconds, null) }),
       direct({ five_hour: window(fiveHourSeconds, 140, now + 60) }, "b"),
     ]);
     expect(windows.map(({ remaining }) => remaining)).toEqual([50, null]);
+    expect(windows[0]?.columns[0]).toEqual(window(fiveHourSeconds, 0));
+  });
+
+  it("leaves a window that has reset out of the pool's pace", () => {
+    const half = now + fiveHourSeconds / 2;
+    const { windows } = pooled([
+      direct({ five_hour: window(fiveHourSeconds, 80, now - 1) }),
+      direct({ five_hour: window(fiveHourSeconds, 50, half) }, "b"),
+    ]);
+    expect(windows[0]?.pace).toMatchObject({ status: "on", expectedPercent: 50 });
   });
 
   it("names the reset that lands first and the share of the pool it hands back", () => {

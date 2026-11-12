@@ -89,22 +89,21 @@ export function PoolSection({
           paceOf={(account) => paceOf(account, window)}
         />
       ))}
-      {providerExtras[pool.provider].map((extra) =>
-        extra === "spend" ? <Spend key={extra} members={members} /> : <Credits key={extra} members={members} />,
-      )}
+      {providerExtras[pool.provider].map((extra) => {
+        const Extra = extraEntries[extra];
+        return <Extra key={extra} members={members} />;
+      })}
     </div>
   );
 }
 
-/** Two letters from the account's email, tinted per email so accounts sharing initials stay apart. */
-function Chip({ chip }: { chip: AccountChip }) {
+/** Two letters from the account's email, tinted per email so accounts sharing initials stay apart. `label`
+ * names the account for screen readers where nothing beside the chip already does. */
+function Chip({ chip, label }: { chip: AccountChip; label?: string }) {
   return (
-    <b
-      className="chip"
-      style={chip.hue === null ? undefined : ({ "--chip-hue": chip.hue } as React.CSSProperties)}
-      aria-hidden="true"
-    >
-      {chip.text}
+    <b className="chip" style={chip.hue === null ? undefined : ({ "--chip-hue": chip.hue } as React.CSSProperties)}>
+      <span aria-hidden="true">{chip.text}</span>
+      {label && <span className="visually-hidden">{label}</span>}
     </b>
   );
 }
@@ -115,7 +114,7 @@ function AccountRow({ account, chip, now, lastStart }: Member & { now: number; l
     <li>
       <div className="pool-account">
         <Chip chip={chip} />
-        <Who account={account} />
+        <AccountIdentity account={account} />
         <span className="provider-status" data-tone={statusTone(usage)}>
           {statusLine(usage)}
         </span>
@@ -131,9 +130,10 @@ function AccountRow({ account, chip, now, lastStart }: Member & { now: number; l
   );
 }
 
-/** The account's email, blurred until clicked, then its plan and the hub it is read through. */
-function Who({ account: { name, hub, usage } }: { account: PoolAccount }) {
-  const details = [usage.plan, hub].filter((detail) => detail !== null);
+/** The account's email, blurred until clicked, then its plan and the hub it is read through. An account
+ * without an email is named by its label, which already carries the hub. */
+function AccountIdentity({ account: { name, hub, usage } }: { account: PoolAccount }) {
+  const details = [usage.plan, usage.email === null ? null : hub].filter((detail) => detail !== null);
   return (
     <span className="pool-who">
       {usage.email === null ? name.label : <Email email={usage.email} label={name.label} />}
@@ -267,11 +267,12 @@ function Figure({ remaining }: { remaining: number | null }) {
 
 /** Which account resets first and what that hands back to the pool. One account's caption already says it. */
 function NextReset({ window: { next }, members, now }: { window: PoolWindow; members: Member[]; now: number }) {
-  if (members.length < 2 || !next) return null;
+  const member = next && members[next.index];
+  if (members.length < 2 || !member) return null;
   return (
     <p className="pool-next">
-      {members[next.index]?.chip.text} resets in {countdown(next.resetAt, now)}, handing back{" "}
-      {percent(Math.round(next.restores))}
+      <Chip chip={member.chip} label={member.account.name.label} /> resets in {countdown(next.resetAt, now)}, handing
+      back {percent(Math.round(next.restores))}
     </p>
   );
 }
@@ -286,7 +287,7 @@ type SegmentProps = Member & {
 
 /** One account's share of a window. `start` and `share` place the segment along its row, from 0 to 1. */
 function Segment({ usage, ...props }: SegmentProps & { usage: WindowUsage | null }) {
-  if (usage === null) return <Gap chip={props.chip} text={`No ${props.label.toLowerCase()}`} />;
+  if (usage === null) return <Gap {...props} text={`No ${props.label.toLowerCase()}`} />;
   return <Bar {...props} usage={usage} />;
 }
 
@@ -327,12 +328,12 @@ function Bar({ account, chip, label, usage, speed, now, start, share }: SegmentP
 }
 
 /** Where an account has nothing to draw a bar for. */
-function Gap({ chip, text }: { chip: AccountChip; text: string }) {
+function Gap({ account, chip, text }: Member & { text: string }) {
   return (
     <div className="segment" data-gap="true">
       <span className="segment-gap" />
       <p className="segment-caption">
-        <Chip chip={chip} />
+        <Chip chip={chip} label={account.name.label} />
         <span>{text}</span>
       </p>
     </div>
@@ -408,23 +409,23 @@ function Spend({ members }: { members: Member[] }) {
         <strong className="figure">{spendTotal(extras)}</strong>
       </div>
       <Segments count={members.length}>
-        {members.map(({ account, chip }, index) => (
-          <SpendSegment key={account.key} chip={chip} spend={accountSpend(extras[index] ?? null)} />
+        {members.map((member, index) => (
+          <SpendSegment key={member.account.key} {...member} spend={accountSpend(extras[index] ?? null)} />
         ))}
       </Segments>
     </section>
   );
 }
 
-function SpendSegment({ chip, spend }: { chip: AccountChip; spend: AccountSpend }) {
-  if (spend.state !== "on") return <Gap chip={chip} text={spend.state === "off" ? "Off" : "Not reported"} />;
+function SpendSegment({ spend, ...member }: Member & { spend: AccountSpend }) {
+  if (spend.state !== "on") return <Gap {...member} text={spend.state === "off" ? "Off" : "Not reported"} />;
   return (
     <div className="segment">
-      <div className="rule">
-        <span className="rule-fill" style={{ width: `${spend.share ?? 0}%` }} />
+      <div className="rule" aria-hidden="true">
+        <span className="rule-fill" style={{ width: `${spend.leftPercent ?? 0}%` }} />
       </div>
       <p className="segment-caption">
-        <Chip chip={chip} />
+        <Chip chip={member.chip} label={member.account.name.label} />
         <b>{spend.left}</b>
         <span>of {spend.limit}</span>
       </p>
@@ -454,12 +455,12 @@ function Credits({ members }: { members: Member[] }) {
   );
 }
 
-function CreditSegment({ account: { usage }, chip }: Member) {
+function CreditSegment({ account: { name, usage }, chip }: Member) {
   const credits = usage.reset_credits;
   return (
     <div className="segment">
       <p className="segment-caption">
-        <Chip chip={chip} />
+        <Chip chip={chip} label={name.label} />
         <b>{creditCount(usage.reset_credit_count)}</b>
       </p>
       {credits.length === 0 && !!usage.reset_credit_count && (
@@ -473,3 +474,8 @@ function CreditSegment({ account: { usage }, chip }: Member) {
     </div>
   );
 }
+
+const extraEntries = { spend: Spend, credits: Credits } satisfies Record<
+  (typeof providerExtras)[keyof typeof providerExtras][number],
+  (props: { members: Member[] }) => React.ReactNode
+>;

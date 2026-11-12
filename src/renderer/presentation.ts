@@ -75,11 +75,10 @@ export function remainingCredits(extra: ExtraUsage): number | null {
     : remainingUsage(extra.used_credits, extra.monthly_limit);
 }
 
-/** One account's extra usage as its segment shows it. `share` is the part of the monthly limit left, in
- * percent, and null when either figure is unknown. */
+/** One account's extra usage as its segment shows it. `leftPercent` is the part of the monthly limit left, and null when either figure is unknown. */
 export type AccountSpend =
   | { state: "unreported" | "off" }
-  | { state: "on"; left: string; limit: string; share: number | null };
+  | { state: "on"; left: string; limit: string; leftPercent: number | null };
 
 export function accountSpend(extra: ExtraUsage | null): AccountSpend {
   if (!extra) return { state: "unreported" };
@@ -89,7 +88,7 @@ export function accountSpend(extra: ExtraUsage | null): AccountSpend {
     state: "on",
     left: creditAmount(left, extra),
     limit: creditAmount(extra.monthly_limit, extra),
-    share: left !== null && extra.monthly_limit ? (left / extra.monthly_limit) * 100 : null,
+    leftPercent: left !== null && extra.monthly_limit ? (left / extra.monthly_limit) * 100 : null,
   };
 }
 

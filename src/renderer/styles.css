@@ -1246,10 +1246,16 @@ button.danger:hover:not(:disabled) {
   letter-spacing: 0.04em;
   text-align: center;
 }
-/* Tinted per email, so two accounts sharing initials still differ. The pair keeps its contrast in both schemes. */
+/* Tinted per email, so two accounts sharing initials still differ. */
 .chip[style] {
   background: oklch(0.89 0.07 var(--chip-hue));
   color: oklch(0.3 0.09 var(--chip-hue));
+}
+@media (prefers-color-scheme: dark) {
+  .chip[style] {
+    background: oklch(0.36 0.07 var(--chip-hue));
+    color: oklch(0.92 0.06 var(--chip-hue));
+  }
 }
 
 .pool-accounts {

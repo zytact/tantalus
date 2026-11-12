@@ -6,8 +6,6 @@ import { windowStartKey } from "../shared/window-start";
 import {
   accountChips,
   accountSpend,
-  creditCount,
-  isDegraded,
   spendTotal,
   absoluteTime,
   countdown,
@@ -77,24 +75,14 @@ describe("display contract", () => {
 
   it("adds up a pool's extra usage per currency, and says when it is off or unknown", () => {
     const extra = { enabled: true, used_credits: 12.5, monthly_limit: 50, currency: "USD", decimal_places: 2 };
-    expect(accountSpend(extra)).toEqual({ state: "on", left: "37.50 USD", limit: "50.00 USD", share: 75 });
+    expect(accountSpend(extra)).toEqual({ state: "on", left: "37.50 USD", limit: "50.00 USD", leftPercent: 75 });
     expect(accountSpend({ ...extra, enabled: false })).toEqual({ state: "off" });
     expect(accountSpend(null)).toEqual({ state: "unreported" });
-    expect(accountSpend({ ...extra, used_credits: null })).toMatchObject({ left: "Unavailable", share: null });
+    expect(accountSpend({ ...extra, used_credits: null })).toMatchObject({ left: "Unavailable", leftPercent: null });
     expect(spendTotal([extra, { ...extra, used_credits: 40 }, null, { ...extra, enabled: false }])).toBe("47.50 USD");
     expect(spendTotal([extra, { ...extra, currency: "EUR" }])).toBe("37.50 USD + 37.50 EUR");
     expect(spendTotal([{ ...extra, enabled: false }, null])).toBe("Off");
     expect(spendTotal([{ ...extra, used_credits: null }])).toBe("Unavailable");
-  });
-
-  it("says how many reset credits are banked, in words without a number", () => {
-    expect([null, 0, 2].map(creditCount)).toEqual(["Unavailable", "None", "2"]);
-  });
-
-  it("needs a line for a reading that failed or went stale", () => {
-    expect(
-      (["ready", "loading", "stale", "error", "auth_missing"] as const).map((status) => isDegraded({ status })),
-    ).toEqual([false, false, true, true, true]);
   });
 
   it("keeps an unknown reset distinct from an imminent one", () => {

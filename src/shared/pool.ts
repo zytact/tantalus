@@ -92,23 +92,28 @@ export type PoolWindow = {
   next: { index: number; resetAt: number; restores: number } | null;
 };
 
-/** The windows any of the pool's accounts reports, in the order they are shown. A window whose reset
- * has passed since it was read counts as full. */
+/** A window as it stands now. One whose reset has passed since it was read is full again, and has no
+ * reset until it is next used. */
+const current = (window: WindowUsage, now: number): WindowUsage =>
+  window.reset_at_epoch !== null && window.reset_at_epoch <= now
+    ? { ...window, used_percent: 0, reset_at_epoch: null }
+    : window;
+
+/** The windows any of the pool's accounts reports, in the order they are shown, each as it stands now. */
 export function poolWindows(pool: Pool, now: number): PoolWindow[] {
   return windowSlots.flatMap((slot) => {
     const duration = windowDurations[slot];
     const columns = pool.accounts.map(({ usage }) =>
-      usage[slot].limit_window_seconds === duration ? usage[slot] : null,
+      usage[slot].limit_window_seconds === duration ? current(usage[slot], now) : null,
     );
     if (columns.every((window) => window === null)) return [];
-    const read = columns.flatMap((window, index) => {
+    const readings = columns.flatMap((window, index) => {
       if (window === null || window.used_percent === null) return [];
-      const reset = window.reset_at_epoch;
-      const used = reset !== null && reset <= now ? 0 : Math.min(100, Math.max(0, window.used_percent));
-      return [{ index, used, reset, pace: usagePace(window, now) }];
+      const used = Math.min(100, Math.max(0, window.used_percent));
+      return [{ index, used, reset: window.reset_at_epoch, pace: usagePace(window, now) }];
     });
-    const paced = read.flatMap(({ used, pace }) => (pace ? [{ used, expected: pace.expectedPercent }] : []));
-    const pending = read
+    const paced = readings.flatMap(({ used, pace }) => (pace ? [{ used, expected: pace.expectedPercent }] : []));
+    const pending = readings
       .flatMap(({ index, used, reset }) => (reset !== null && used > 0 ? [{ index, used, resetAt: reset }] : []))
       .sort((a, b) => a.resetAt - b.resetAt)[0];
     return [
@@ -116,9 +121,11 @@ export function poolWindows(pool: Pool, now: number): PoolWindow[] {
         slot,
         duration,
         columns,
-        remaining: read.length > 0 ? 100 - mean(read.map(({ used }) => used)) : null,
+        remaining: readings.length > 0 ? 100 - mean(readings.map(({ used }) => used)) : null,
         pace: paced.length > 0 ? paceAt(mean(paced.map(({ used }) => used)), mean(paced.map((p) => p.expected))) : null,
-        next: pending ? { index: pending.index, resetAt: pending.resetAt, restores: pending.used / read.length } : null,
+        next: pending
+          ? { index: pending.index, resetAt: pending.resetAt, restores: pending.used / readings.length }
+          : null,
       },
     ];
   });
