@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/zytact/tantalus/compare/v0.3.0...v0.3.1) (2026-11-12)
+
+
+### Features
+
+* **pool:** see what each provider has left across all its accounts ([#146](https://github.com/zytact/tantalus/issues/146)) ([bfdcdd7](https://github.com/zytact/tantalus/commit/bfdcdd73f3447223a7005f915fa2f01f7786c47b))
+
 ## [0.3.0](https://github.com/zytact/tantalus/compare/v0.2.2...v0.3.0) (2026-11-09)
 
 
