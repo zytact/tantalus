@@ -8,6 +8,8 @@ const notOurs = ["dist/**", "dist-electron/**", "release/**", ".agents/**", ".cl
  * injects an inline script for fast refresh, so it only applies to builds. */
 const CONTENT_SECURITY_POLICY = "default-src 'self'; style-src 'self' 'unsafe-inline'";
 
+process.env.GOMAXPROCS ??= "4";
+
 export default defineConfig({
   plugins: lazyPlugins(() => [
     react(),
