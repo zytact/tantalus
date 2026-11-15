@@ -28,13 +28,11 @@ A pre-commit hook at `.vite-hooks/pre-commit` runs `vp staged`. `vp config` inst
 
 ## Validation
 
-After every change, run the following commands from the repo root.
+After a change, run only the checks it can affect, from the repo root. Skip the rest. Cap every check at 4 threads.
 
-```sh
-vp install --frozen-lockfile
-vp check
-vp test
-vp run fallow
-vp build
-vp pack
-```
+- `vp install --frozen-lockfile` when `package.json` or `pnpm-lock.yaml` changed.
+- `vp fmt --check --threads=4` and `vp lint --threads=4` in place of `vp check`, which has no thread cap. Run them on the whole project, since a type change can break files that import it.
+- `vp test related <changed files> --run` for the tests that import the changed files. Vitest already caps itself at 4 workers. Run the full `vp test` only when `vite.config.ts` or a test helper changed.
+- `vp run fallow`, which only audits the diff against `origin/main`.
+- `vp build` when `src/renderer/` or `src/shared/` changed.
+- `vp pack` when `src/main/`, `src/preload/` or `src/shared/` changed.

@@ -52,6 +52,7 @@ export default defineConfig({
       clean: false,
     },
   ],
+  test: { maxWorkers: 4 },
   fmt: {
     ignorePatterns: notOurs,
     printWidth: 120,
@@ -63,6 +64,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   staged: {
-    "*.{ts,tsx,js,jsx,json,css,html,md}": "vp check --fix",
+    "*.{ts,tsx,js,jsx}": ["vp fmt --threads=4", "vp lint --fix --threads=4"],
+    "*.{json,css,html,md}": "vp fmt --threads=4",
   },
 });
