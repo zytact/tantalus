@@ -8,6 +8,8 @@ const notOurs = ["dist/**", "dist-electron/**", "release/**", ".agents/**", ".cl
  * injects an inline script for fast refresh, so it only applies to builds. */
 const CONTENT_SECURITY_POLICY = "default-src 'self'; style-src 'self' 'unsafe-inline'";
 
+process.env.GOMAXPROCS ??= "4";
+
 export default defineConfig({
   plugins: lazyPlugins(() => [
     react(),
@@ -52,6 +54,7 @@ export default defineConfig({
       clean: false,
     },
   ],
+  test: { maxWorkers: 4 },
   fmt: {
     ignorePatterns: notOurs,
     printWidth: 120,
@@ -63,6 +66,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   staged: {
-    "*.{ts,tsx,js,jsx,json,css,html,md}": "vp check --fix",
+    "*.{ts,tsx,js,jsx}": ["vp fmt --threads=4", "vp lint --fix --threads=4"],
+    "*.{json,css,html,md}": "vp fmt --threads=4",
   },
 });
